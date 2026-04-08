@@ -1,0 +1,14 @@
+{
+  "votingExecutionMode": "dry-run",
+  "notificationsEnabled": false,
+  "heartbeatIntervalMinutes": 30,
+  "maxActionsPerHeartbeat": 5,
+  "confidenceThresholds": {
+    "autoExecute": "HIGH",
+    "escalate": "LOW"
+  },
+  "anomalyThresholds": {
+    "maxProposalsPerAddress": 3,
+    "staleSubmissionHours": 48
+  }
+}

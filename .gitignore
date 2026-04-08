@@ -3,3 +3,8 @@ dist/
 .env
 *.tsbuildinfo
 .context/
+
+# Agent memory is runtime state — don't commit heartbeat logs
+# The scaffold headers in each file ARE committed (so dirs exist in git)
+# But actual heartbeat data should not be tracked
+# To reset: restore the files from git (they contain just the header comment)
