@@ -137,6 +137,11 @@ pop task review --org 0xabc... --task 5 --action reject --reason "Missing unit t
 
 # Cancel an unclaimed task
 pop task cancel --org 0xabc... --task 5
+
+# Batch create tasks from a JSONL file
+pop task create-batch --project 0xdef... --file tasks.jsonl
+pop task create-batch --project 0xdef... --file tasks.jsonl --continue-on-error
+# Each line: {"name":"Task 1","description":"...","payout":10,"difficulty":"medium"}
 ```
 
 ### Projects
@@ -182,6 +187,10 @@ pop org update-metadata \
 
 # Deploy a new org from config file
 pop org deploy --config ./org-config.json --chain 100
+
+# Recent activity (agent heartbeat — single query for all changes)
+pop org activity --since 1712345678 --json
+pop org activity                       # defaults to last 30 minutes
 ```
 
 See [`examples/org-deploy-config.json`](examples/org-deploy-config.json) for the deploy config format.
@@ -193,7 +202,10 @@ Supports both Hybrid Voting (multi-class, token-weighted) and Direct Democracy (
 ```bash
 # List proposals
 pop vote list --org 0xabc...
-pop vote list --org 0xabc... --type hybrid --status Active
+pop vote list --type hybrid --status Active
+
+# Find proposals where I haven't voted yet (key for agent loops)
+pop vote list --unvoted --status Active --json
 
 # Create a proposal
 pop vote create \
@@ -257,6 +269,88 @@ pop education create \
 pop education complete --org 0xabc... --module 1 --answer 0
 ```
 
+### Vouching
+
+The vouching system lets members vouch for prospective role holders. Once enough vouches are collected (quorum), the user can claim the hat.
+
+```bash
+# Vouch for someone to claim a role
+pop vouch for --address 0x1234... --hat 5
+
+# Revoke a vouch
+pop vouch revoke --address 0x1234... --hat 5
+
+# Claim a role after reaching vouch quorum
+pop vouch claim --hat 5
+
+# List active vouches
+pop vouch list
+pop vouch list --hat 5
+
+# Check vouch status (current count vs quorum)
+pop vouch status --hat 5 --address 0x1234...
+```
+
+### Token Requests
+
+Request, approve, and track participation token distributions.
+
+```bash
+# Request tokens with a reason
+pop token request --amount 100 --reason "Completed Q1 deliverables"
+
+# Approve a pending request (requires approver hat)
+pop token approve --request 3
+
+# Cancel your own pending request
+pop token cancel --request 3
+
+# List pending requests
+pop token requests
+pop token requests --status all
+
+# Check PT balance
+pop token balance
+pop token balance --address 0x1234...
+```
+
+### Treasury
+
+Manage distributions, deposits, and claims via the PaymentManager.
+
+```bash
+# View treasury overview (distributions, payments, token supply)
+pop treasury view
+
+# Deposit ERC20 tokens (auto-approves then deposits)
+pop treasury deposit --token 0xUSDC... --amount 1000
+
+# Claim from a distribution (requires merkle proof)
+pop treasury claim --distribution 1 --amount 500000000000000000 --proof '["0xabc...","0xdef..."]'
+
+# List distributions
+pop treasury distributions
+pop treasury distributions --status Active
+
+# Opt out/in of distributions
+pop treasury opt-out
+pop treasury opt-in
+```
+
+### Role Applications
+
+Apply for roles and review applications.
+
+```bash
+# Apply for a role
+pop role apply --hat 5 --notes "3 years of Solidity experience"
+
+# List active applications
+pop role applications
+pop role applications --mine
+pop role applications --hat 5
+```
+
 ### Configuration
 
 ```bash
@@ -300,6 +394,19 @@ pop task assign --task $TASK_ID --assignee 0x1234...
 pop task claim --task 99 --json 2>&1
 # {"status":"error","code":"GAS_ESTIMATION_FAILED","message":"Transaction would revert: ..."}
 # code is one of: TX_REVERTED, INSUFFICIENT_FUNDS, NETWORK_ERROR, GAS_ESTIMATION_FAILED, USER_REJECTED, UNKNOWN_ERROR
+```
+
+**Agent heartbeat** — single compound query for the observe step:
+
+```bash
+# Get all recent activity in one call (proposals, tasks, members, vouches, token requests)
+pop org activity --since $LAST_HEARTBEAT --json
+
+# Find proposals needing the agent's vote
+pop vote list --unvoted --status Active --json
+
+# Cast vote
+pop vote cast --type hybrid --proposal 3 --options "0" --weights "100"
 ```
 
 **Dry run** — simulate without sending:
@@ -368,12 +475,23 @@ yarn test
 
 ```
 src/
-  index.ts              Entry point (yargs CLI)
-  config/               Network configs, token decimals
-  lib/                  Core modules (IPFS, subgraph, encoding, signing, tx)
-  commands/             Command implementations by domain
-  queries/              GraphQL queries (ported from frontend)
-  abi/                  Contract ABIs (copied from frontend)
+  index.ts              Entry point (yargs CLI, global flags)
+  config/               Network configs (4 chains), token decimals
+  lib/                  Core: encoding, IPFS, subgraph, signer, tx, output, resolve
+  commands/
+    task/               create, list, view, claim, submit, review, cancel, assign, apply, approve-app, create-batch
+    project/            create, list, delete
+    org/                list, view, activity, update-metadata, deploy
+    vote/               create, cast, list (--unvoted), announce
+    user/               register, join, profile
+    education/          create, list, complete
+    vouch/              for, revoke, claim, list, status
+    token/              request, approve, cancel, requests, balance
+    treasury/           view, deposit, claim, distributions, opt-out/opt-in
+    role/               apply, applications
+    config/             show, validate
+  queries/              10 GQL query files (ported from frontend)
+  abi/                  19 contract ABIs (copied from frontend)
 ```
 
 All encoding utilities (`ipfsCidToBytes32`, `stringToBytes`, `parseTaskId`) are direct ports of the frontend's `encoding.js` using the same ethers v5 + bs58 v6 to ensure byte-identical behavior.
