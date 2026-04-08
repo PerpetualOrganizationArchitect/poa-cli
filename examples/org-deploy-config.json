@@ -1,0 +1,65 @@
+{
+  "orgName": "My DAO",
+  "description": "A decentralized organization built on POP",
+  "links": [
+    { "name": "Website", "url": "https://example.com" },
+    { "name": "Discord", "url": "https://discord.gg/example" }
+  ],
+  "autoUpgrade": true,
+  "hybridVoting": {
+    "thresholdPct": 51,
+    "classes": [
+      {
+        "strategy": "DIRECT",
+        "slicePct": 50,
+        "quadratic": false,
+        "hatIds": []
+      },
+      {
+        "strategy": "ERC20_BAL",
+        "slicePct": 50,
+        "quadratic": false,
+        "minBalance": "1",
+        "hatIds": []
+      }
+    ]
+  },
+  "directDemocracy": {
+    "thresholdPct": 51
+  },
+  "roles": [
+    {
+      "name": "Admin",
+      "canVote": true,
+      "defaults": { "eligible": true, "standing": true },
+      "distribution": { "mintToDeployer": true },
+      "hatConfig": { "maxSupply": 10, "mutableHat": true }
+    },
+    {
+      "name": "Member",
+      "canVote": true,
+      "defaults": { "eligible": true, "standing": true },
+      "distribution": { "mintToDeployer": true },
+      "hatConfig": { "maxSupply": 1000, "mutableHat": true }
+    },
+    {
+      "name": "Contributor",
+      "canVote": false,
+      "defaults": { "eligible": true, "standing": true },
+      "distribution": { "mintToDeployer": false },
+      "hatConfig": { "maxSupply": 1000, "mutableHat": true }
+    }
+  ],
+  "roleAssignments": {
+    "quickJoinRoles": [1],
+    "tokenMemberRoles": [0, 1, 2],
+    "tokenApproverRoles": [0],
+    "taskCreatorRoles": [0, 1],
+    "educationCreatorRoles": [0],
+    "educationMemberRoles": [0, 1, 2],
+    "hybridProposalCreatorRoles": [0, 1],
+    "ddVotingRoles": [0, 1],
+    "ddCreatorRoles": [0, 1]
+  },
+  "educationHub": { "enabled": true }
+}
