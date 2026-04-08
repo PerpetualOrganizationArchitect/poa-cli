@@ -1,0 +1,81 @@
+import type { Argv, ArgumentsCamelCase } from 'yargs';
+import { ethers } from 'ethers';
+import { resolveNetworkConfig } from '../../config/networks';
+import { query } from '../../lib/subgraph';
+import { FETCH_INFRASTRUCTURE_ADDRESSES } from '../../queries/infrastructure';
+import * as output from '../../lib/output';
+
+export const validateHandler = {
+  builder: (yargs: Argv) => yargs,
+
+  handler: async (argv: ArgumentsCamelCase<any>) => {
+    const results: Array<{ check: string; status: string; detail?: string }> = [];
+
+    // Check chain config
+    let chainId: number | undefined;
+    try {
+      chainId = argv.chain as number || (process.env.POP_DEFAULT_CHAIN ? parseInt(process.env.POP_DEFAULT_CHAIN, 10) : undefined);
+      if (!chainId) {
+        results.push({ check: 'Chain', status: 'SKIP', detail: 'No chain configured' });
+      } else {
+        resolveNetworkConfig(chainId);
+        results.push({ check: 'Chain', status: 'OK', detail: `Chain ID ${chainId}` });
+      }
+    } catch (e: any) {
+      results.push({ check: 'Chain', status: 'FAIL', detail: e.message });
+    }
+
+    // Check RPC
+    if (chainId) {
+      try {
+        const config = resolveNetworkConfig(chainId);
+        const provider = new ethers.providers.JsonRpcProvider(config.resolvedRpc, chainId);
+        const blockNumber = await provider.getBlockNumber();
+        results.push({ check: 'RPC', status: 'OK', detail: `Block #${blockNumber}` });
+      } catch (e: any) {
+        results.push({ check: 'RPC', status: 'FAIL', detail: e.message });
+      }
+    }
+
+    // Check subgraph
+    if (chainId) {
+      try {
+        const infra = await query<any>(FETCH_INFRASTRUCTURE_ADDRESSES, {}, chainId);
+        const orgCount = infra.orgRegistryContracts?.[0]?.totalOrgs || '?';
+        results.push({ check: 'Subgraph', status: 'OK', detail: `${orgCount} orgs indexed` });
+      } catch (e: any) {
+        results.push({ check: 'Subgraph', status: 'FAIL', detail: e.message.substring(0, 100) });
+      }
+    }
+
+    // Check private key
+    const key = (argv.privateKey as string) || process.env.POP_PRIVATE_KEY;
+    if (key) {
+      try {
+        const wallet = new ethers.Wallet(key);
+        results.push({ check: 'Wallet', status: 'OK', detail: wallet.address });
+      } catch {
+        results.push({ check: 'Wallet', status: 'FAIL', detail: 'Invalid private key format' });
+      }
+    } else {
+      results.push({ check: 'Wallet', status: 'SKIP', detail: 'No private key configured' });
+    }
+
+    // Output
+    if (output.isJsonMode()) {
+      output.json(results);
+    } else {
+      console.log('');
+      for (const r of results) {
+        const icon = r.status === 'OK' ? '\x1b[32m✓\x1b[0m' : r.status === 'FAIL' ? '\x1b[31m✗\x1b[0m' : '\x1b[33m-\x1b[0m';
+        console.log(`  ${icon} ${r.check.padEnd(10)} ${r.detail || ''}`);
+      }
+      console.log('');
+
+      const failed = results.filter(r => r.status === 'FAIL');
+      if (failed.length > 0) {
+        process.exit(1);
+      }
+    }
+  },
+};
