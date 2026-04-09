@@ -30,7 +30,6 @@ export const activityHandler = {
       const result = await query<any>(FETCH_ORG_ACTIVITY, {
         orgId: modules.orgId,
         hybridVotingId: modules.hybridVotingAddress || '',
-        ddVotingId: modules.ddVotingAddress || '',
         eligibilityModuleId: modules.eligibilityModuleAddress || '',
         tokenAddress: modules.participationTokenAddress || '',
       }, argv.chain);
@@ -62,7 +61,7 @@ export const activityHandler = {
       // Proposal data from top-level queries
       const activeHybrid = result.activeHybridProposals || [];
       const endedHybrid = result.endedHybridProposals || [];
-      const activeDD = result.activeDDVProposals || [];
+      const activeDD = org.directDemocracyVoting?.ddvProposals || [];
       const activeVouches = result.activeVouches || [];
       const pendingRequests = result.pendingTokenRequests || [];
 
