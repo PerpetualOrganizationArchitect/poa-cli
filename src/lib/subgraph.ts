@@ -1,6 +1,7 @@
 /**
  * Subgraph Client
  * Lightweight GraphQL client for querying The Graph subgraphs.
+ * Passes POP_SUBGRAPH_API_KEY as bearer token header for gateway endpoints.
  */
 
 import { GraphQLClient } from 'graphql-request';
@@ -9,10 +10,16 @@ import { resolveNetworkConfig, getAllSubgraphUrls } from '../config/networks';
 let clientCache: Map<string, GraphQLClient> = new Map();
 
 function getClient(url: string): GraphQLClient {
-  let client = clientCache.get(url);
+  const cacheKey = url;
+  let client = clientCache.get(cacheKey);
   if (!client) {
-    client = new GraphQLClient(url);
-    clientCache.set(url, client);
+    const headers: Record<string, string> = {};
+    // Gateway endpoints require an API key via Authorization header
+    if (url.includes('gateway.thegraph.com') && process.env.POP_SUBGRAPH_API_KEY) {
+      headers['Authorization'] = `Bearer ${process.env.POP_SUBGRAPH_API_KEY}`;
+    }
+    client = new GraphQLClient(url, { headers });
+    clientCache.set(cacheKey, client);
   }
   return client;
 }
