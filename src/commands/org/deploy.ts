@@ -25,6 +25,7 @@ interface DeployArgs {
  */
 interface OrgDeployConfig {
   orgName: string;
+  deployerUsername?: string;
   description?: string;
   links?: Array<{ name: string; url: string }>;
   autoUpgrade?: boolean;
@@ -87,6 +88,7 @@ interface OrgDeployConfig {
     maxPriorityFeePerGas: string;
     defaultBudgetCapPerEpoch: string;
     defaultBudgetEpochLen: number;
+    funding?: string;
   };
 }
 
@@ -139,6 +141,7 @@ export const deployHandler = {
 
       // Generate orgId: keccak256(orgName.toLowerCase().replace(/\s+/g, '-'))
       const normalizedName = config.orgName.toLowerCase().replace(/\s+/g, '-');
+      const deployerUsername = config.deployerUsername || normalizedName;
       const orgId = ethers.utils.keccak256(ethers.utils.toUtf8Bytes(normalizedName));
 
       // Upload org metadata to IPFS
@@ -169,18 +172,18 @@ export const deployHandler = {
         verifyingContract: registryAddr,
       };
       const types = {
-        Register: [
+        RegisterAccount: [
           { name: 'user', type: 'address' },
           { name: 'username', type: 'string' },
-          { name: 'deadline', type: 'uint256' },
           { name: 'nonce', type: 'uint256' },
+          { name: 'deadline', type: 'uint256' },
         ],
       };
       const regMessage = {
         user: address,
-        username: normalizedName,
-        deadline: regDeadline,
+        username: deployerUsername,
         nonce: regNonce.toString(),
+        deadline: regDeadline,
       };
       const regSignature = await signer._signTypedData(domain, types, regMessage);
 
@@ -281,7 +284,7 @@ export const deployHandler = {
         metadataHash,                                            // bytes32
         registryAddr,                                            // address
         address,                                                 // address deployerAddress
-        normalizedName,                                          // string deployerUsername
+        deployerUsername,                                             // string deployerUsername
         regDeadline,                                             // uint256
         regNonce,                                                // uint256
         regSignature,                                            // bytes
@@ -301,11 +304,12 @@ export const deployHandler = {
 
       spin.text = 'Sending deploy transaction...';
       const contract = createWriteContract(orgDeployerAddr, 'OrgDeployerNew', signer);
+      const txValue = pm?.funding ? ethers.utils.parseEther(pm.funding) : undefined;
       const result = await executeTx(
         contract,
         'deployFullOrg',
         [deployParams],
-        { dryRun: argv.dryRun, gasLimit: 10000000 }
+        { dryRun: argv.dryRun, gasLimit: 15000000, value: txValue }
       );
 
       spin.stop();
