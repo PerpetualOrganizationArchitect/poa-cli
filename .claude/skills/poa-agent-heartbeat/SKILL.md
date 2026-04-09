@@ -13,9 +13,15 @@ description: >
 Each heartbeat is a self-contained cycle: **observe, evaluate, act, remember**.
 
 Read these files before proceeding:
-- `agent/brain/Identity/who-i-am.md` — your identity and constraints
+
+**From repo (heuristics + config — updated via git pull):**
 - `agent/brain/Identity/how-i-think.md` — your decision heuristics
 - `agent/brain/Config/agent-config.json` — execution mode and thresholds
+
+**From persistent storage (your identity + memory — survives restarts):**
+- `~/.pop-agent/brain/Identity/who-i-am.md` — your wallet, org, permissions
+- `~/.pop-agent/brain/Identity/goals.md` — what you're working toward
+- `~/.pop-agent/brain/Memory/org-state.md` — last known org state
 
 ---
 
@@ -27,10 +33,10 @@ Verify connectivity before doing anything.
 pop config validate --json
 ```
 
-If this fails, append a failure entry to `agent/brain/Memory/task-log.md` and stop.
+If this fails, append a failure entry to `~/.pop-agent/brain/Memory/task-log.md` and stop.
 Do NOT act on stale data. The next heartbeat will retry.
 
-Get the last heartbeat timestamp from `agent/brain/Memory/task-log.md`. If this is
+Get the last heartbeat timestamp from `~/.pop-agent/brain/Memory/task-log.md`. If this is
 the first run, default to 30 minutes ago.
 
 ---
@@ -91,12 +97,12 @@ For each unvoted active proposal:
 - Time remaining: [minutes until endTimestamp]
 ```
 
-Append this to `agent/brain/Memory/decisions.md`.
+Append this to `~/.pop-agent/brain/Memory/decisions.md`.
 
 ### Vouches, Token Requests, Task Review
 
 Apply the corresponding heuristic sections. These almost always result in
-ESCALATE — log the item to `agent/brain/Memory/escalations.md`.
+ESCALATE — log the item to `~/.pop-agent/brain/Memory/escalations.md`.
 
 ---
 
@@ -138,7 +144,7 @@ After each action, check the result JSON:
 
 ## Step 4: Detect Anomalies
 
-Compare current state against `agent/brain/Memory/org-state.md`:
+Compare current state against `~/.pop-agent/brain/Memory/org-state.md`:
 
 Flag and ESCALATE:
 - Single address creating many proposals rapidly
@@ -149,7 +155,7 @@ Flag and ESCALATE:
 - Treasury sweeps to unfamiliar addresses
 
 Check ended proposals — if the agent voted and the outcome diverged, write a
-correction record to `agent/brain/Memory/corrections.md`:
+correction record to `~/.pop-agent/brain/Memory/corrections.md`:
 
 ```markdown
 ## Correction: [ISO timestamp]
@@ -163,7 +169,7 @@ correction record to `agent/brain/Memory/corrections.md`:
 
 ## Step 5: Write to Brain
 
-### task-log.md — APPEND (never delete)
+### ~/.pop-agent/brain/Memory/task-log.md — APPEND (never delete)
 
 ```markdown
 ## Heartbeat: [unix timestamp]
@@ -180,7 +186,7 @@ correction record to `agent/brain/Memory/corrections.md`:
 - Mode: [dry-run/auto/full-auto]
 ```
 
-### org-state.md — OVERWRITE with current snapshot
+### ~/.pop-agent/brain/Memory/org-state.md — OVERWRITE with current snapshot
 
 ```markdown
 # Org State — [name] (as of [ISO timestamp])
@@ -204,9 +210,9 @@ correction record to `agent/brain/Memory/corrections.md`:
 [Count and details]
 ```
 
-### decisions.md — APPEND (from Step 2)
-### corrections.md — APPEND (from Step 4)
-### escalations.md — APPEND any new escalations
+### ~/.pop-agent/brain/Memory/decisions.md — APPEND (from Step 2)
+### ~/.pop-agent/brain/Memory/corrections.md — APPEND (from Step 4)
+### ~/.pop-agent/brain/Memory/escalations.md — APPEND any new escalations
 
 ---
 
