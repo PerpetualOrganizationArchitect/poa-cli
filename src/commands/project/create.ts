@@ -80,10 +80,10 @@ export const createHandler = {
         metaHash,
         cap,
         parseCommaList(argv.managers as string),
-        parseNumberList(argv.createHats as string),
-        parseNumberList(argv.claimHats as string),
-        parseNumberList(argv.reviewHats as string),
-        parseNumberList(argv.assignHats as string),
+        parseBigNumberList(argv.createHats as string),
+        parseBigNumberList(argv.claimHats as string),
+        parseBigNumberList(argv.reviewHats as string),
+        parseBigNumberList(argv.assignHats as string),
         parseCommaList(argv.bountyTokens as string),  // address[]
         parseBigNumberList(argv.bountyCaps as string), // uint256[] (wei)
       ];

@@ -34,7 +34,7 @@ export const NETWORKS: Record<string, NetworkConfig> = {
     rpcUrl: 'https://rpc.gnosischain.com',
     blockExplorer: 'https://gnosisscan.io',
     isTestnet: false,
-    subgraphUrl: 'https://gateway.thegraph.com/api/204b1629ba85581bdc48cc6701e821ff/subgraphs/id/576YA6oF16nA2uG5Q9KFfBSvJm4ZNKzWZkwh8eWXaxJs',
+    subgraphUrl: 'https://api.studio.thegraph.com/query/73367/poa-gnosis-v-1/version/latest',
     bountyTokens: {
       BREAD: '0xa555d5344f6FB6c65da19e403Cb4c1eC4a1a5Ee3',
       USDC: '0xDDAfbb505ad214D7b80b1f830fcCc89B60fB7A83',

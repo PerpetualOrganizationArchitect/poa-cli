@@ -16,6 +16,7 @@ interface CreateArgs {
   duration: number;
   options: string;
   'hat-ids'?: string;
+  calls?: string;
   chain?: number;
   rpc?: string;
   'private-key'?: string;
@@ -29,7 +30,8 @@ export const createHandler = {
     .option('description', { type: 'string', demandOption: true, describe: 'Proposal description' })
     .option('duration', { type: 'number', demandOption: true, describe: 'Duration in minutes' })
     .option('options', { type: 'string', demandOption: true, describe: 'Comma-separated option names' })
-    .option('hat-ids', { type: 'string', describe: 'Comma-separated hat IDs for restricted voting' }),
+    .option('hat-ids', { type: 'string', describe: 'Comma-separated hat IDs for restricted voting' })
+    .option('calls', { type: 'string', describe: 'JSON array of execution calls for option 0: [{"target":"0x...","value":"0","data":"0x..."}]' }),
 
   handler: async (argv: ArgumentsCamelCase<CreateArgs>) => {
     const spin = output.spinner('Creating proposal...');
@@ -64,10 +66,24 @@ export const createHandler = {
       const descriptionHash = ipfsCidToBytes32(cid);
 
       const titleBytes = stringToBytes(argv.name);
-      const batches: any[][] = []; // No execution batches by default
       const hatIds = argv.hatIds
         ? (argv.hatIds as string).split(',').map(s => parseInt(s.trim(), 10))
         : [];
+
+      // Build execution batches: calls go to option 0, other options get empty batches
+      const batches: any[][] = [];
+      if (argv.calls) {
+        const calls = JSON.parse(argv.calls as string);
+        const option0Batch = calls.map((c: any) => [
+          c.target,
+          ethers.BigNumber.from(c.value || '0'),
+          c.data,
+        ]);
+        batches.push(option0Batch);
+        for (let i = 1; i < numOptions; i++) {
+          batches.push([]);
+        }
+      }
 
       spin.text = 'Sending transaction...';
       const abiName = isHybrid ? 'HybridVotingNew' : 'DirectDemocracyVotingNew';
@@ -93,6 +109,7 @@ export const createHandler = {
           options: optionNames.join(', '),
           duration: `${argv.duration} minutes`,
           ipfsCid: cid,
+          executionCalls: argv.calls ? 'yes (on option 0)' : 'none',
         });
       } else {
         output.error('Proposal creation failed', { error: result.error, errorCode: result.errorCode });
