@@ -28,14 +28,18 @@ export const profileHandler = {
         return new ethers.Wallet(key).address;
       })();
 
-      // Fetch account info from home chain
-      const accountResult = await query<any>(
-        FETCH_USERNAME,
-        { id: address.toLowerCase() },
-        HOME_CHAIN_ID
-      );
-
-      const account = accountResult.account;
+      // Fetch account info from home chain (best-effort — Gateway may require domain auth)
+      let account: any = null;
+      try {
+        const accountResult = await query<any>(
+          FETCH_USERNAME,
+          { id: address.toLowerCase() },
+          HOME_CHAIN_ID
+        );
+        account = accountResult.account;
+      } catch {
+        // Home chain account fetch failed (e.g. Gateway domain auth) — continue with org data
+      }
 
       if (argv.org) {
         // Fetch org-specific user data

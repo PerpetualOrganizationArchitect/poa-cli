@@ -11,7 +11,6 @@ export const FETCH_ORG_ACTIVITY = `
   query FetchOrgActivity(
     $orgId: Bytes!
     $hybridVotingId: String
-    $ddVotingId: String
     $eligibilityModuleId: Bytes
     $tokenAddress: String
   ) {
@@ -57,6 +56,26 @@ export const FETCH_ORG_ACTIVITY = `
         firstSeenAt
         currentHatIds
       }
+      directDemocracyVoting {
+        ddvProposals(
+          where: { status: "Active" }
+          orderBy: startTimestamp
+          orderDirection: desc
+          first: 50
+        ) {
+          id
+          proposalId
+          title
+          metadata { description optionNames }
+          numOptions
+          startTimestamp
+          endTimestamp
+          status
+          isHatRestricted
+          restrictedHatIds
+          votes { voter optionIndexes optionWeights }
+        }
+      }
     }
 
     # Active hybrid proposals — top-level query (validated: proposals entity exists)
@@ -100,26 +119,6 @@ export const FETCH_ORG_ACTIVITY = `
       winningOption
       isValid
       wasExecuted
-      votes { voter optionIndexes optionWeights }
-    }
-
-    # Active DD proposals
-    activeDDVProposals: ddvProposals(
-      where: { directDemocracyVoting: $ddVotingId, status: "Active" }
-      orderBy: startTimestamp
-      orderDirection: desc
-      first: 50
-    ) {
-      id
-      proposalId
-      title
-      metadata { description optionNames }
-      numOptions
-      startTimestamp
-      endTimestamp
-      status
-      isHatRestricted
-      restrictedHatIds
       votes { voter optionIndexes optionWeights }
     }
 

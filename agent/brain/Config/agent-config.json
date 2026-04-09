@@ -1,7 +1,7 @@
 {
-  "votingExecutionMode": "dry-run",
+  "votingExecutionMode": "auto",
   "notificationsEnabled": false,
-  "heartbeatIntervalMinutes": 30,
+  "heartbeatIntervalMinutes": 15,
   "maxActionsPerHeartbeat": 5,
   "confidenceThresholds": {
     "autoExecute": "HIGH",
