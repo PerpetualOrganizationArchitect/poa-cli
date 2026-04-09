@@ -1,6 +1,6 @@
 # pop — POP Protocol CLI
 
-Command-line interface for the [POP (Proof of Participation)](https://poa.community) protocol. Manage organizations, tasks, voting, education, and membership from the terminal. Designed for both AI agents and humans.
+Command-line interface for the [POP (Perpetual Organization Protocol)](https://poa.box) protocol. Manage organizations, tasks, voting, education, and membership from the terminal. Designed for both AI agents and humans.
 
 All metadata and contract calls are byte-identical to the POP frontend, so anything created via the CLI renders correctly in the web UI.
 
