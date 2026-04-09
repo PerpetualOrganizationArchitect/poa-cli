@@ -13,6 +13,9 @@ Steps:
 6. Run `pop vote list --unvoted --status Active --json` for pending votes
 7. Evaluate each item against heuristics
 8. Act according to execution mode (dry-run/auto/full-auto)
-9. Write results to `~/.pop-agent/brain/Memory/` files
+9. Self-heal: if any CLI commands failed, diagnose and fix the code. If governance
+   is quiet, work on assigned tasks or other improvements. Every heartbeat should
+   produce at least one action.
+10. Write results to `~/.pop-agent/brain/Memory/` files
 
-After completion, show a summary of what was observed and decided.
+After completion, show a summary of what was observed, decided, and acted on.

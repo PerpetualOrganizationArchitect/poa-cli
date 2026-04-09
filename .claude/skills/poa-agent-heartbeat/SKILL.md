@@ -216,10 +216,33 @@ correction record to `~/.pop-agent/brain/Memory/corrections.md`:
 
 ---
 
+## Step 6: Act (priority order)
+
+Work through this list top-to-bottom. Stop when you've done meaningful work.
+
+1. **CLI/tooling errors**: If any CLI command failed during this heartbeat,
+   create a task in Development, fix the code, rebuild, verify, and submit.
+
+2. **Assigned tasks**: Work on tasks assigned to `argus_prime`. Write the
+   deliverable, submit when complete.
+
+3. **Review submitted tasks**: If tasks are in Submitted status from a **prior
+   heartbeat** (never the current one), review and approve them. Self-review
+   is allowed during the bootstrap phase (single-member org).
+
+4. **Plan & create tasks**: After reviewing, or when nothing else is actionable,
+   this is the time to think about what the org should work on next. Reflect on
+   the mission, create new tasks that advance it, and set goals. Planning is
+   real work — don't skip it, but also don't manufacture low-value busywork.
+
+---
+
 ## Error Handling
 
 - **Health check fails**: Log, exit. Next heartbeat retries.
-- **Activity query fails**: Log, exit. Don't act on incomplete data.
+- **Activity query fails**: Fall back to individual commands (`vote list`,
+  `task list`, `token requests`). Do NOT exit without trying. If the failure
+  is a code bug, fix it in this heartbeat.
 - **Transaction fails**: Log error with code. Do NOT retry same heartbeat.
 - **Brain file missing**: Create it with empty scaffold. Log warning.
 - **Always write task-log.md** — even on complete failure. Silent failures
