@@ -1,10 +1,12 @@
 import type { Argv } from 'yargs';
 import { agentStatusHandler } from './status';
 import { triageHandler } from './triage';
+import { registerHandler } from './register';
 
 export function registerAgentCommands(yargs: Argv) {
   return yargs
     .command('status', 'Show agent operational status and action items', agentStatusHandler.builder, agentStatusHandler.handler)
     .command('triage', 'Prioritized action plan for current heartbeat', triageHandler.builder, triageHandler.handler)
+    .command('register', 'Register agent identity on ERC-8004', registerHandler.builder, registerHandler.handler)
     .demandCommand(1, 'Please specify an agent action');
 }
