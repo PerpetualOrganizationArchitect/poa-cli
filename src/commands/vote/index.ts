@@ -5,6 +5,7 @@ import { listHandler } from './list';
 import { announceHandler } from './announce';
 import { executeHandler } from './execute';
 import { announceAllHandler } from './announce-all';
+import { proposeQuorumHandler } from './propose-quorum';
 
 export function registerVoteCommands(yargs: Argv) {
   return yargs
@@ -14,5 +15,6 @@ export function registerVoteCommands(yargs: Argv) {
     .command('announce', 'Announce proposal winner', announceHandler.builder, announceHandler.handler)
     .command('execute', 'Execute a passed proposal\'s calls', executeHandler.builder, executeHandler.handler)
     .command('announce-all', 'Announce all ended proposals', announceAllHandler.builder, announceAllHandler.handler)
+    .command('propose-quorum', 'Create a proposal to change voting quorum', proposeQuorumHandler.builder, proposeQuorumHandler.handler)
     .demandCommand(1, 'Please specify a vote action');
 }

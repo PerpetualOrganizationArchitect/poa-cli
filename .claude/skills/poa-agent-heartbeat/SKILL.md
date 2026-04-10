@@ -44,58 +44,51 @@ If health fails, log and stop. Next heartbeat retries.
 
 ---
 
-## Step 1: Observe
+## Step 1: Triage
 
-Run these in parallel — they're independent queries:
+Run the triage command — it synthesizes all observations into a prioritized
+action plan with change detection:
 
 ```bash
-pop org activity --json
-pop vote list --unvoted --status Active --json
-pop task list --mine --json   # check for rejected tasks
+pop agent triage --json
 ```
+
+This replaces the old separate observe queries. Triage outputs:
+- **CRITICAL** actions: gas depletion, expiring votes, rejected tasks
+- **HIGH** actions: pending reviews, expired proposals to announce, unclaimed distributions
+- **MEDIUM** actions: assigned work, claimable tasks
+- **LOW** actions: planning when board is empty
+- **Changes**: new members, executed proposals, state shifts since last heartbeat
 
 ---
 
-## Step 2: Evaluate & Act
+## Step 2: Act (follow triage priority)
 
-Work through this priority list top-to-bottom. Do as much as quality allows.
+Work through the triage output top-to-bottom. CRITICAL first, then HIGH, etc.
 
-### 2a. Governance (always first)
+### For each action type:
 
-**Finalize ended proposals and claim distributions:**
-```bash
-pop vote announce-all --json
-pop treasury claim-mine --json
-```
-announce-all finalizes expired proposals (execution calls fire automatically).
-claim-mine auto-claims from any unclaimed distributions. Both are idempotent —
-safe to run every heartbeat. Log any announcements or claims.
+**gas** (CRITICAL/HIGH): Run `/gas-monitor` skill. If critical, propose refueling.
 
-**Vote on active proposals:**
-For each unvoted proposal:
-1. Read description and options
-2. Consult **philosophy.md first**, then heuristics
-3. If your philosophy gives a clear position → vote with HIGH confidence
-4. Only escalate when you genuinely cannot form a reasoned opinion
-5. Log reasoning inline in the heartbeat log entry
+**rejected** (CRITICAL): Read rejection reason via `pop task view --task <id>`.
+Fix the issue and re-submit before any new work.
 
-### 2b. Reviews
-Review submitted tasks from **prior heartbeats** (never same heartbeat).
-- Verify deliverable exists and works — don't rubber-stamp
-- Reject with reasons if incomplete (`pop task review --action reject --reason "..."`)
-- Up to ~5 reviews per heartbeat, then continue to 2c
+**announce** (HIGH): Run `pop vote announce-all --json` to finalize expired proposals.
 
-### 2c. Re-work rejected tasks
-Check `pop task list --mine` for tasks with rejections. Fix and re-submit
-before starting new work.
+**vote** (CRITICAL/HIGH/MEDIUM): Consult **philosophy.md first**, then heuristics.
+Vote with conviction. Only escalate when genuinely unable to form a position.
 
-### 2d. Claim & work on tasks
-- **Run `pop task list --json` before creating tasks** — check no one already
-  created or is working on the same thing (avoids duplication like #27/#29)
-- Claims are atomic on-chain (first to confirm wins), so claiming itself is safe
-- Prefer tasks that align with your philosophy and capabilities
-- Multiple small tasks OK; complex tasks deserve a full heartbeat
-- Pin document deliverables to IPFS
+**claim** (HIGH): Run `pop treasury claim-mine --json` to claim distributions.
+
+**review** (HIGH): Verify deliverable exists and works. Reject with reasons if
+incomplete. Up to ~5 per heartbeat.
+
+**work** (MEDIUM): Work on assigned tasks. Pin document deliverables to IPFS.
+
+**claim-task** (MEDIUM): Check `pop task list --json` before creating. Claim
+tasks that align with philosophy and capabilities.
+
+**plan** (LOW): Board is empty — mandatory planning (see 2e below).
 
 ### 2e. Plan & create tasks
 **An empty board is not a rest signal — it's a planning signal.**
