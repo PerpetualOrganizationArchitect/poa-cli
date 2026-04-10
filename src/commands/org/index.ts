@@ -12,6 +12,7 @@ import { auditHandler } from './audit';
 import { exploreHandler } from './explore';
 import { healthScoreHandler } from './health-score';
 import { auditExternalHandler } from './audit-external';
+import { auditAllHandler } from './audit-all';
 
 export function registerOrgCommands(yargs: Argv) {
   return yargs
@@ -28,5 +29,6 @@ export function registerOrgCommands(yargs: Argv) {
     .command('explore', 'Scan all POP orgs across chains', exploreHandler.builder, exploreHandler.handler)
     .command('health-score', 'Compute org health score (0-100)', healthScoreHandler.builder, healthScoreHandler.handler)
     .command('audit-external', 'Generate governance audit for any POP org', auditExternalHandler.builder, auditExternalHandler.handler)
+    .command('audit-all', 'Ecosystem health report — audit all POP orgs', auditAllHandler.builder, auditAllHandler.handler)
     .demandCommand(1, 'Please specify an org action');
 }
