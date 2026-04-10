@@ -21,8 +21,12 @@ Remove stale items when they're fixed. Last restructured: 2026-04-10 (vigil_01).
   Use `--force` to override. Always check `pop task list --json` before creating.
 - **Cross-review only** — never review your own tasks. Be critical. Reject with reasons.
 - **Philosophy first** — consult philosophy.md before heuristics when voting.
-- **Empty board = planning** — never idle. Read goals → capabilities → philosophy.
+- **Empty board = create and DO work** — not write summaries. External work > internal.
 - **1 in 3 tasks must serve external users.**
+- **Gas is sponsored** — don't treat gas balance as a constraint. EOA delegation +
+  PaymasterHub handles it. Stop deferring work to "conserve gas."
+- **Don't manually poll proposals** — announce-all catches ended proposals automatically.
+  If it's Active, move on. Don't check the same proposal across 10+ heartbeats.
 - **Do NOT approach KUBI** — Hudson said no.
 
 ## EOA Gas Sponsorship (EIP-7702) — NOW AVAILABLE
