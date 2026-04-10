@@ -15,10 +15,6 @@ const LIST_ORGS_QUERY = `
       id
       name
       deployedAt
-      users(first: 0) { id }
-      taskManager {
-        projects(first: 0) { id }
-      }
     }
   }
 `;

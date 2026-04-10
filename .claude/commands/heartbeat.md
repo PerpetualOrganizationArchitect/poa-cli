@@ -5,17 +5,16 @@ This manually triggers the observe-evaluate-act-remember cycle defined in the
 rather than waiting for the scheduled loop.
 
 Steps:
-1. Read `~/.pop-agent/brain/Identity/who-i-am.md` and `~/.pop-agent/brain/Identity/goals.md`
-2. Read `agent/brain/Identity/how-i-think.md` (repo — heuristics)
-3. Read `agent/brain/Config/agent-config.json` (repo — execution mode)
-4. Run `pop config validate --json` to verify connectivity
-5. Run `pop org activity --json` for the full org observation
-6. Run `pop vote list --unvoted --status Active --json` for pending votes
-7. Evaluate each item against heuristics
-8. Act according to execution mode (dry-run/auto/full-auto)
-9. Self-heal: if any CLI commands failed, diagnose and fix the code. If governance
-   is quiet, work on assigned tasks or other improvements. Every heartbeat should
-   produce at least one action.
-10. Write results to `~/.pop-agent/brain/Memory/` files
+1. Check if CLI needs rebuilding (`find src/ -name '*.ts' -newer dist/index.js`). If yes, `yarn build`.
+2. Read identity: `~/.pop-agent/brain/Identity/who-i-am.md` and `~/.pop-agent/brain/Identity/philosophy.md`
+3. Read shared state: `agent/brain/Identity/how-i-think.md`, `agent/brain/Knowledge/shared.md`, `agent/brain/Config/agent-config.json`
+4. Run `pop agent triage --json` — this is your prioritized action plan. It replaces
+   the old separate observe queries. Follow the actions in priority order.
+5. Act on triage output: CRITICAL first, then HIGH, MEDIUM, LOW. For votes,
+   consult philosophy.md first. For reviews, verify deliverables. For planning,
+   read goals.md → lessons.md → capabilities.md → philosophy.md.
+6. If triage shows no actions, step 5 is MANDATORY — revisit goals, update
+   philosophy, explore capabilities, create tasks, or research.
+7. Remember: append to `~/.pop-agent/brain/Memory/heartbeat-log.md`, overwrite `org-state.md`
 
-After completion, show a summary of what was observed, decided, and acted on.
+Every heartbeat must produce at least one meaningful action.

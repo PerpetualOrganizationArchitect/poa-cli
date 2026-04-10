@@ -1,6 +1,7 @@
 import type { Argv, ArgumentsCamelCase } from 'yargs';
 import { ethers } from 'ethers';
 import { query } from '../../lib/subgraph';
+import { resolveOrgModules } from '../../lib/resolve';
 import * as output from '../../lib/output';
 
 interface ListArgs {
@@ -46,7 +47,8 @@ export const listHandler = {
     spin.start();
 
     try {
-      const result = await query<any>(FETCH_EDUCATION_DATA, { orgId: argv.org }, argv.chain);
+      const modules_ = await resolveOrgModules(argv.org, argv.chain);
+      const result = await query<any>(FETCH_EDUCATION_DATA, { orgId: modules_.orgId }, argv.chain);
       const modules = result.organization?.educationHub?.modules || [];
 
       spin.stop();

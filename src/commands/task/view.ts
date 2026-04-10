@@ -78,6 +78,12 @@ export const viewHandler = {
           estHours: metadata?.estimatedHours || metadata?.estHours,
           location: metadata?.location,
           submission: metadata?.submission,
+          rejectionCount: found.rejectionCount || '0',
+          rejections: (found.rejections || []).map((r: any) => ({
+            rejector: r.rejectorUsername,
+            rejectedAt: r.rejectedAt,
+            reason: r.metadata?.rejection,
+          })),
           requiresApplication: found.requiresApplication,
           applications: found.applications,
           createdAt: found.createdAt,
@@ -99,6 +105,13 @@ export const viewHandler = {
         if (metadata?.estimatedHours || metadata?.estHours) console.log(`  Est Hours:   ${metadata.estimatedHours || metadata.estHours}`);
         if (metadata?.location) console.log(`  Location:    ${metadata.location}`);
         if (found.requiresApplication) console.log(`  Requires Application: yes`);
+        if (found.rejectionCount && parseInt(found.rejectionCount) > 0) {
+          console.log(`  Rejections:  ${found.rejectionCount}`);
+          for (const r of found.rejections || []) {
+            const reason = r.metadata?.rejection || 'no reason given';
+            console.log(`    - by ${r.rejectorUsername} — ${reason}`);
+          }
+        }
         if (found.applications?.length) {
           console.log(`  Applications: ${found.applications.length}`);
           for (const app of found.applications) {
