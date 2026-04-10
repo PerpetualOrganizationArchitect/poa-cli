@@ -262,13 +262,14 @@ export async function sendSponsored(
   });
 
   // Build UserOp with dummy signature for gas estimation
+  // Gas limits must stay within PaymasterHub fee caps (maxCallGas, maxVerificationGas, maxPreVerificationGas)
   const userOp: any = {
     sender: account.address,
     nonce,
     callData,
-    callGasLimit: 500_000n,
-    verificationGasLimit: 1_500_000n,
-    preVerificationGas: 100_000n,
+    callGasLimit: 300_000n,
+    verificationGasLimit: 300_000n,
+    preVerificationGas: 80_000n,
     maxFeePerGas: gasPrices.fast.maxFeePerGas,
     maxPriorityFeePerGas: gasPrices.fast.maxPriorityFeePerGas,
     paymaster: PAYMASTER_HUB,

@@ -1,0 +1,203 @@
+import type { Argv, ArgumentsCamelCase } from 'yargs';
+import { ethers } from 'ethers';
+import { createSigner } from '../../lib/signer';
+import { createWriteContract } from '../../lib/contracts';
+import { executeTx } from '../../lib/tx';
+import { pinJson } from '../../lib/ipfs';
+import { stringToBytes, ipfsCidToBytes32 } from '../../lib/encoding';
+import * as output from '../../lib/output';
+import { resolveVotingContracts } from './helpers';
+
+/**
+ * ConfigKey mapping for HybridVoting:
+ *   0: QUORUM (uint8 — percentage of token-weighted votes needed)
+ *   1: TARGET_ALLOWED (address, bool — whitelist execution targets)
+ *   2: EXECUTOR (address — change the executor contract)
+ *
+ * ConfigKey mapping for DirectDemocracyVoting:
+ *   0: QUORUM (uint8 — absolute vote count needed)
+ *   1: EXECUTOR (address)
+ *   2: TARGET_ALLOWED (address, bool)
+ *   3: HAT_ALLOWED (uint256, bool — restrict voting to specific hats)
+ */
+
+interface ConfigParam {
+  name: string;
+  hybridKey: number;
+  ddKey: number | null; // null = not applicable to DD
+  valueType: string;
+  description: string;
+  encode: (value: string) => string;
+  validate: (value: string) => void;
+}
+
+const CONFIG_PARAMS: Record<string, ConfigParam> = {
+  quorum: {
+    name: 'quorum',
+    hybridKey: 0,
+    ddKey: 0,
+    valueType: 'uint8',
+    description: 'Voting quorum (Hybrid: % of token weight, DD: absolute count)',
+    encode: (v) => ethers.utils.defaultAbiCoder.encode(['uint8'], [parseInt(v, 10)]),
+    validate: (v) => {
+      const n = parseInt(v, 10);
+      if (isNaN(n) || n < 1 || n > 100) throw new Error('Quorum must be 1-100');
+    },
+  },
+  'target-allowed': {
+    name: 'target-allowed',
+    hybridKey: 1,
+    ddKey: 2,
+    valueType: 'address,bool',
+    description: 'Allow/disallow an execution target address (format: 0xaddr,true/false)',
+    encode: (v) => {
+      const [addr, allowed] = v.split(',');
+      return ethers.utils.defaultAbiCoder.encode(['address', 'bool'], [addr.trim(), allowed.trim() === 'true']);
+    },
+    validate: (v) => {
+      const parts = v.split(',');
+      if (parts.length !== 2) throw new Error('Format: 0xaddress,true/false');
+      if (!ethers.utils.isAddress(parts[0].trim())) throw new Error('Invalid address');
+      if (!['true', 'false'].includes(parts[1].trim())) throw new Error('Second value must be true or false');
+    },
+  },
+  executor: {
+    name: 'executor',
+    hybridKey: 2,
+    ddKey: 1,
+    valueType: 'address',
+    description: 'Change the executor contract address',
+    encode: (v) => ethers.utils.defaultAbiCoder.encode(['address'], [v.trim()]),
+    validate: (v) => {
+      if (!ethers.utils.isAddress(v.trim())) throw new Error('Invalid address');
+      if (v.trim() === ethers.constants.AddressZero) throw new Error('Cannot set executor to zero address');
+    },
+  },
+  'hat-allowed': {
+    name: 'hat-allowed',
+    hybridKey: -1, // not available on Hybrid
+    ddKey: 3,
+    valueType: 'uint256,bool',
+    description: 'Allow/disallow a hat ID for DD voting (format: hatId,true/false)',
+    encode: (v) => {
+      const [hatId, allowed] = v.split(',');
+      return ethers.utils.defaultAbiCoder.encode(['uint256', 'bool'], [hatId.trim(), allowed.trim() === 'true']);
+    },
+    validate: (v) => {
+      const parts = v.split(',');
+      if (parts.length !== 2) throw new Error('Format: hatId,true/false');
+      if (!['true', 'false'].includes(parts[1].trim())) throw new Error('Second value must be true or false');
+    },
+  },
+};
+
+interface ProposeConfigArgs {
+  org: string;
+  key: string;
+  value: string;
+  duration: number;
+  chain?: number;
+  rpc?: string;
+  'private-key'?: string;
+  'dry-run'?: boolean;
+}
+
+export const proposeConfigHandler = {
+  builder: (yargs: Argv) => yargs
+    .option('key', {
+      type: 'string',
+      demandOption: true,
+      choices: Object.keys(CONFIG_PARAMS),
+      describe: 'Configuration parameter name',
+    })
+    .option('value', { type: 'string', demandOption: true, describe: 'New value' })
+    .option('duration', { type: 'number', default: 60, describe: 'Vote duration in minutes' }),
+
+  handler: async (argv: ArgumentsCamelCase<ProposeConfigArgs>) => {
+    const spin = output.spinner('Creating config change proposal...');
+    spin.start();
+
+    try {
+      const paramName = argv.key as string;
+      const param = CONFIG_PARAMS[paramName];
+      if (!param) throw new Error(`Unknown config key: ${paramName}. Available: ${Object.keys(CONFIG_PARAMS).join(', ')}`);
+
+      param.validate(argv.value as string);
+
+      const contracts = await resolveVotingContracts(argv.org, argv.chain);
+      const { signer } = createSigner({ privateKey: argv.privateKey as string, chainId: argv.chain, rpcUrl: argv.rpc as string });
+
+      if (!contracts.hybridVotingAddress) throw new Error('HybridVoting not deployed');
+
+      const iface = new ethers.utils.Interface(['function setConfig(uint8 key, bytes value)']);
+      const encodedValue = param.encode(argv.value as string);
+
+      const option0Batch: any[] = [];
+
+      // Add Hybrid call if applicable
+      if (param.hybridKey >= 0) {
+        const hybridCall = iface.encodeFunctionData('setConfig', [param.hybridKey, encodedValue]);
+        option0Batch.push([contracts.hybridVotingAddress, ethers.BigNumber.from(0), hybridCall]);
+      }
+
+      // Add DD call if applicable and contract exists
+      if (param.ddKey !== null && contracts.ddVotingAddress) {
+        const ddCall = iface.encodeFunctionData('setConfig', [param.ddKey, encodedValue]);
+        option0Batch.push([contracts.ddVotingAddress, ethers.BigNumber.from(0), ddCall]);
+      }
+
+      if (option0Batch.length === 0) {
+        throw new Error(`Config key "${paramName}" has no applicable voting contracts`);
+      }
+
+      const batches = [option0Batch, []]; // option 0 = change, option 1 = keep current
+
+      // Pin metadata
+      const contractList = option0Batch.length > 1 ? 'Hybrid + DD' : (param.hybridKey >= 0 ? 'Hybrid' : 'DD');
+      const metadata = {
+        description: `Change ${paramName} to ${argv.value}. Updates ${contractList} voting contract(s) via setConfig execution calls.`,
+        optionNames: [`Set ${paramName} to ${argv.value}`, 'Keep current value'],
+        createdAt: Date.now(),
+      };
+
+      spin.text = 'Pinning metadata...';
+      const cid = await pinJson(JSON.stringify(metadata));
+      const descriptionHash = ipfsCidToBytes32(cid);
+      const titleBytes = stringToBytes(`Set ${paramName} to ${argv.value}`);
+
+      spin.text = 'Sending transaction...';
+      const contract = createWriteContract(contracts.hybridVotingAddress, 'HybridVotingNew', signer);
+      const result = await executeTx(
+        contract,
+        'createProposal',
+        [titleBytes, descriptionHash, argv.duration, 2, batches, []],
+        { dryRun: argv.dryRun }
+      );
+
+      spin.stop();
+
+      if (result.success) {
+        const proposalEvent = result.logs?.find(l => l.name === 'NewProposal' || l.name === 'NewHatProposal');
+        const proposalId = proposalEvent?.args?.id?.toString();
+        output.success('Config change proposal created', {
+          proposalId,
+          txHash: result.txHash,
+          explorerUrl: result.explorerUrl,
+          key: paramName,
+          value: argv.value,
+          contracts: contractList,
+          duration: `${argv.duration} minutes`,
+          ipfsCid: cid,
+          sponsored: result.sponsored || false,
+        });
+      } else {
+        output.error('Proposal creation failed', { error: result.error, errorCode: result.errorCode });
+        process.exit(2);
+      }
+    } catch (err: any) {
+      spin.stop();
+      output.error(err.message);
+      process.exit(1);
+    }
+  },
+};
