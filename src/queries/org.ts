@@ -46,6 +46,12 @@ export const FETCH_ORG_BY_ID = `
       executorContract {
         id
       }
+      eligibilityModule {
+        id
+      }
+      paymentManager {
+        id
+      }
       users {
         id
         address

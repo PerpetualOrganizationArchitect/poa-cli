@@ -37,14 +37,15 @@ export const statusHandler = {
 
       spin.stop();
 
-      const quorum = vouchConfig?.quorum?.toString() || '?';
+      const count = ethers.BigNumber.from(vouchCount);
+      const quorum = vouchConfig?.quorum ? ethers.BigNumber.from(vouchConfig.quorum) : ethers.BigNumber.from(0);
       const data = {
         hat: argv.hat,
         wearer,
         vouchingEnabled: isEnabled,
-        currentVouches: vouchCount.toString(),
-        requiredVouches: quorum,
-        canClaim: isEnabled && vouchCount.gte(vouchConfig?.quorum || 0),
+        currentVouches: count.toString(),
+        requiredVouches: quorum.toString(),
+        canClaim: isEnabled && count.gte(quorum),
       };
 
       if (output.isJsonMode()) {

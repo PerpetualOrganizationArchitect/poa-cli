@@ -29,8 +29,8 @@ export const createModuleHandler = {
     .option('description', { type: 'string', describe: 'Module description' })
     .option('link', { type: 'string', describe: 'External learning resource URL' })
     .option('payout', { type: 'number', demandOption: true, describe: 'PT reward for completion' })
-    .option('quiz', { type: 'string', describe: 'JSON array of quiz questions' })
-    .option('answers', { type: 'string', describe: 'JSON array of answer arrays (one per question)' })
+    .option('quiz', { type: 'string', describe: 'JSON array of question strings: \'["Q1?", "Q2?"]\'' })
+    .option('answers', { type: 'string', describe: 'JSON array of option arrays: \'[["A","B"],["C","D"]]\'' })
     .option('correct-answer', { type: 'number', demandOption: true, describe: 'Index of correct answer (0-based)' }),
 
   handler: async (argv: ArgumentsCamelCase<CreateModuleArgs>) => {

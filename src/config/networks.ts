@@ -22,7 +22,7 @@ export const NETWORKS: Record<string, NetworkConfig> = {
     rpcUrl: 'https://arb1.arbitrum.io/rpc',
     blockExplorer: 'https://arbiscan.io',
     isTestnet: false,
-    subgraphUrl: 'https://gateway.thegraph.com/api/204b1629ba85581bdc48cc6701e821ff/subgraphs/id/2egvcs94ZStD38inRtK9bp3Maw3UZw4BDinH8jLyAF4G',
+    subgraphUrl: 'https://api.studio.thegraph.com/query/73367/poa-arb-v-1/version/latest',
     bountyTokens: {
       USDC: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
     },

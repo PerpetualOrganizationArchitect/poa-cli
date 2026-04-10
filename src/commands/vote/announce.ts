@@ -47,7 +47,16 @@ export const announceHandler = {
       spin.stop();
 
       if (result.success) {
-        output.success(`Winner announced for proposal #${argv.proposal}`, { txHash: result.txHash, explorerUrl: result.explorerUrl });
+        // Parse Winner event for details
+        const winnerEvent = result.logs?.find(l => l.name === 'Winner');
+        const executedEvent = result.logs?.find(l => l.name === 'ProposalExecuted');
+        output.success(`Winner announced for proposal #${argv.proposal}`, {
+          txHash: result.txHash,
+          explorerUrl: result.explorerUrl,
+          winningOption: winnerEvent?.args?.winningIdx?.toString(),
+          valid: winnerEvent?.args?.valid,
+          executed: !!executedEvent || winnerEvent?.args?.executed,
+        });
       } else {
         output.error('Announcement failed', { error: result.error, errorCode: result.errorCode });
         process.exit(2);

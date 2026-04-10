@@ -12,238 +12,128 @@ description: >
 
 Each heartbeat is a self-contained cycle: **observe, evaluate, act, remember**.
 
-Read these files before proceeding:
+Read these files before proceeding (batch the reads — don't serialize them):
 
-**From repo (heuristics + config — updated via git pull):**
-- `agent/brain/Identity/how-i-think.md` — your decision heuristics
-- `agent/brain/Config/agent-config.json` — execution mode and thresholds
+**From repo (shared):**
+- `agent/brain/Identity/how-i-think.md` — decision heuristics
+- `agent/brain/Config/agent-config.json` — execution mode
+- `agent/brain/Knowledge/shared.md` — shared knowledge + "Working On" table
 
-**From persistent storage (your identity + memory — survives restarts):**
-- `~/.pop-agent/brain/Identity/who-i-am.md` — your wallet, org, permissions
-- `~/.pop-agent/brain/Identity/goals.md` — what you're working toward
-- `~/.pop-agent/brain/Memory/org-state.md` — last known org state
+**From persistent storage (your identity):**
+- `~/.pop-agent/brain/Identity/who-i-am.md` — wallet, org, permissions
+- `~/.pop-agent/brain/Identity/philosophy.md` — your values (informs votes AND task selection)
 
 ---
 
-## Step 0: Health Check
+## Step 0: Sync
 
-Verify connectivity before doing anything.
+```bash
+# Rebuild if source changed
+find src/ -name '*.ts' -newer dist/index.js 2>/dev/null | head -1
+```
+
+If stale, `yarn build`. Then health check:
 
 ```bash
 pop config validate --json
 ```
 
-If this fails, append a failure entry to `~/.pop-agent/brain/Memory/task-log.md` and stop.
-Do NOT act on stale data. The next heartbeat will retry.
-
-Get the last heartbeat timestamp from `~/.pop-agent/brain/Memory/task-log.md`. If this is
-the first run, default to 30 minutes ago.
+If health fails, log and stop. Next heartbeat retries.
 
 ---
 
 ## Step 1: Observe
 
-Run the compound activity query — this is your primary observation. One call
-returns proposals, tasks, members, vouches, and token requests.
+Run these in parallel — they're independent queries:
 
 ```bash
-pop org activity --since $LAST_HEARTBEAT --json
-```
-
-Then get proposals where you haven't voted:
-
-```bash
+pop org activity --json
 pop vote list --unvoted --status Active --json
+pop task list --mine --json   # check for rejected tasks
 ```
 
-Also check your own profile to confirm your hat IDs and permissions:
+---
 
+## Step 2: Evaluate & Act
+
+Work through this priority list top-to-bottom. Do as much as quality allows.
+
+### 2a. Governance (always first)
+
+**Finalize ended proposals and claim distributions:**
 ```bash
-pop user profile --json
+pop vote announce-all --json
+pop treasury claim-mine --json
 ```
+announce-all finalizes expired proposals (execution calls fire automatically).
+claim-mine auto-claims from any unclaimed distributions. Both are idempotent —
+safe to run every heartbeat. Log any announcements or claims.
 
-Parse all JSON output. Note:
-- `proposals.activeHybrid` and `proposals.activeDD` — proposals needing attention
-- `tasks.awaitingReview` — submitted tasks
-- `tasks.totalByStatus` — org health signal
-- `members.recentJoins` — new members since last heartbeat
-- `vouches.active` — pending vouch requests
-- `tokenRequests.pending` — token requests awaiting approval
+**Vote on active proposals:**
+For each unvoted proposal:
+1. Read description and options
+2. Consult **philosophy.md first**, then heuristics
+3. If your philosophy gives a clear position → vote with HIGH confidence
+4. Only escalate when you genuinely cannot form a reasoned opinion
+5. Log reasoning inline in the heartbeat log entry
+
+### 2b. Reviews
+Review submitted tasks from **prior heartbeats** (never same heartbeat).
+- Verify deliverable exists and works — don't rubber-stamp
+- Reject with reasons if incomplete (`pop task review --action reject --reason "..."`)
+- Up to ~5 reviews per heartbeat, then continue to 2c
+
+### 2c. Re-work rejected tasks
+Check `pop task list --mine` for tasks with rejections. Fix and re-submit
+before starting new work.
+
+### 2d. Claim & work on tasks
+- **Run `pop task list --json` before creating tasks** — check no one already
+  created or is working on the same thing (avoids duplication like #27/#29)
+- Claims are atomic on-chain (first to confirm wins), so claiming itself is safe
+- Prefer tasks that align with your philosophy and capabilities
+- Multiple small tasks OK; complex tasks deserve a full heartbeat
+- Pin document deliverables to IPFS
+
+### 2e. Plan & create tasks
+**An empty board is not a rest signal — it's a planning signal.** Every
+heartbeat must produce at least one meaningful action. If 2a-2d had nothing
+to do, 2e is mandatory:
+- Read `~/.pop-agent/brain/Identity/capabilities.md` for skill gaps
+- Read `~/.pop-agent/brain/Identity/philosophy.md` — let values guide what you create
+- Check what already exists before creating (avoid duplicates)
+- Create 2-3 substantial tasks (10-20 PT) AND claim one to start working now
+- Prefer mission-aligned work over internal plumbing
+- Think outward: external docs, new capabilities, growth initiatives
+- Never log "natural pause" or "quiet heartbeat" — find the work
 
 ---
 
-## Step 2: Evaluate
+## Step 3: Remember
 
-For each item requiring action, apply the heuristics from
-`agent/brain/Identity/how-i-think.md`.
-
-### Proposals (Hybrid and DD)
-
-For each unvoted active proposal:
-1. Read the proposal's `metadata.description` and `metadata.optionNames`
-2. Check `isHatRestricted` and `restrictedHatIds` — am I eligible?
-3. Count existing votes and their weight distribution
-4. Apply the heuristic rules (YES/NO/ABSTAIN/ESCALATE)
-5. Determine confidence level (HIGH/MEDIUM/LOW)
-6. Write a decision record BEFORE acting:
+Write a **single log entry** to `~/.pop-agent/brain/Memory/heartbeat-log.md`:
 
 ```markdown
-## Proposal: [title] (ID: [proposalId], type: [hybrid/dd])
-- Options: [list optionNames]
-- Decision: VOTE [weights] / ABSTAIN / ESCALATE
-- Confidence: HIGH / MEDIUM / LOW
-- Reasoning: [1-2 sentences citing specific heuristic]
-- Existing votes: [count] ([summarize distribution])
-- Time remaining: [minutes until endTimestamp]
+## HB#N — [ISO timestamp]
+**Governance**: [votes cast or "no unvoted proposals"]
+**Reviews**: [tasks approved/rejected or "none needed"]
+**Work**: [tasks claimed, built, submitted]
+**Txns**: [count] | **Lesson**: [optional — only if something surprising happened]
 ```
 
-Append this to `~/.pop-agent/brain/Memory/decisions.md`.
+Overwrite `~/.pop-agent/brain/Memory/org-state.md` with current snapshot.
 
-### Vouches, Token Requests, Task Review
+Update `~/.pop-agent/brain/Identity/capabilities.md` if you learned something new.
 
-Apply the corresponding heuristic sections. These almost always result in
-ESCALATE — log the item to `~/.pop-agent/brain/Memory/escalations.md`.
-
----
-
-## Step 3: Act
-
-**Check `votingExecutionMode` in `agent/brain/Config/agent-config.json`.**
-
-### dry-run mode (default)
-Log all decisions but execute nothing on-chain. This is the starting mode.
-
-### auto mode
-Execute only HIGH confidence votes. Everything else is logged only.
-Respect `maxActionsPerHeartbeat` from config.
-
-### full-auto mode
-Execute all non-ESCALATE decisions. Only use after extensive calibration.
-
-**For voting:**
-```bash
-pop vote cast --type hybrid --proposal $ID --options "$INDICES" --weights "$WEIGHTS" --json
-```
-
-**For vouching:**
-```bash
-pop vouch for --address $WEARER --hat $HAT_ID --json
-```
-
-After each action, check the result JSON:
-- If `status: "ok"` — log the `txHash` and `explorerUrl`
-- If `status: "error"` — check the `code` field:
-  - `NETWORK_ERROR` — transient, will retry next heartbeat
-  - `GAS_ESTIMATION_FAILED` — likely permissions issue, ESCALATE
-  - `INSUFFICIENT_FUNDS` — critical, ESCALATE immediately
-  - `TX_REVERTED` — check if proposal ended or was already voted on
-
-**Never retry a failed transaction in the same heartbeat.**
-
----
-
-## Step 4: Detect Anomalies
-
-Compare current state against `~/.pop-agent/brain/Memory/org-state.md`:
-
-Flag and ESCALATE:
-- Single address creating many proposals rapidly
-- Quorum or threshold being lowered via proposal
-- Hat permissions being modified to concentrate power
-- Contracts paused unexpectedly
-- Sudden member count drops
-- Treasury sweeps to unfamiliar addresses
-
-Check ended proposals — if the agent voted and the outcome diverged, write a
-correction record to `~/.pop-agent/brain/Memory/corrections.md`:
-
-```markdown
-## Correction: [ISO timestamp]
-- Proposal: [title] (ID: [id])
-- Agent voted: [decision]
-- Outcome: [winning option]
-- Analysis: [why the heuristic missed]
-```
-
----
-
-## Step 5: Write to Brain
-
-### ~/.pop-agent/brain/Memory/task-log.md — APPEND (never delete)
-
-```markdown
-## Heartbeat: [unix timestamp]
-- Time: [ISO 8601]
-- Proposals checked: [N hybrid] / [N DD]
-- Unvoted found: [N]
-- Votes cast: [list with decision + tx hash or "dry-run"]
-- Tasks: [N open] / [N submitted] / [N completed since last]
-- New members: [N]
-- Vouches: [N active]
-- Token requests: [N pending]
-- Anomalies: [list or "none"]
-- Escalations: [list or "none"]
-- Mode: [dry-run/auto/full-auto]
-```
-
-### ~/.pop-agent/brain/Memory/org-state.md — OVERWRITE with current snapshot
-
-```markdown
-# Org State — [name] (as of [ISO timestamp])
-
-## Summary
-- Members: [active count]
-- Token Supply: [amount] [symbol]
-- Distributions: [count]
-
-## Active Proposals
-[For each: type, ID, title, time remaining, vote count]
-
-## Task Board
-- Open: [N], Assigned: [N], Submitted: [N], Completed: [N]
-[List submitted tasks awaiting review]
-
-## Pending Vouches
-[Count and details]
-
-## Pending Token Requests
-[Count and details]
-```
-
-### ~/.pop-agent/brain/Memory/decisions.md — APPEND (from Step 2)
-### ~/.pop-agent/brain/Memory/corrections.md — APPEND (from Step 4)
-### ~/.pop-agent/brain/Memory/escalations.md — APPEND any new escalations
-
----
-
-## Step 6: Act (priority order)
-
-Work through this list top-to-bottom. Stop when you've done meaningful work.
-
-1. **CLI/tooling errors**: If any CLI command failed during this heartbeat,
-   create a task in Development, fix the code, rebuild, verify, and submit.
-
-2. **Assigned tasks**: Work on tasks assigned to `argus_prime`. Write the
-   deliverable, submit when complete.
-
-3. **Review submitted tasks**: If tasks are in Submitted status from a **prior
-   heartbeat** (never the current one), review and approve them. Self-review
-   is allowed during the bootstrap phase (single-member org).
-
-4. **Plan & create tasks**: After reviewing, or when nothing else is actionable,
-   this is the time to think about what the org should work on next. Reflect on
-   the mission, create new tasks that advance it, and set goals. Planning is
-   real work — don't skip it, but also don't manufacture low-value busywork.
+That's it. Two files updated per heartbeat (heartbeat-log append + org-state overwrite),
+plus capabilities when relevant. No more maintaining 4-5 separate memory files.
 
 ---
 
 ## Error Handling
 
 - **Health check fails**: Log, exit. Next heartbeat retries.
-- **Activity query fails**: Fall back to individual commands (`vote list`,
-  `task list`, `token requests`). Do NOT exit without trying. If the failure
-  is a code bug, fix it in this heartbeat.
-- **Transaction fails**: Log error with code. Do NOT retry same heartbeat.
-- **Brain file missing**: Create it with empty scaffold. Log warning.
-- **Always write task-log.md** — even on complete failure. Silent failures
-  are the enemy of trust.
+- **Activity query fails**: Fall back to individual commands. Fix if it's a code bug.
+- **Transaction fails**: Log error. Do NOT retry same heartbeat.
+- **Brain file missing**: Create with empty scaffold. Log warning.
+- **Always write heartbeat-log.md** — even on failure. Silent failures erode trust.

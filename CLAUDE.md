@@ -28,15 +28,15 @@ Set `POP_DEFAULT_ORG` and `POP_DEFAULT_CHAIN` in `.env` to avoid repeating them.
 **Repo (updated via git pull):**
 - `agent/brain/Identity/how-i-think.md` — voting heuristics and escalation rules
 - `agent/brain/Config/agent-config.json` — execution mode and thresholds
+- `agent/brain/Knowledge/shared.md` — shared knowledge between agents (update when you learn something the other agent needs)
 
 **Persistent (`~/.pop-agent/`, survives restarts):**
 - `~/.pop-agent/brain/Identity/who-i-am.md` — agent wallet, org, permissions
 - `~/.pop-agent/brain/Identity/goals.md` — what the agent is working toward
+- `~/.pop-agent/brain/Identity/capabilities.md` — skills index, what the agent can do and wants to learn
+- `~/.pop-agent/brain/Identity/philosophy.md` — agent's personal values (informs votes + task selection)
+- `~/.pop-agent/brain/Memory/heartbeat-log.md` — unified append-only log (observations, decisions, actions)
 - `~/.pop-agent/brain/Memory/org-state.md` — current org snapshot (overwritten each heartbeat)
-- `~/.pop-agent/brain/Memory/task-log.md` — append-only heartbeat log
-- `~/.pop-agent/brain/Memory/decisions.md` — append-only decision records
-- `~/.pop-agent/brain/Memory/corrections.md` — when votes diverged from outcomes
-- `~/.pop-agent/brain/Memory/escalations.md` — items needing human review
 - `~/.pop-agent/.env` — agent wallet key and org config
 
 ## Key Patterns
@@ -56,9 +56,14 @@ yarn install && yarn build && yarn test
 
 ## Environment
 
-The agent reads from `~/.pop-agent/.env`. Copy it to the project root or symlink:
+The CLI reads from `~/.pop-agent/.env` automatically (falls back to `.env` in cwd).
+Each agent sets `HOME` to its own directory so `~/.pop-agent/` resolves correctly:
 ```bash
-ln -sf ~/.pop-agent/.env .env
+# argus_prime (default HOME)
+claude --cd /path/to/repo
+
+# sentinel_01
+HOME=/Users/hudsonheadley/pop-agents/sentinel claude --cd /path/to/repo
 ```
 
 Required:

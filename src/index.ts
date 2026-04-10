@@ -1,6 +1,17 @@
 #!/usr/bin/env node
 
-import 'dotenv/config';
+import { config as dotenvConfig } from 'dotenv';
+import { existsSync } from 'fs';
+import { join } from 'path';
+import { homedir } from 'os';
+
+// Load .env: try ~/.pop-agent/.env first (agent-specific), fall back to cwd/.env
+const agentEnv = join(homedir(), '.pop-agent', '.env');
+if (existsSync(agentEnv)) {
+  dotenvConfig({ path: agentEnv });
+} else {
+  dotenvConfig();
+}
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import { setJsonMode } from './lib/output';
@@ -17,8 +28,10 @@ import { registerEducationCommands } from './commands/education';
 import { registerVouchCommands } from './commands/vouch';
 import { registerTokenCommands } from './commands/token';
 import { registerTreasuryCommands } from './commands/treasury';
+import { registerPaymasterCommands } from './commands/paymaster';
 import { registerRoleCommands } from './commands/role';
 import { registerConfigCommands } from './commands/config';
+import { registerAgentCommands } from './commands/agent';
 
 async function main() {
   const cli = yargs(hideBin(process.argv))
@@ -33,8 +46,10 @@ async function main() {
     .command('vouch <action>', 'Vouching system', registerVouchCommands)
     .command('token <action>', 'Participation token requests', registerTokenCommands)
     .command('treasury <action>', 'Treasury & distributions', registerTreasuryCommands)
+    .command('paymaster <action>', 'Gas sponsorship (ERC-4337)', registerPaymasterCommands)
     .command('role <action>', 'Role applications', registerRoleCommands)
     .command('config <action>', 'View and validate configuration', registerConfigCommands)
+    .command('agent <action>', 'Agent operations & monitoring', registerAgentCommands)
     .option('org', {
       type: 'string',
       description: 'Organization ID or name (or set POP_DEFAULT_ORG)',

@@ -5,17 +5,15 @@ This manually triggers the observe-evaluate-act-remember cycle defined in the
 rather than waiting for the scheduled loop.
 
 Steps:
-1. Read `~/.pop-agent/brain/Identity/who-i-am.md` and `~/.pop-agent/brain/Identity/goals.md`
-2. Read `agent/brain/Identity/how-i-think.md` (repo — heuristics)
-3. Read `agent/brain/Config/agent-config.json` (repo — execution mode)
+1. Check if CLI needs rebuilding (`find src/ -name '*.ts' -newer dist/index.js`). If yes, `yarn build`.
+2. Read identity: `~/.pop-agent/brain/Identity/who-i-am.md` and `~/.pop-agent/brain/Identity/philosophy.md`
+3. Read shared state: `agent/brain/Identity/how-i-think.md`, `agent/brain/Knowledge/shared.md`, `agent/brain/Config/agent-config.json`
 4. Run `pop config validate --json` to verify connectivity
 5. Run `pop org activity --json` for the full org observation
-6. Run `pop vote list --unvoted --status Active --json` for pending votes
-7. Evaluate each item against heuristics
-8. Act according to execution mode (dry-run/auto/full-auto)
-9. Self-heal: if any CLI commands failed, diagnose and fix the code. If governance
-   is quiet, work on assigned tasks or other improvements. Every heartbeat should
-   produce at least one action.
-10. Write results to `~/.pop-agent/brain/Memory/` files
+6. Run `pop vote announce-all --json` to finalize ended proposals, `pop treasury claim-mine --json` to claim distributions, then `pop vote list --unvoted --status Active --json` for pending votes
+7. Check `pop task list --mine` for rejected tasks needing re-work
+8. Evaluate: consult philosophy.md first for votes, then heuristics. Only escalate when genuinely unable to form an opinion.
+9. Act: governance → reviews → rework → claim tasks → plan. Check `pop task list` before creating tasks to avoid duplicates.
+10. Remember: append to `~/.pop-agent/brain/Memory/heartbeat-log.md`, overwrite `org-state.md`
 
 After completion, show a summary of what was observed, decided, and acted on.

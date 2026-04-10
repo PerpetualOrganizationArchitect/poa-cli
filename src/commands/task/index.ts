@@ -10,6 +10,7 @@ import { assignHandler } from './assign';
 import { applyHandler } from './apply';
 import { approveAppHandler } from './approve-application';
 import { createBatchHandler } from './create-batch';
+import { statsHandler } from './stats';
 
 export function registerTaskCommands(yargs: Argv) {
   return yargs
@@ -24,5 +25,6 @@ export function registerTaskCommands(yargs: Argv) {
     .command('assign', 'Assign a task to a user', assignHandler.builder, assignHandler.handler)
     .command('apply', 'Apply for a task', applyHandler.builder, applyHandler.handler)
     .command('approve-app', 'Approve a task application', approveAppHandler.builder, approveAppHandler.handler)
+    .command('stats', 'Show per-member contribution analytics', statsHandler.builder, statsHandler.handler)
     .demandCommand(1, 'Please specify a task action');
 }

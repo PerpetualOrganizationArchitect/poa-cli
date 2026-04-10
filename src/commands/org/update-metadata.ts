@@ -8,7 +8,7 @@ import { stringToBytes, ipfsCidToBytes32 } from '../../lib/encoding';
 import { query } from '../../lib/subgraph';
 import { resolveOrgId } from '../../lib/resolve';
 import { FETCH_INFRASTRUCTURE_ADDRESSES } from '../../queries/infrastructure';
-import { FETCH_ORG_BY_ID } from '../../queries/org';
+import { FETCH_ORG_BY_ID, FETCH_ORG_FULL_DATA } from '../../queries/org';
 import type { InfrastructureAddresses } from '../../queries/infrastructure';
 import * as output from '../../lib/output';
 import fs from 'fs';
@@ -55,6 +55,22 @@ export const updateMetadataHandler = {
         throw new Error('Could not resolve OrgRegistry address from subgraph');
       }
 
+      if (!argv.name && !argv.description && !argv.logo && !argv.links && argv.backgroundColor === undefined && argv.hideTreasury === undefined) {
+        throw new Error('At least one metadata field must be provided (--name, --description, --logo, --links, --background-color, or --hide-treasury)');
+      }
+
+      // Resolve org ID early so we can fetch existing metadata
+      const orgId = await resolveOrgId(argv.org, argv.chain);
+
+      // Fetch existing metadata to preserve fields not being updated
+      spin.text = 'Fetching current metadata...';
+      const existing = await query<{ organization: any }>(
+        FETCH_ORG_FULL_DATA,
+        { orgId },
+        argv.chain
+      );
+      const currentMeta = existing.organization?.metadata || {};
+
       // Upload logo to IPFS if provided
       let logoCid: string | null = null;
       if (argv.logo) {
@@ -63,50 +79,33 @@ export const updateMetadataHandler = {
         logoCid = await pinFile(logoBuffer);
       }
 
-      // Parse links
-      let links: Array<{ name: string; url: string; index?: number }> = [];
+      // Parse links if provided, otherwise keep existing
+      let links = currentMeta.links || [];
       if (argv.links) {
         try {
           links = JSON.parse(argv.links);
         } catch {
           throw new Error('--links must be valid JSON array: [{"name":"...","url":"..."}]');
         }
-        // Add index field
-        links = links.map((l, i) => ({ ...l, index: i }));
+        links = links.map((l: any, i: number) => ({ ...l, index: i }));
       }
 
-      // Build metadata JSON (must match frontend key order)
+      // Build metadata JSON — merge provided flags over existing values
       const metadata: any = {
-        description: argv.description || '',
+        description: argv.description !== undefined ? argv.description : (currentMeta.description || ''),
         links,
-        template: 'default',
-        logo: logoCid || null,
-        backgroundColor: argv.backgroundColor || null,
-        hideTreasury: argv.hideTreasury || false,
+        template: currentMeta.template || 'default',
+        logo: logoCid || currentMeta.logo || null,
+        backgroundColor: argv.backgroundColor !== undefined ? argv.backgroundColor : (currentMeta.backgroundColor || null),
+        hideTreasury: argv.hideTreasury !== undefined ? argv.hideTreasury : (currentMeta.hideTreasury || false),
       };
 
       spin.text = 'Pinning metadata to IPFS...';
       const metaCid = await pinJson(JSON.stringify(metadata));
       const metadataHash = ipfsCidToBytes32(metaCid);
 
-      if (!argv.name && !argv.description && !argv.logo && !argv.links) {
-        throw new Error('At least one metadata field must be provided (--name, --description, --logo, or --links)');
-      }
-
-      // Resolve org name → bytes32 ID
-      const orgId = await resolveOrgId(argv.org, argv.chain);
-
-      // If --name not provided, fetch current name to avoid overwriting with empty bytes
-      let nameToSend = argv.name;
-      if (!nameToSend) {
-        spin.text = 'Fetching current org name...';
-        const orgData = await query<{ organization: { name: string } | null }>(
-          FETCH_ORG_BY_ID,
-          { id: orgId },
-          argv.chain
-        );
-        nameToSend = orgData.organization?.name || '';
-      }
+      // If --name not provided, use current name from already-fetched org data
+      const nameToSend = argv.name || existing.organization?.name || '';
       const nameBytes = stringToBytes(nameToSend);
 
       spin.text = 'Sending transaction...';

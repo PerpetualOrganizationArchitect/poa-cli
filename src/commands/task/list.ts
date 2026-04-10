@@ -64,7 +64,7 @@ export const listHandler = {
         : argv.status?.toLowerCase();
 
       const projects = result.organization.taskManager.projects;
-      let rows: Array<{ id: string; name: string; status: string; assignee: string; payout: number; payoutDisplay: string; project: string; createdAt: string }> = [];
+      let rows: Array<{ id: string; name: string; status: string; assignee: string; payout: number; payoutDisplay: string; project: string; createdAt: string; rejections: string }> = [];
 
       for (const project of projects) {
         if (argv.project && !project.id.includes(argv.project)) continue;
@@ -75,15 +75,17 @@ export const listHandler = {
           if (myAddress && task.assignee?.toLowerCase() !== myAddress) continue;
 
           const payout = parseFloat(ethers.utils.formatUnits(task.payout || '0', 18));
+          const rejCount = parseInt(task.rejectionCount || '0');
           rows.push({
             id: task.taskId,
             name: task.title || task.metadata?.name || 'Untitled',
-            status: task.status,
+            status: rejCount > 0 && task.status === 'Assigned' ? `Rejected(${rejCount})` : task.status,
             assignee: task.assigneeUsername || formatAddress(task.assignee || ''),
             payout,
             payoutDisplay: `${payout} PT`,
             project: project.title || 'Unknown',
             createdAt: task.createdAt || '0',
+            rejections: rejCount.toString(),
           });
         }
       }

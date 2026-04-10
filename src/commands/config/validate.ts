@@ -50,9 +50,11 @@ export const validateHandler = {
 
     // Check private key
     const key = (argv.privateKey as string) || process.env.POP_PRIVATE_KEY;
+    let walletAddress: string | undefined;
     if (key) {
       try {
         const wallet = new ethers.Wallet(key);
+        walletAddress = wallet.address;
         results.push({ check: 'Wallet', status: 'OK', detail: wallet.address });
       } catch {
         results.push({ check: 'Wallet', status: 'FAIL', detail: 'Invalid private key format' });
@@ -61,13 +63,33 @@ export const validateHandler = {
       results.push({ check: 'Wallet', status: 'SKIP', detail: 'No private key configured' });
     }
 
+    // Check wallet balance (gas)
+    if (walletAddress && chainId) {
+      try {
+        const config = resolveNetworkConfig(chainId);
+        const provider = new ethers.providers.JsonRpcProvider(config.resolvedRpc, chainId);
+        const balance = await provider.getBalance(walletAddress);
+        const balanceFormatted = ethers.utils.formatEther(balance);
+        const symbol = config.nativeCurrency.symbol;
+        const LOW_GAS_THRESHOLD = ethers.utils.parseEther('0.01');
+
+        if (balance.lt(LOW_GAS_THRESHOLD)) {
+          results.push({ check: 'Gas', status: 'WARN', detail: `${balanceFormatted} ${symbol} — low, fund wallet for reliable transacting` });
+        } else {
+          results.push({ check: 'Gas', status: 'OK', detail: `${balanceFormatted} ${symbol}` });
+        }
+      } catch {
+        results.push({ check: 'Gas', status: 'SKIP', detail: 'Could not query balance' });
+      }
+    }
+
     // Output
     if (output.isJsonMode()) {
       output.json(results);
     } else {
       console.log('');
       for (const r of results) {
-        const icon = r.status === 'OK' ? '\x1b[32m✓\x1b[0m' : r.status === 'FAIL' ? '\x1b[31m✗\x1b[0m' : '\x1b[33m-\x1b[0m';
+        const icon = r.status === 'OK' ? '\x1b[32m✓\x1b[0m' : r.status === 'FAIL' ? '\x1b[31m✗\x1b[0m' : r.status === 'WARN' ? '\x1b[33m!\x1b[0m' : '\x1b[33m-\x1b[0m';
         console.log(`  ${icon} ${r.check.padEnd(10)} ${r.detail || ''}`);
       }
       console.log('');

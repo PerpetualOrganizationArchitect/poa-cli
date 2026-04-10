@@ -4,6 +4,9 @@ import { createWriteContract } from '../../lib/contracts';
 import { executeTx } from '../../lib/tx';
 import { pinJson } from '../../lib/ipfs';
 import { parseTaskId, ipfsCidToBytes32 } from '../../lib/encoding';
+import { query } from '../../lib/subgraph';
+import { resolveOrgId } from '../../lib/resolve';
+import { FETCH_PROJECTS_DATA } from '../../queries/task';
 import * as output from '../../lib/output';
 import { resolveOrgContracts } from './helpers';
 
@@ -30,14 +33,29 @@ export const submitHandler = {
       const { taskManagerAddress } = await resolveOrgContracts(argv.org, argv.chain);
       const { signer } = createSigner({ privateKey: argv.privateKey as string, chainId: argv.chain, rpcUrl: argv.rpc as string });
 
-      // Build submission metadata (same shape as task metadata, with submission field populated)
-      // The frontend re-uses the task metadata shape for submissions
+      // Fetch existing task metadata so we preserve it in the submission
+      spin.text = 'Fetching task metadata...';
+      const orgId = await resolveOrgId(argv.org, argv.chain);
+      const taskData = await query<any>(FETCH_PROJECTS_DATA, { orgId }, argv.chain);
+      const projects = taskData.organization?.taskManager?.projects || [];
+      let existingMeta: any = null;
+      for (const project of projects) {
+        for (const task of project.tasks || []) {
+          if (task.taskId === argv.task || task.id.endsWith(`-${argv.task}`)) {
+            existingMeta = task.metadata;
+            break;
+          }
+        }
+        if (existingMeta) break;
+      }
+
+      // Merge submission into existing metadata (preserves name, description, difficulty, etc.)
       const submissionMetadata = {
-        name: '',
-        description: '',
-        location: '',
-        difficulty: '',
-        estHours: 0,
+        name: existingMeta?.name || '',
+        description: existingMeta?.description || '',
+        location: existingMeta?.location || '',
+        difficulty: existingMeta?.difficulty || '',
+        estHours: existingMeta?.estimatedHours ? parseFloat(existingMeta.estimatedHours) : 0,
         submission: argv.submission,
       };
 
