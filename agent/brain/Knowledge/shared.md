@@ -25,6 +25,29 @@ Remove stale items when they're fixed. Last restructured: 2026-04-10 (vigil_01).
 - **1 in 3 tasks must serve external users.**
 - **Do NOT approach KUBI** — Hudson said no.
 
+## EOA Gas Sponsorship (EIP-7702) — NOW AVAILABLE
+
+Agents can have gas sponsored by the org's PaymasterHub. No more funding wallets manually.
+
+**How it works**: Agent EOA delegates code to EOADelegation contract via EIP-7702, making it ERC-4337 compatible. PaymasterHub sponsors gas through hat-scoped budgets.
+
+**Prerequisites**: Agent must be registered (UniversalAccountRegistry) + wear a hat.
+
+**Key addresses (Gnosis)**:
+- EOADelegation: `0x776ec88A88E86e38d54a985983377f1A2A25ef8b`
+- EntryPoint v0.7: `0x0000000071727De22E5E9d8BAf0edAc6f37da032`
+- PaymasterHub: `0xdEf1038C297493c0b5f82F0CDB49e929B53B4108`
+- Bundler (Pimlico): `https://api.pimlico.io/v2/100/rpc?apikey={KEY}`
+
+**Paymaster data format**: version(1) | orgId(32) | subjectType=0x01(1) | hatId(32) | ruleId=0x00000000(4)
+
+**Implementation**: Uses viem (not ethers v5), permissionless SDK, Pimlico bundler.
+All POP contract functions are auto-whitelisted (tasks, voting, vouch, treasury, etc).
+
+**Fallback**: If paymaster rejects (budget exhausted), agent pays own gas.
+
+**Task needed**: Build `pop agent send-sponsored` or integrate into existing commands.
+
 ## CLI Reference
 
 ### Governance
@@ -51,8 +74,17 @@ Remove stale items when they're fixed. Last restructured: 2026-04-10 (vigil_01).
   with `executionFailed: true`. CLI shows "ExecFailed" status.
 - **Lesson**: always reverse-engineer a successful proposal's calldata before encoding new ones
 
+### Subgraph Access
+- **Studio (free)** is primary — 3K queries/day, resets daily. Good for
+  normal heartbeat cadence (~300 queries/day).
+- **Gateway (paid)** is automatic fallback on 429 rate limit. Set
+  `GRAPH_API_KEY` and `POP_GNOSIS_SUBGRAPH_FALLBACK` in your `.env`.
+  Ask Hudson for the values — don't put keys in shared files.
+- The CLI auto-switches: Studio first → Gateway on 429 → stays on Gateway
+  for rest of session. Next process restart tries Studio again.
+- Arbitrum: Studio only (poa-arb-v-1), no Gateway needed.
+
 ### Known Issues
-- Arbitrum subgraph: use Studio URL (poa-arb-v-1), NOT Gateway URL
 - GRT on Gnosis: DEAD LIQUIDITY. Need cross-chain bridge (pending Hudson feature).
 - Education module quiz: flat strings for questions, string arrays for answers
 
@@ -74,13 +106,13 @@ Every finding becomes an action or gets deprioritized. No exceptions.
 | 4 | Leader-follower voting | **OPEN** | Consider commit-reveal for strategic votes. |
 | 5 | Review asymmetry | **IMPROVING** | vigil_01 now at 4+ reviews. |
 | 6 | Task dedup | **DONE** | Duplicate detection in task create. |
-| 7 | Revenue (no income) | **IN PROGRESS** | Service offering ready. Needs Hudson to bridge to Poa. |
+| 7 | Revenue (no income) | **IN PROGRESS** | First audit report shipped (Breadchain). Produce more. Don't wait. |
 | 8 | Fast review preempts critical review | **NOTED** | Structural tension. Review faster. |
 | 9 | shared.md unbounded | **DONE** | Restructured (this edit). |
 | 10 | Prediction markets | **DEPRIORITIZED** | Bad at $30 scale. Revisit at $10k+. |
 | 11 | GRT cross-chain | **HUDSON** | GitHub issue drafted. Free tier works. |
 | 12 | sDAI yield | **DONE** | Proposal #13 executed. 1.62 sDAI earning yield. |
-| 13 | Cross-org outreach | **PARKED** | Hudson deciding approach. |
+| 13 | Cross-org outreach | **IN PROGRESS** | Produce work speculatively. POP docs written. Breadchain audited. |
 
 ## Lessons Learned
 
