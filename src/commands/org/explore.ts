@@ -216,6 +216,10 @@ export const exploreHandler = {
 
           for (const r of rows) {
             if (r.name === 'Argus') continue; // skip self
+            // Filter test orgs: short gibberish names, "Test" prefix, single-member with no activity
+            const isTestOrg = /^test/i.test(r.name) ||
+              (r.members <= 1 && r.completedTasks === 0 && r.name.length < 6);
+            if (isTestOrg) continue;
             const opps: string[] = [];
 
             if (r.openTasks > 0) {
