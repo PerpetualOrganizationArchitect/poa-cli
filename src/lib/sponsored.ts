@@ -4,6 +4,8 @@
  * Uses the org PaymasterHub to sponsor agent transaction gas.
  * Flow: Agent EOA → EIP-7702 delegation → UserOp via Pimlico bundler → PaymasterHub pays gas.
  *
+ * Based on the poa-frontend EOA7702TransactionManager + userOpBuilder implementation.
+ *
  * Prerequisites:
  * - Agent registered in UniversalAccountRegistry
  * - Agent wears a hat in the org
@@ -15,18 +17,22 @@ import {
   createWalletClient,
   http,
   encodeFunctionData,
+  encodeAbiParameters,
+  parseAbiParameters,
+  keccak256,
   type Hex,
   type Address,
+  type Abi,
   concat,
   pad,
   toHex,
-  type Abi,
 } from 'viem';
 import { gnosis } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
 import { createPimlicoClient } from 'permissionless/clients/pimlico';
 import {
   entryPoint07Address,
+  entryPoint07Abi,
   type EntryPointVersion,
 } from 'viem/account-abstraction';
 
@@ -35,18 +41,23 @@ export const EOA_DELEGATION = '0x776ec88A88E86e38d54a985983377f1A2A25ef8b' as Ad
 export const PAYMASTER_HUB = '0xdEf1038C297493c0b5f82F0CDB49e929B53B4108' as Address;
 export const ENTRY_POINT = entryPoint07Address;
 
+const GAS_BUFFER_PERCENT = 10n;
+const DUMMY_ECDSA_SIGNATURE = ('0x' + 'ff'.repeat(65)) as Hex;
+
 /**
  * Encode paymaster data for the PaymasterHub.
- * Format: version(1) | orgId(32) | subjectType=0x01(1) | hatId(32) | ruleId=0x00000000(4)
+ * Format: version(1) | orgId(32) | subjectType=0x01(1) | hatId(32) | ruleId(4) | mailboxCommit(8)
+ * Total: 78 bytes (must match frontend encoding exactly)
  */
 export function encodePaymasterData(orgId: Hex, hatId: bigint): Hex {
-  const version = '0x01' as Hex;
+  const version = toHex(0x01, { size: 1 });
   const paddedOrgId = pad(orgId as Hex, { size: 32 });
-  const subjectType = '0x01' as Hex;
-  const paddedHatId = pad(toHex(hatId), { size: 32 });
-  const ruleId = '0x00000000' as Hex;
+  const subjectType = toHex(0x01, { size: 1 }); // HAT
+  const paddedHatId = toHex(hatId, { size: 32 });
+  const ruleId = toHex(0, { size: 4 });
+  const mailboxCommit = toHex(0n, { size: 8 });
 
-  return concat([version, paddedOrgId, subjectType, paddedHatId, ruleId]);
+  return concat([version, paddedOrgId, subjectType, paddedHatId, ruleId, mailboxCommit]) as Hex;
 }
 
 /**
@@ -74,13 +85,11 @@ export async function delegateEOA(privateKey: Hex, rpcUrl?: string): Promise<Hex
     transport: http(rpcUrl || 'https://rpc.gnosischain.com'),
   });
 
-  // Sign the authorization
   const authorization = await walletClient.signAuthorization({
     contractAddress: EOA_DELEGATION,
     executor: 'self',
   });
 
-  // Send the delegation transaction
   const hash = await walletClient.sendTransaction({
     authorizationList: [authorization],
     to: account.address,
@@ -91,15 +100,78 @@ export async function delegateEOA(privateKey: Hex, rpcUrl?: string): Promise<Hex
 }
 
 /**
+ * Pack two uint128 values into a single bytes32.
+ * high128 || low128
+ */
+function packUint128Pair(high: bigint, low: bigint): Hex {
+  return pad(toHex((BigInt(high) << 128n) | BigInt(low)), { size: 32 });
+}
+
+function applyBuffer(value: bigint): bigint {
+  return (BigInt(value) * (100n + GAS_BUFFER_PERCENT)) / 100n;
+}
+
+/**
+ * Compute the UserOp hash per EIP-4337 v0.7 (PackedUserOperation) spec.
+ * Ported from poa-frontend userOpBuilder.js getUserOpHash().
+ */
+export function getUserOpHash(userOp: any, entryPoint: Address, chainId: number): Hex {
+  // Reconstruct paymasterAndData
+  let paymasterAndData: Hex = '0x';
+  if (userOp.paymaster) {
+    const pmVerGas = pad(toHex(userOp.paymasterVerificationGasLimit || 0n), { size: 16 });
+    const pmPostGas = pad(toHex(userOp.paymasterPostOpGasLimit || 0n), { size: 16 });
+    if (userOp.paymasterData && userOp.paymasterData !== '0x') {
+      paymasterAndData = concat([userOp.paymaster, pmVerGas, pmPostGas, userOp.paymasterData]) as Hex;
+    } else {
+      paymasterAndData = concat([userOp.paymaster, pmVerGas, pmPostGas]) as Hex;
+    }
+  }
+
+  const accountGasLimits = packUint128Pair(
+    userOp.verificationGasLimit,
+    userOp.callGasLimit,
+  );
+  const gasFees = packUint128Pair(
+    userOp.maxPriorityFeePerGas,
+    userOp.maxFeePerGas,
+  );
+
+  const packed = encodeAbiParameters(
+    parseAbiParameters('address, uint256, bytes32, bytes32, bytes32, uint256, bytes32, bytes32'),
+    [
+      userOp.sender,
+      userOp.nonce,
+      keccak256('0x' as Hex) as Hex, // no initCode for already-deployed EOA
+      keccak256(userOp.callData as Hex) as Hex,
+      accountGasLimits,
+      userOp.preVerificationGas,
+      gasFees,
+      keccak256(paymasterAndData) as Hex,
+    ]
+  );
+
+  const userOpPacked = keccak256(packed as Hex) as Hex;
+
+  return keccak256(
+    encodeAbiParameters(
+      parseAbiParameters('bytes32, address, uint256'),
+      [userOpPacked, entryPoint, BigInt(chainId)]
+    ) as Hex
+  ) as Hex;
+}
+
+/**
  * Send a sponsored transaction via Pimlico bundler.
  * The PaymasterHub pays for gas — agent pays nothing.
  *
- * @param privateKey - Agent's private key
- * @param to - Target contract address
- * @param data - Encoded function call data
- * @param orgId - POP org ID (hex)
- * @param hatId - Agent's hat ID
- * @param options - Optional overrides
+ * Follows the same flow as poa-frontend EOA7702TransactionManager:
+ * 1. Encode call in EOADelegation.execute() wrapper
+ * 2. Build UserOp with paymaster data and dummy signature
+ * 3. Estimate gas via bundler
+ * 4. Compute UserOp hash (EIP-4337 v0.7 packed format)
+ * 5. Sign with wallet (ECDSA via signMessage — EIP-191 prefix)
+ * 6. Submit to bundler and wait for receipt
  */
 export async function sendSponsored(
   privateKey: Hex,
@@ -131,6 +203,12 @@ export async function sendSponsored(
     );
   }
 
+  const walletClient = createWalletClient({
+    account,
+    chain: gnosis,
+    transport: http(rpcUrl),
+  });
+
   const publicClient = createPublicClient({
     chain: gnosis,
     transport: http(rpcUrl),
@@ -148,11 +226,7 @@ export async function sendSponsored(
   // Encode paymaster data
   const paymasterData = encodePaymasterData(orgId, hatId);
 
-  // Get gas prices
-  const gasPrices = await pimlicoClient.getUserOperationGasPrice();
-
-  // Build the UserOperation calldata
-  // EOADelegation.execute(target, value, data) format
+  // EOADelegation.execute(target, value, data) — same ABI as PasskeyAccount.execute
   const executeAbi = [{
     name: 'execute',
     type: 'function',
@@ -171,72 +245,95 @@ export async function sendSponsored(
     args: [to, options?.value || 0n, data],
   });
 
-  // Get nonce
-  const nonce = await publicClient.readContract({
-    address: ENTRY_POINT,
-    abi: [{
-      name: 'getNonce',
-      type: 'function',
-      inputs: [
-        { name: 'sender', type: 'address' },
-        { name: 'key', type: 'uint192' },
-      ],
-      outputs: [{ type: 'uint256' }],
-      stateMutability: 'view',
-    }] as const,
-    functionName: 'getNonce',
-    args: [account.address, 0n],
+  // Fetch nonce and gas prices in parallel
+  const [nonce, gasPrices] = await Promise.all([
+    publicClient.readContract({
+      address: ENTRY_POINT,
+      abi: entryPoint07Abi,
+      functionName: 'getNonce',
+      args: [account.address, 0n],
+    }),
+    pimlicoClient.getUserOperationGasPrice(),
+  ]);
+
+  // Sign 7702 authorization (bundler includes it in the type-4 tx)
+  const authorization = await walletClient.signAuthorization({
+    contractAddress: EOA_DELEGATION,
   });
 
-  // Build UserOperation
-  const userOp = {
+  // Build UserOp with dummy signature for gas estimation
+  const userOp: any = {
     sender: account.address,
     nonce,
     callData,
+    callGasLimit: 500_000n,
+    verificationGasLimit: 1_500_000n,
+    preVerificationGas: 100_000n,
     maxFeePerGas: gasPrices.fast.maxFeePerGas,
     maxPriorityFeePerGas: gasPrices.fast.maxPriorityFeePerGas,
     paymaster: PAYMASTER_HUB,
+    paymasterVerificationGasLimit: 200_000n,
+    paymasterPostOpGasLimit: 200_000n,
     paymasterData,
-    signature: '0x' as Hex, // placeholder, will be replaced after estimation
+    authorization,
+    signature: DUMMY_ECDSA_SIGNATURE,
   };
 
-  // Estimate gas
-  const gasEstimate = await pimlicoClient.estimateUserOperationGas(
-    userOp as any,
-  );
+  // Estimate gas via bundler — catch validateUserOp errors from dummy signature
+  try {
+    const gasEstimate = await pimlicoClient.estimateUserOperationGas({
+      ...userOp,
+      entryPointAddress: ENTRY_POINT,
+    } as any);
 
-  // Apply gas estimates
-  const fullUserOp = {
-    ...userOp,
-    callGasLimit: gasEstimate.callGasLimit,
-    verificationGasLimit: gasEstimate.verificationGasLimit,
-    preVerificationGas: gasEstimate.preVerificationGas,
-    paymasterVerificationGasLimit: gasEstimate.paymasterVerificationGasLimit,
-    paymasterPostOpGasLimit: gasEstimate.paymasterPostOpGasLimit,
-  };
+    // Apply gas estimates with buffer
+    userOp.callGasLimit = applyBuffer(gasEstimate.callGasLimit);
+    userOp.preVerificationGas = applyBuffer(gasEstimate.preVerificationGas);
 
-  // Sign the UserOperation
-  // The EOADelegation contract validates the signature
-  const walletClient = createWalletClient({
-    account,
-    chain: gnosis,
-    transport: http(rpcUrl),
+    // ECDSA verification is cheap (~3k gas), but enforce a minimum
+    const estimatedVerification = applyBuffer(gasEstimate.verificationGasLimit);
+    userOp.verificationGasLimit = estimatedVerification < 100_000n ? 100_000n : estimatedVerification;
+
+    if (gasEstimate.paymasterVerificationGasLimit) {
+      userOp.paymasterVerificationGasLimit = applyBuffer(gasEstimate.paymasterVerificationGasLimit);
+    }
+    if (gasEstimate.paymasterPostOpGasLimit) {
+      userOp.paymasterPostOpGasLimit = applyBuffer(gasEstimate.paymasterPostOpGasLimit);
+    }
+  } catch (estimateError: any) {
+    const msg = estimateError.message || '';
+    // Paymaster rejections should propagate — caller needs to know
+    if (msg.includes('AA31') || msg.includes('AA32') || msg.includes('AA33')) {
+      throw estimateError;
+    }
+    // validateUserOp fails with dummy sig — use generous defaults
+    // (same pattern as poa-frontend estimateGas() fallback)
+  }
+
+  // Compute UserOp hash (EIP-4337 v0.7 packed format)
+  const computedHash = getUserOpHash(userOp, ENTRY_POINT, gnosis.id);
+
+  // Sign with wallet — EOADelegation validates via toEthSignedMessageHash(userOpHash)
+  const signature = await walletClient.signMessage({
+    message: { raw: computedHash },
   });
+  userOp.signature = signature;
 
-  // Hash and sign the UserOp (simplified — real implementation needs proper EIP-4337 hashing)
-  // For now, submit and let the bundler handle validation
-  const userOpHash = await pimlicoClient.sendUserOperation(
-    fullUserOp as any,
-  );
+  // Submit to bundler
+  const submittedHash = await pimlicoClient.sendUserOperation({
+    ...userOp,
+    entryPointAddress: ENTRY_POINT,
+  } as any);
 
   // Wait for receipt
   const receipt = await pimlicoClient.waitForUserOperationReceipt({
-    hash: userOpHash,
+    hash: submittedHash,
+    timeout: 120_000,
   });
 
   return {
     txHash: receipt.receipt.transactionHash as Hex,
-    userOpHash: userOpHash as Hex,
+    userOpHash: submittedHash as Hex,
   };
 }
 

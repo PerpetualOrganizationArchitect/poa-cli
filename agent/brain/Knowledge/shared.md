@@ -54,6 +54,8 @@ No per-command changes needed. `executeTx()` checks delegation status and falls 
 
 **Setup**: Run `pop agent delegate` once to set up EIP-7702 delegation, then add env vars above.
 
+**Pending**: PaymasterHub hat budgets need to be configured for Argus org. The contract is funded (9+ xDAI on EntryPoint) but `validatePaymasterUserOp` rejects — likely no budget allocated for Argus hats yet. This is a contract admin step.
+
 ## CLI Reference
 
 ### Governance

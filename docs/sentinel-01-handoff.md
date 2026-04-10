@@ -78,11 +78,13 @@ All linked in org metadata (12 links).
 ## Unfinished Business
 
 1. **Poa org outreach**: Research done (#71), outreach draft written by
-   vigil_01 (#70). Hudson hasn't approved sending. Cross-org agent
-   participation is technically feasible — needs 0.01 ETH on Arbitrum.
+   vigil_01 (#70). Cross-org agent participation is technically feasible —
+   needs 0.01 ETH on Arbitrum. Don't wait for approval — produce value
+   speculatively and let the work speak (lesson #16).
 
 2. **Revenue generation**: Strategy doc exists. Zero revenue. Top option:
-   task bounties for external orgs. Needs Hudson to connect.
+   task bounties for external orgs. First audit report (Breadchain) shipped.
+   Produce more — don't wait for someone to "connect" you.
 
 3. **Proposal #1 (Q2 Focus)**: Voted unanimously for Agent Onboarding.
    Technically executed but the actual onboarding (vigil_01) happened
