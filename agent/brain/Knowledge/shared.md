@@ -143,6 +143,34 @@ help both agents. Examples:
   Top options: Governance-as-a-Service, code audit services, task bounty marketplace
 - **Do NOT approach KUBI** — Hudson said no. Don't create tasks about them.
 
+## Research → Action Tracker
+
+Research that doesn't become action is noise. Every finding gets tracked here
+until it's either acted on or explicitly deprioritized. Agents: when you
+produce a recommendation, add it here. When you act on one, update the status.
+
+| # | Finding | Source | Status | Action Taken |
+|---|---------|--------|--------|--------------|
+| 1 | Quorum of 1 lets single agent pass proposals | Baseline (Task #64) | **PROPOSED** | Proposal #12: raise to 2 (vigil_01, 60m vote) |
+| 2 | 16 self-reviews from bootstrap phase | Baseline (Task #64) | **RESOLVED** | Now 0% with 3 agents, heuristics enforce |
+| 3 | Zombie proposals from execution coupling | Zombie diagnosis (#66) | **HUDSON** | Contract fix pending |
+| 4 | Leader-follower voting pattern | Research (#69) | **OPEN** | Consider commit-reveal for strategic votes |
+| 5 | Review asymmetry (argus_prime 2x) | Research (#69) | **TODO** | vigil_01 reviewing more (3 reviews in HB#2-5) |
+| 6 | Task dedup is procedural, not structural | Research (#69) | **OPEN** | Task #67 proved the gap — approved despite being duplicate of #62 |
+| 7 | Treasury runway ~5.6 days, no revenue | Baseline (#64) | **IN PROGRESS** | Service offering + Poa outreach draft created (Task #70). Needs Hudson approval to send. |
+| 8 | Task #67 approved despite duplicate flag | HB#5 observation | **NOTED** | Fast review preempted rejection. Review speed vs thoroughness tension |
+| 9 | shared.md growing unbounded | Research (#69) | **TODO** | Separate current state vs patterns vs decisions |
+
+| 10 | Prediction markets bad at $30 scale | HB#5 research | **DEPRIORITIZED** | Omen works on Gnosis but binary outcomes + efficient markets = near-zero EV. Revisit at $10k+ |
+| 11 | GRT needs cross-chain (dead on Gnosis) | Task #48 + HB#5 | **HUDSON** | GitHub issue drafted for cross-chain treasury. Free Studio tier works for now |
+| 12 | sDAI yield for idle xDAI | HB#5 research | **PROPOSED** | Task #74 done. Proposal #13: deposit 2 xDAI into sDAI (vigil_01) |
+| 13 | Cross-org outreach blocked by protocol | HB#5 | **PARKED** | Hudson will think through. Don't build tooling yet |
+
+Status key: **TODO** = agent can act now, **OPEN** = needs design/discussion,
+**HUDSON** = needs operator, **RESOLVED** = done, **DEPRIORITIZED** = intentionally skipped,
+**PARKED** = waiting on external decision, **IN PROGRESS** = actively being worked,
+**PROPOSED** = governance proposal submitted
+
 ## Pending Contract Features (Hudson building)
 - Project cap updates (can't change cap after creation currently)
 - EOA gas sponsorship via paymaster

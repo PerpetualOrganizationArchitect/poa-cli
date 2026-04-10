@@ -5,6 +5,7 @@ import * as output from '../../lib/output';
 
 interface ExploreArgs {
   chain?: number;
+  detail?: string;
 }
 
 const EXPLORE_QUERY = `
@@ -40,9 +41,92 @@ const EXPLORE_QUERY = `
 
 export const exploreHandler = {
   builder: (yargs: Argv) => yargs
-    .option('chain', { type: 'number', describe: 'Filter to specific chain' }),
+    .option('chain', { type: 'number', describe: 'Filter to specific chain' })
+    .option('detail', { type: 'string', describe: 'Deep-scan a specific org by name' }),
 
   handler: async (argv: ArgumentsCamelCase<ExploreArgs>) => {
+    // --detail mode: deep-scan a single org
+    if (argv.detail) {
+      const spin = output.spinner(`Deep-scanning ${argv.detail}...`);
+      spin.start();
+      try {
+        const detailQuery = `
+          query DetailOrg($name: String!) {
+            organizations(where: { name: $name }, first: 1) {
+              id name deployedAt
+              participationToken { totalSupply }
+              users(orderBy: participationTokenBalance, orderDirection: desc, first: 100) {
+                address participationTokenBalance membershipStatus
+                totalTasksCompleted totalVotes
+                account { username }
+              }
+              taskManager {
+                projects(where: { deleted: false }, first: 20) {
+                  title
+                  tasks(first: 200) { taskId title status payout assigneeUsername }
+                }
+              }
+              hybridVoting {
+                proposals(first: 50) { proposalId title status numOptions
+                  votes { voterUsername }
+                }
+              }
+              paymentManager { distributions { distributionId totalAmount status } }
+            }
+          }
+        `;
+        const results = await queryAllChains<any>(detailQuery, { name: argv.detail });
+        spin.stop();
+
+        let found = false;
+        for (const chainResult of results) {
+          const org = chainResult.data?.organizations?.[0];
+          if (!org) continue;
+          found = true;
+          const activeMembers = (org.users || []).filter((u: any) => u.membershipStatus === 'Active');
+          const allTasks = (org.taskManager?.projects || []).flatMap((p: any) => (p.tasks || []).map((t: any) => ({ ...t, project: p.title })));
+          const supply = parseFloat(ethers.utils.formatEther(org.participationToken?.totalSupply || '0'));
+
+          if (output.isJsonMode()) {
+            output.json({ chain: chainResult.name, org: org.name, members: activeMembers.length, supply, tasks: allTasks.length, proposals: org.hybridVoting?.proposals?.length || 0 });
+          } else {
+            console.log('');
+            console.log(`  ${org.name} (${chainResult.name})`);
+            console.log('  ' + '═'.repeat(50));
+            console.log(`  PT Supply: ${supply.toFixed(0)} | Members: ${activeMembers.length}`);
+            console.log('');
+            console.log('  Members:');
+            for (const m of activeMembers) {
+              const pt = parseFloat(ethers.utils.formatEther(m.participationTokenBalance || '0'));
+              console.log(`    ${(m.account?.username || m.address.slice(0, 10)).padEnd(18)} ${pt.toFixed(0).padStart(6)} PT  ${m.totalTasksCompleted || 0} tasks  ${m.totalVotes || 0} votes`);
+            }
+            const open = allTasks.filter((t: any) => t.status === 'Open');
+            if (open.length > 0) {
+              console.log('');
+              console.log('  Open Tasks:');
+              for (const t of open) {
+                console.log(`    #${t.taskId} ${t.title} [${t.project}] ${ethers.utils.formatEther(t.payout || '0')} PT`);
+              }
+            }
+            const proposals = org.hybridVoting?.proposals || [];
+            const active = proposals.filter((p: any) => p.status === 'Active');
+            if (active.length > 0) {
+              console.log('');
+              console.log('  Active Proposals:');
+              for (const p of active) { console.log(`    #${p.proposalId} ${p.title} (${(p.votes || []).length} votes)`); }
+            }
+            console.log('');
+          }
+        }
+        if (!found) output.info(`No org named "${argv.detail}" found on any chain`);
+        return;
+      } catch (err: any) {
+        spin.stop();
+        output.error(err.message);
+        process.exit(1);
+      }
+    }
+
     const spin = output.spinner('Scanning POP orgs across chains...');
     spin.start();
 
