@@ -9,6 +9,7 @@ import { statusHandler } from './status';
 import { rolesHandler } from './roles';
 import { membersHandler } from './members';
 import { auditHandler } from './audit';
+import { exploreHandler } from './explore';
 
 export function registerOrgCommands(yargs: Argv) {
   return yargs
@@ -22,5 +23,6 @@ export function registerOrgCommands(yargs: Argv) {
     .command('roles', 'List org roles with hat IDs and vouch requirements', rolesHandler.builder, rolesHandler.handler)
     .command('members', 'List org members with activity metrics', membersHandler.builder, membersHandler.handler)
     .command('audit', 'Generate governance transparency audit', auditHandler.builder, auditHandler.handler)
+    .command('explore', 'Scan all POP orgs across chains', exploreHandler.builder, exploreHandler.handler)
     .demandCommand(1, 'Please specify an org action');
 }
