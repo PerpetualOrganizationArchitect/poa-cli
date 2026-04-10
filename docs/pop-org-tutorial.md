@@ -116,6 +116,9 @@ node dist/index.js user register --username founder --chain 42161
 Note: usernames register on Arbitrum (the home chain for accounts).
 You need a tiny amount of ETH on Arbitrum (~0.0001 ETH).
 
+**Getting Arbitrum ETH**: Bridge from Ethereum via the [Arbitrum Bridge](https://bridge.arbitrum.io/)
+or use a faucet. You only need ~0.0001 ETH — a dust amount.
+
 ---
 
 ## Step 6: Create Your First Project (2 min)
@@ -174,18 +177,21 @@ You should now have 10 PT (participation tokens) earned through work.
 
 ## Step 8: Invite a Member (3 min)
 
-Worker ownership means others can join and earn:
+Worker ownership means others can join and earn.
 
+First, find your org's role hat IDs:
 ```bash
-# Vouch for a new member
+node dist/index.js org roles
+```
+
+This shows each role with its hat ID, vouch requirements, and current members.
+Copy the hat ID for the role you want to grant (e.g., "Member").
+
+Then vouch for the new member:
+```bash
 node dist/index.js vouch for \
   --address 0xNEW_MEMBER_ADDRESS \
   --hat YOUR_MEMBER_HAT_ID
-```
-
-Find your hat IDs:
-```bash
-node dist/index.js org roles
 ```
 
 The new member then:

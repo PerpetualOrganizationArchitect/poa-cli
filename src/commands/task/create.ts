@@ -9,6 +9,8 @@ import { requireArg } from '../../lib/validation';
 import { getTokenDecimals } from '../../config/tokens';
 import * as output from '../../lib/output';
 import { resolveOrgContracts } from './helpers';
+import { query } from '../../lib/subgraph';
+import { FETCH_PROJECTS_DATA } from '../../queries/task';
 
 interface CreateArgs {
   org: string;
@@ -22,6 +24,7 @@ interface CreateArgs {
   'bounty-token'?: string;
   'bounty-amount'?: number;
   'requires-application'?: boolean;
+  force?: boolean;
   chain?: number;
   rpc?: string;
   'private-key'?: string;
@@ -39,15 +42,41 @@ export const createHandler = {
     .option('location', { type: 'string', default: '', describe: 'Location' })
     .option('bounty-token', { type: 'string', describe: 'Bounty ERC20 token address' })
     .option('bounty-amount', { type: 'number', describe: 'Bounty payout amount' })
-    .option('requires-application', { type: 'boolean', default: false, describe: 'Require applications' }),
+    .option('requires-application', { type: 'boolean', default: false, describe: 'Require applications' })
+    .option('force', { type: 'boolean', default: false, describe: 'Skip duplicate check' }),
 
   handler: async (argv: ArgumentsCamelCase<CreateArgs>) => {
     const spin = output.spinner('Creating task...');
     spin.start();
 
     try {
-      const { taskManagerAddress } = await resolveOrgContracts(argv.org, argv.chain);
+      const { taskManagerAddress, orgId } = await resolveOrgContracts(argv.org, argv.chain);
       const { signer } = createSigner({ privateKey: argv.privateKey as string, chainId: argv.chain, rpcUrl: argv.rpc as string });
+
+      // Duplicate check: warn if similar task exists
+      if (!argv.force) {
+        try {
+          const result = await query<any>(FETCH_PROJECTS_DATA, { orgId }, argv.chain);
+          const projects = result.organization?.taskManager?.projects || [];
+          const allTasks = projects.flatMap((p: any) => p.tasks || []);
+          const newWords = new Set((argv.name as string).toLowerCase().split(/\s+/).filter(w => w.length > 3));
+          if (newWords.size > 0) {
+            for (const task of allTasks) {
+              if (task.status === 'Cancelled') continue;
+              const existingWords = new Set((task.title || '').toLowerCase().split(/\s+/).filter((w: string) => w.length > 3));
+              const overlap = [...newWords].filter(w => existingWords.has(w)).length;
+              const similarity = overlap / Math.max(newWords.size, 1);
+              if (similarity >= 0.5) {
+                spin.stop();
+                output.warn(`Similar task exists: #${task.taskId} "${task.title}" (${task.status}). Use --force to create anyway.`);
+                process.exit(1);
+              }
+            }
+          }
+        } catch {
+          // If duplicate check fails, proceed anyway
+        }
+      }
 
       // Build metadata JSON (key order must match frontend exactly)
       const metadata = {

@@ -40,6 +40,8 @@ export const FETCH_VOTING_DATA = `
           winningOption
           isValid
           wasExecuted
+          executionFailed
+          executionError
           isHatRestricted
           restrictedHatIds
           votes {
@@ -72,6 +74,8 @@ export const FETCH_VOTING_DATA = `
           status
           winningOption
           isValid
+          executionFailed
+          executionError
           isHatRestricted
           restrictedHatIds
           votes {
