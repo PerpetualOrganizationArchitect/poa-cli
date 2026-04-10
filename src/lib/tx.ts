@@ -1,10 +1,13 @@
 /**
  * Transaction Execution
  * Send transactions, wait for confirmation, support dry-run mode.
+ * Automatically routes through EIP-7702 gas sponsorship when available.
  */
 
 import { ethers } from 'ethers';
 import { getNetworkByChainId } from '../config/networks';
+import { isDelegated, sendSponsored } from './sponsored';
+import type { Hex, Address } from 'viem';
 
 export type ErrorCode =
   | 'TX_REVERTED'
@@ -23,12 +26,41 @@ export interface TxResult {
   logs?: ethers.utils.LogDescription[];
   error?: string;
   errorCode?: ErrorCode;
+  sponsored?: boolean;
+}
+
+export interface SponsoredConfig {
+  privateKey: Hex;
+  orgId: Hex;
+  hatId: bigint;
 }
 
 export interface TxOptions {
   dryRun?: boolean;
   gasLimit?: number;
   value?: ethers.BigNumber;
+  sponsored?: SponsoredConfig;
+}
+
+/**
+ * Resolve sponsored config from environment variables.
+ * Returns undefined if required env vars are missing.
+ */
+export function resolveSponsoredConfig(): SponsoredConfig | undefined {
+  const privateKey = process.env.POP_PRIVATE_KEY;
+  const orgId = process.env.POP_ORG_ID;
+  const hatId = process.env.POP_HAT_ID;
+  const pimlicoKey = process.env.PIMLICO_API_KEY;
+
+  if (!privateKey || !orgId || !hatId || !pimlicoKey) {
+    return undefined;
+  }
+
+  return {
+    privateKey: (privateKey.startsWith('0x') ? privateKey : `0x${privateKey}`) as Hex,
+    orgId: orgId as Hex,
+    hatId: BigInt(hatId),
+  };
 }
 
 function buildExplorerUrl(txHash: string, chainId: number): string | undefined {
@@ -78,8 +110,66 @@ function classifyError(error: any): { message: string; code: ErrorCode } {
 }
 
 /**
+ * Try to send a transaction via EIP-7702 gas sponsorship.
+ * Returns null if sponsorship is not available or fails (caller should fall back to direct tx).
+ */
+async function trySponsoredTx(
+  contract: ethers.Contract,
+  method: string,
+  args: any[],
+  config: SponsoredConfig,
+  options: TxOptions
+): Promise<TxResult | null> {
+  try {
+    const signerAddress = await contract.signer.getAddress();
+
+    // Check if EOA is delegated
+    const delegated = await isDelegated(signerAddress as Address);
+    if (!delegated) {
+      return null;
+    }
+
+    // Encode the calldata
+    const calldata = contract.interface.encodeFunctionData(method, args) as Hex;
+    const to = contract.address as Address;
+
+    const result = await sendSponsored(
+      config.privateKey,
+      to,
+      calldata,
+      config.orgId,
+      config.hatId,
+      {
+        value: options.value ? BigInt(options.value.toString()) : undefined,
+      }
+    );
+
+    const chainId = await contract.provider.getNetwork().then(n => n.chainId);
+
+    // Fetch the receipt to get logs and gas used
+    const receipt = await contract.provider.getTransactionReceipt(result.txHash);
+
+    return {
+      success: true,
+      txHash: result.txHash,
+      blockNumber: receipt?.blockNumber,
+      gasUsed: receipt?.gasUsed?.toString(),
+      explorerUrl: buildExplorerUrl(result.txHash, chainId),
+      logs: receipt ? parseEventLogs(receipt, contract.interface) : [],
+      sponsored: true,
+    };
+  } catch {
+    // Sponsorship failed — fall back to direct tx
+    return null;
+  }
+}
+
+/**
  * Execute a contract method.
  * In dry-run mode: estimates gas and encodes calldata without sending.
+ * When sponsored config is provided and the EOA is delegated, routes through
+ * the PaymasterHub for gas sponsorship. Falls back to direct EOA tx if
+ * sponsorship is unavailable or fails.
  * Returns parsed event logs so callers can extract entity IDs.
  */
 export async function executeTx(
@@ -89,7 +179,7 @@ export async function executeTx(
   options: TxOptions = {}
 ): Promise<TxResult> {
   try {
-    // Estimate gas first
+    // Estimate gas first (also validates the tx would succeed)
     const gasEstimate = await contract.estimateGas[method](...args, {
       value: options.value,
     });
@@ -103,7 +193,17 @@ export async function executeTx(
       };
     }
 
-    // Send transaction
+    // Try sponsored tx: use explicit config or auto-resolve from env
+    const sponsoredConfig = options.sponsored || resolveSponsoredConfig();
+    if (sponsoredConfig) {
+      const sponsoredResult = await trySponsoredTx(contract, method, args, sponsoredConfig, options);
+      if (sponsoredResult) {
+        return sponsoredResult;
+      }
+      // Fall through to direct tx
+    }
+
+    // Send transaction (direct EOA)
     const tx = await contract[method](...args, {
       gasLimit: options.gasLimit || gasEstimate.mul(120).div(100),
       value: options.value,

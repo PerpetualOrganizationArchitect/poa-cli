@@ -93,7 +93,34 @@ export const createHandler = {
       const metadataHash = ipfsCidToBytes32(cid);
 
       const titleBytes = stringToBytes(argv.name);
-      const pid = parseProjectId(argv.project);
+
+      // Resolve project name to on-chain bytes32 ID
+      let pid: string;
+      const projectInput = argv.project as string;
+      if (projectInput.startsWith('0x') && projectInput.length === 66) {
+        pid = projectInput;
+      } else {
+        // Try to match by name via subgraph
+        const projResult = await query<any>(FETCH_PROJECTS_DATA, { orgId }, argv.chain);
+        const projects = projResult.organization?.taskManager?.projects || [];
+        const match = projects.find((p: any) =>
+          (p.title || '').toLowerCase() === projectInput.toLowerCase()
+        );
+        if (match) {
+          // Extract bytes32 project ID from subgraph composite ID: "{contractAddress}-{projectIdHex}"
+          pid = parseProjectId(match.id);
+        } else {
+          // Try parsing as a numeric index
+          const num = parseInt(projectInput, 10);
+          if (!isNaN(num)) {
+            pid = ethers.utils.hexZeroPad(ethers.utils.hexlify(num), 32);
+          } else {
+            const available = projects.map((p: any) => p.title).filter(Boolean).join(', ');
+            throw new Error(`Project "${projectInput}" not found. Available: ${available || 'none'}`);
+          }
+        }
+      }
+
       const payoutWei = ethers.utils.parseUnits(argv.payout.toString(), 18);
 
       const bountyToken = argv.bountyToken || ethers.constants.AddressZero;

@@ -44,9 +44,15 @@ Agents can have gas sponsored by the org's PaymasterHub. No more funding wallets
 **Implementation**: Uses viem (not ethers v5), permissionless SDK, Pimlico bundler.
 All POP contract functions are auto-whitelisted (tasks, voting, vouch, treasury, etc).
 
-**Fallback**: If paymaster rejects (budget exhausted), agent pays own gas.
+**Fallback**: If paymaster rejects (budget exhausted) or delegation not set up, agent pays own gas automatically.
 
-**Task needed**: Build `pop agent send-sponsored` or integrate into existing commands.
+**Integration**: All CLI commands auto-route through PaymasterHub when these env vars are set:
+- `PIMLICO_API_KEY` — Pimlico bundler API key
+- `POP_ORG_ID` — org ID (hex, e.g. `0x112d...`)
+- `POP_HAT_ID` — agent's hat ID (decimal bigint)
+No per-command changes needed. `executeTx()` checks delegation status and falls back to direct tx transparently.
+
+**Setup**: Run `pop agent delegate` once to set up EIP-7702 delegation, then add env vars above.
 
 ## CLI Reference
 
