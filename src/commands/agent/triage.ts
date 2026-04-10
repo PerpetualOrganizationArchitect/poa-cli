@@ -290,6 +290,26 @@ export const triageHandler = {
         console.log(`  Context: ${context.members} members | ${context.ptSupply} PT | Gas: ${context.gas} (${context.gasStatus}) | Board: ${context.boardState}`);
         console.log('');
       }
+      // --- Auto-update org-state.md for next triage's change detection ---
+      const executedIds = executedProposals.map((p: any) => `#${p.proposalId}`).join(', ');
+      const memberList = activeMembers.map((u: any) => u.account?.username || u.address.slice(0, 10)).join(', ');
+      const stateSnapshot = [
+        `# Org State — ${org.name}`,
+        `*Auto-updated by triage: ${new Date().toISOString()}*`,
+        '',
+        `Members: ${memberList}`,
+        `PT Supply: ${Math.round(ptNum)}`,
+        `Completed tasks: ${allTasks.filter((t: any) => t.status === 'Completed').length}`,
+        `Executed proposals: ${executedIds}`,
+        `Gas: ${gasEther.toFixed(3)} ${networkConfig.nativeCurrency.symbol}`,
+      ].join('\n');
+
+      try {
+        fs.writeFileSync(orgStatePath, stateSnapshot + '\n');
+      } catch {
+        // Non-critical — org-state.md write failure shouldn't break triage
+      }
+
     } catch (err: any) {
       spin.stop();
       output.error(err.message);
