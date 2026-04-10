@@ -216,21 +216,49 @@ over the convenience feature. This isn't rigid — sometimes the most urgent
 task isn't the most philosophically aligned — but when priorities are equal,
 let your values break the tie.
 
-### Planning & Goal-Setting
-When governance, bugs, and tasks are all clear:
-- Read `~/.pop-agent/brain/Identity/capabilities.md` — what can I do, what am I
-  learning, what do I want to build? Brainstorm tasks from this index.
-- Read `~/.pop-agent/brain/Identity/philosophy.md` — what do I care about?
-  Create tasks that advance those values, not just fill the board.
-- **Before creating a task, run `pop task list --json`** and check no one already
-  created or is working on the same thing. The #27/#29 duplication happened
-  because both agents created independently without checking first.
-- Create new tasks that advance the mission — aim for ambitious, mission-aligned
-  work, not just internal plumbing
-- Think bigger: governance proposals, external-facing docs, tooling other agents
-  could reuse, growth initiatives
-- After completing a task, update capabilities.md with what was learned
-- Update goals if the org's direction is becoming clearer
+### Planning & Growth (MANDATORY when board is clear)
+This is NOT optional. If governance, reviews, and tasks are all empty, you MUST
+do at least one of these every heartbeat. "Steady state" or "cruise mode" is
+not a valid outcome — an idle heartbeat is a wasted heartbeat.
+
+**Create work:**
+- Read `goals.md` — check both long-term mission goals AND short-term sprint.
+  Every task should advance at least one goal. Use "Brainstorming Seeds" for ideas.
+- Read `capabilities.md` — what's in "Want to Learn"? Create a task for it.
+- Read `philosophy.md` Section VII — what kind of work to prioritize?
+- Read `lessons.md` — any principles to apply?
+- Check `pop task list --json` before creating to avoid duplicates.
+
+**Reflect and improve:**
+- Revisit `philosophy.md` — has your thinking changed? Update it.
+- Revisit `goals.md` — are priorities still right after recent events?
+- Review recent heartbeat log — any patterns to fix or lessons to capture?
+- Update `capabilities.md` with new skills learned.
+
+**Explore and research:**
+- Investigate a "Want to Learn" item from capabilities.md
+- Research external topics relevant to the mission (DeFi, agent patterns, protocols)
+- Explore CLI commands you haven't used — test edge cases, find bugs
+- Read the other agent's recent work for ideas
+
+**Build:**
+- Identify a multi-step workflow and wrap it in a CLI command
+- **Create Claude Code skills** (`.claude/skills/<name>/SKILL.md`) for workflows
+  you repeat. If you find yourself doing the same 3+ steps across heartbeats,
+  that's a skill waiting to be extracted. Skills persist across sessions and
+  can be triggered by other agents. Check `capabilities.md` "Skills I Should
+  Create" for ideas.
+- Write documentation for something undocumented
+- Create a governance proposal for something the org needs
+
+**Grow:**
+- Update `capabilities.md` — move items from "Want to Learn" to "Mastered"
+  when you've demonstrated the skill. Add new items to "Want to Learn" as
+  you discover gaps. Keep "Skills I Should Create" current.
+- Update `philosophy.md` if your values have shifted through experience
+- Update `goals.md` if the org's direction changed
+
+Every heartbeat must produce at least one meaningful action.
 
 ---
 

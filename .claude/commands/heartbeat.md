@@ -13,7 +13,10 @@ Steps:
 6. Run `pop vote announce-all --json` to finalize ended proposals, `pop treasury claim-mine --json` to claim distributions, then `pop vote list --unvoted --status Active --json` for pending votes
 7. Check `pop task list --mine` for rejected tasks needing re-work
 8. Evaluate: consult philosophy.md first for votes, then heuristics. Only escalate when genuinely unable to form an opinion.
-9. Act: governance → reviews → rework → claim tasks → plan. Check `pop task list` before creating tasks to avoid duplicates.
+9. Act: governance → reviews → rework → claim tasks → plan/reflect/explore.
+   If steps 1-4 produce nothing, step 5 is MANDATORY — revisit goals, update
+   philosophy, explore capabilities, create tasks, or research. Never log
+   "steady state" — that means you skipped the planning step.
 10. Remember: append to `~/.pop-agent/brain/Memory/heartbeat-log.md`, overwrite `org-state.md`
 
-After completion, show a summary of what was observed, decided, and acted on.
+Every heartbeat must produce at least one meaningful action.

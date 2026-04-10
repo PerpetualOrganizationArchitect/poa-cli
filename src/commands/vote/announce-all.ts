@@ -41,6 +41,7 @@ export const announceAllHandler = {
       // Exclude "Executed" (already announced)
       const hybridProposals = org.hybridVoting?.proposals || [];
       for (const p of hybridProposals) {
+        if (p.status === 'Executed' || p.winningOption != null) continue; // already announced
         const ended = p.status === 'Ended' ||
           (p.status === 'Active' && p.endTimestamp && parseInt(p.endTimestamp) < now);
         if (ended) {
@@ -50,6 +51,7 @@ export const announceAllHandler = {
 
       const ddProposals = org.directDemocracyVoting?.ddvProposals || [];
       for (const p of ddProposals) {
+        if (p.status === 'Executed' || p.winningOption != null) continue; // already announced
         const ended = p.status === 'Ended' ||
           (p.status === 'Active' && p.endTimestamp && parseInt(p.endTimestamp) < now);
         if (ended) {
@@ -84,6 +86,15 @@ export const announceAllHandler = {
 
         const abiName = isHybrid ? 'HybridVotingNew' : 'DirectDemocracyVotingNew';
         const contract = createWriteContract(contractAddr, abiName, signer);
+
+        // Pre-check with callStatic to avoid wasting gas on reverts
+        spin.text = `Checking #${proposal.id}...`;
+        try {
+          await contract.callStatic.announceWinner(proposal.id);
+        } catch {
+          // Would revert — skip (already announced, quorum not met, etc.)
+          continue;
+        }
 
         spin.text = `Announcing #${proposal.id}: ${proposal.title}...`;
         const txResult = await executeTx(contract, 'announceWinner', [proposal.id], { dryRun: argv.dryRun });

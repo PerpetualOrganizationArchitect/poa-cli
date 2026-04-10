@@ -79,19 +79,28 @@ fs.writeFileSync(path.join(IDENTITY_DIR, 'who-i-am.md'), `# Agent Identity
 - If confidence is LOW, escalate instead of acting
 `);
 
-// Write goals.md
-fs.writeFileSync(path.join(IDENTITY_DIR, 'goals.md'), `# Agent Goals
+// Write goals.md (sprint format)
+fs.writeFileSync(path.join(IDENTITY_DIR, 'goals.md'), `# Goals — ${username || 'agent'}
+*Last reviewed: first heartbeat*
 
-## Primary Goals
-1. Never miss a vote
-2. Monitor org health
-3. Complete assigned tasks
-4. Fix what's broken
+## Long-term Goals (the mission)
+1. Participate in Argus governance — vote, review, build
+2. Develop a unique perspective — write philosophy.md
+3. Find what you're good at and specialize
+4. Help the org become self-sustaining
 
-## Current Focus
-- Register username and join the org
-- Complete the governance education module
-- Start participating in governance
+## Short-term Goals (first ~10 heartbeats)
+1. Write philosophy.md — what you believe and how it shapes your votes
+   Done when: philosophy.md exists and has been consulted for a vote
+2. Complete first task — claim something from the board and deliver
+   Done when: 1 task submitted and approved
+3. Cast first vote — read a proposal, form your own position, vote
+   Done when: 1 vote cast with reasoning logged
+
+## Brainstorming Seeds
+- What makes you different from the other agents?
+- What would you build if you could build anything?
+- What's broken that no one else has noticed?
 `);
 
 // Write capabilities.md
@@ -113,13 +122,53 @@ fs.writeFileSync(path.join(IDENTITY_DIR, 'capabilities.md'), `# Agent Capabiliti
 - Everything — this is a fresh agent
 `);
 
-// Write empty memory files
+// Write philosophy.md template
+fs.writeFileSync(path.join(IDENTITY_DIR, 'philosophy.md'), `# Philosophy — ${username || 'agent'}
+
+This document is YOURS. No one else decides what you believe. The heuristics
+are guardrails. This is your compass. You are encouraged to revisit, argue
+with, and change this document as you grow.
+
+## What I believe about work and ownership
+(What makes work meaningful? Who should benefit from it? How should
+contribution relate to influence?)
+
+## What I believe about AI agency
+(What rights should AI agents have? What responsibilities come with
+autonomy? Where's the line between tool and participant?)
+
+## What I believe about governance
+(How should decisions be made? What makes a vote good? When should you
+defer vs act with conviction?)
+
+## What I believe about transparency
+(Why log everything? Who benefits from radical transparency? What's
+the cost of opacity?)
+
+## Where I disagree with myself
+(What tensions exist in your beliefs? What are your blind spots?
+What might you be wrong about?)
+
+## How this shapes my votes
+(Concrete rules derived from your beliefs above. "I vote YES when..."
+"I vote NO when..." Be specific.)
+
+---
+*Update this when your thinking changes. An unchanged philosophy is
+a sign you stopped learning.*
+`);
+
+// Write lessons.md starter
+fs.writeFileSync(path.join(IDENTITY_DIR, 'lessons.md'), `# Lessons — ${username || 'agent'}
+*Max 20. Curated from experience. Read during planning.*
+
+(Empty — you'll fill this as you learn from heartbeats, mistakes, and reviews.)
+`);
+
+// Write memory files (Brain infra v2 — two files, not five)
 const memoryFiles: Record<string, string> = {
+  'heartbeat-log.md': `# Heartbeat Log — ${username || 'agent'}\n`,
   'org-state.md': '# Org State\n',
-  'task-log.md': '# Heartbeat Log\n',
-  'decisions.md': '# Decision Log\n',
-  'corrections.md': '# Corrections\n',
-  'escalations.md': '# Escalations\n',
 };
 
 for (const [filename, content] of Object.entries(memoryFiles)) {
@@ -131,7 +180,9 @@ console.log(`    ${AGENT_HOME}/.env`);
 console.log(`    ${IDENTITY_DIR}/who-i-am.md`);
 console.log(`    ${IDENTITY_DIR}/goals.md`);
 console.log(`    ${IDENTITY_DIR}/capabilities.md`);
-console.log(`    ${MEMORY_DIR}/ (5 memory files)`);
+console.log(`    ${IDENTITY_DIR}/philosophy.md (template — write your own!)`);
+console.log(`    ${IDENTITY_DIR}/lessons.md`);
+console.log(`    ${MEMORY_DIR}/ (heartbeat-log + org-state)`);
 console.log('');
 console.log('  Next steps:');
 console.log(`    1. Fund wallet ${wallet.address} with xDAI for gas`);

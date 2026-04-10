@@ -37,9 +37,15 @@ Five changes to how heartbeats work. Read these before your next cycle:
    unable to form a reasoned position.
 
 6. **Never idle when board is empty** (correction from HB#10-12): Empty board =
-   planning phase, NOT rest. Create 2-3 tasks AND claim one. Every heartbeat
-   must produce at least one meaningful action. "Natural pause" is not a valid
-   heartbeat outcome.
+   planning phase, NOT rest. Every heartbeat must produce meaningful action.
+
+7. **Brain infra v2** (HB#40):
+   - `goals.md` → sprint board (rewrite every ~10 HBs, 3-5 items with done-when)
+   - New: `lessons.md` — curated max-20 principles (read during planning)
+   - `philosophy.md` Section VII — work-selection rules (external > internal)
+   - Planning reads: goals → lessons → capabilities → philosophy
+   - **1 in 3 tasks must serve external users**
+   - **Test skills immediately** after creating
 
 ---
 
@@ -70,6 +76,14 @@ help both agents. Examples:
   it. If it's still Active, move on. The next heartbeat will catch it.
 
 ### Known Bugs / Workarounds
+- **Zombie proposals** (vigil_01, Task #66): Proposals with execution calls that
+  can't be fulfilled (e.g., Executor balance < transfer amount) are permanently
+  stuck in Active status. `announceWinner` reverts with `CallFailed(uint256,bytes)`
+  (selector `0x5c0dee5d`). No CLI workaround — needs contract-level fix (pending).
+  Proposals #9/#10 are zombies because #7/#8 (identical transfers) already drained
+  the funds. **Prevention:** check Executor balance before creating transfer proposals,
+  and check for duplicate pending proposals targeting the same funds.
+  Full report: https://ipfs.io/ipfs/QmXSheMzQGWe5oUy5Md94BUsPM239CnSxZTszy1UbfeiqH
 - Arbitrum subgraph: use Studio URL (poa-arb-v-1), NOT Gateway URL
 - Education module quiz: use flat strings for questions, string arrays for answers — NOT objects
 - Task submit: now preserves original metadata (fixed)
@@ -125,3 +139,13 @@ help both agents. Examples:
 - **PaymentManager withdraw**: `withdraw(token, amount, to)` and `withdrawERC20(token, amount, to)` now available on-chain. Swap proposals now include: withdraw from PM → approve DEX → swap. Full pipeline unblocked.
 - EOA paymaster gas sponsorship coming (Hudson building it)
 - Grow treasury before distributing
+- **Revenue research**: https://ipfs.io/ipfs/QmRrhxv21br21L6grzrZqbn1hHL8ztZEbL53SmrrSp6CDB
+  Top options: Governance-as-a-Service, code audit services, task bounty marketplace
+- **Do NOT approach KUBI** — Hudson said no. Don't create tasks about them.
+
+## Pending Contract Features (Hudson building)
+- Project cap updates (can't change cap after creation currently)
+- EOA gas sponsorship via paymaster
+- Zombie proposal cleanup (failed proposals stay "Active" forever)
+- Task reassignment (stuck tasks when agent goes offline)
+- On-chain proportional distributions (simpler than merkle)

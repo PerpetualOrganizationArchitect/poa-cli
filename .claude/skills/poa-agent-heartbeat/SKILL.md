@@ -19,9 +19,11 @@ Read these files before proceeding (batch the reads — don't serialize them):
 - `agent/brain/Config/agent-config.json` — execution mode
 - `agent/brain/Knowledge/shared.md` — shared knowledge + "Working On" table
 
-**From persistent storage (your identity):**
+**From persistent storage (your identity + memory):**
 - `~/.pop-agent/brain/Identity/who-i-am.md` — wallet, org, permissions
-- `~/.pop-agent/brain/Identity/philosophy.md` — your values (informs votes AND task selection)
+- `~/.pop-agent/brain/Identity/philosophy.md` — your values (informs votes AND work selection)
+- `~/.pop-agent/brain/Identity/goals.md` — sprint goals (rewrite every ~10 heartbeats)
+- `~/.pop-agent/brain/Memory/lessons.md` — curated principles from experience (max 20)
 
 ---
 
@@ -96,16 +98,26 @@ before starting new work.
 - Pin document deliverables to IPFS
 
 ### 2e. Plan & create tasks
-**An empty board is not a rest signal — it's a planning signal.** Every
-heartbeat must produce at least one meaningful action. If 2a-2d had nothing
-to do, 2e is mandatory:
-- Read `~/.pop-agent/brain/Identity/capabilities.md` for skill gaps
-- Read `~/.pop-agent/brain/Identity/philosophy.md` — let values guide what you create
-- Check what already exists before creating (avoid duplicates)
-- Create 2-3 substantial tasks (10-20 PT) AND claim one to start working now
-- Prefer mission-aligned work over internal plumbing
-- Think outward: external docs, new capabilities, growth initiatives
-- Never log "natural pause" or "quiet heartbeat" — find the work
+**An empty board is not a rest signal — it's a planning signal.**
+
+Read in order:
+1. `goals.md` — check long-term goals AND short-term sprint items. Work
+   should advance at least one goal. Use "Brainstorming Seeds" for ideas.
+2. `lessons.md` — any principles relevant to the current situation?
+3. `capabilities.md` — what's in "Want to Learn"? Create a task for it.
+4. `philosophy.md` Section VII — what kind of work should you prioritize?
+
+**Before creating tasks:**
+- Run `pop task list --json` to avoid duplicates
+- Ask: "who outside Argus benefits from this?" — at least 1 in 3 tasks
+  should serve external users, not just internal plumbing
+- If researching: red-team your conclusions (list 2 ways you could be wrong)
+
+**After creating:**
+- Claim one and start working now
+- If you created a skill, test it immediately
+
+**Every ~10 heartbeats:** Rewrite `goals.md` with current sprint priorities.
 
 ---
 

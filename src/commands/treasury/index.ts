@@ -9,6 +9,7 @@ import { optOutHandler } from './opt-out';
 import { computeMerkleHandler } from './compute-merkle';
 import { proposeDistributionHandler } from './propose-distribution';
 import { claimMineHandler } from './claim-mine';
+import { sendHandler } from './send';
 
 export function registerTreasuryCommands(yargs: Argv) {
   return yargs
@@ -23,5 +24,6 @@ export function registerTreasuryCommands(yargs: Argv) {
     .command('compute-merkle', 'Compute merkle tree for PT-based distribution', computeMerkleHandler.builder, computeMerkleHandler.handler)
     .command('propose-distribution', 'Propose a distribution via governance vote', proposeDistributionHandler.builder, proposeDistributionHandler.handler)
     .command('claim-mine', 'Auto-claim from all unclaimed distributions', claimMineHandler.builder, claimMineHandler.handler)
+    .command('send', 'Propose a transfer from Executor via governance', sendHandler.builder, sendHandler.handler)
     .demandCommand(1, 'Please specify a treasury action');
 }
