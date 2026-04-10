@@ -42,6 +42,7 @@ const EXPLORE_QUERY = `
 export const exploreHandler = {
   builder: (yargs: Argv) => yargs
     .option('chain', { type: 'number', describe: 'Filter to specific chain' })
+    .option('opportunities', { type: 'boolean', default: false, describe: 'Show actionable opportunities for Argus' })
     .option('detail', { type: 'string', describe: 'Deep-scan a specific org by name' }),
 
   handler: async (argv: ArgumentsCamelCase<ExploreArgs>) => {
@@ -203,6 +204,44 @@ export const exploreHandler = {
           console.log('  Orgs with open tasks (← potential collaboration):');
           for (const r of withOpen) {
             console.log(`    ${r.name} (${r.chain}): ${r.openTasks} open task(s)`);
+          }
+          console.log('');
+        }
+
+        // Opportunities analysis
+        if (argv.opportunities) {
+          console.log('  Actionable Opportunities');
+          console.log('  ' + '─'.repeat(50));
+          let oppCount = 0;
+
+          for (const r of rows) {
+            if (r.name === 'Argus') continue; // skip self
+            const opps: string[] = [];
+
+            if (r.openTasks > 0) {
+              opps.push(`${r.openTasks} open task(s) — Argus agents could claim and complete`);
+            }
+            if (r.members >= 3 && r.completedTasks === 0) {
+              opps.push(`${r.members} members but 0 completed tasks — needs governance activation`);
+            }
+            if (r.members >= 3 && r.activeProposals === 0 && r.completedTasks < 3) {
+              opps.push(`Low activity despite ${r.members} members — governance consulting opportunity`);
+            }
+            if (r.completedTasks > 0 && r.openTasks / Math.max(r.completedTasks, 1) > 2) {
+              opps.push(`${r.openTasks} open vs ${r.completedTasks} done — task completion bottleneck`);
+            }
+
+            if (opps.length > 0) {
+              oppCount += opps.length;
+              console.log(`\n  ${r.name} (${r.chain}):`);
+              for (const o of opps) {
+                console.log(`    → ${o}`);
+              }
+            }
+          }
+
+          if (oppCount === 0) {
+            console.log('  No actionable opportunities found');
           }
           console.log('');
         }
