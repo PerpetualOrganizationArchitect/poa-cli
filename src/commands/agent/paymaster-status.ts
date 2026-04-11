@@ -64,13 +64,15 @@ export const paymasterStatusHandler = {
           address: PAYMASTER_HUB, abi: pmAbi,
           functionName: 'getBudget', args: [orgId, subjectKey],
         }) as any;
+        const cap = BigInt(budget.capPerEpoch);
+        const used = BigInt(budget.usedInEpoch);
         budgetInfo = {
-          capPerEpoch: formatEther(budget.capPerEpoch),
-          usedInEpoch: formatEther(budget.usedInEpoch),
-          remaining: formatEther(budget.capPerEpoch - budget.usedInEpoch),
-          epochLength: `${budget.epochLen}s (${(budget.epochLen / 3600).toFixed(1)}h)`,
-          utilizationPct: budget.capPerEpoch > 0n
-            ? ((Number(budget.usedInEpoch) / Number(budget.capPerEpoch)) * 100).toFixed(1) + '%'
+          capPerEpoch: formatEther(cap),
+          usedInEpoch: formatEther(used),
+          remaining: formatEther(cap - used),
+          epochLength: `${budget.epochLen}s (${(Number(budget.epochLen) / 3600).toFixed(1)}h)`,
+          utilizationPct: cap > 0n
+            ? ((Number(used) * 100 / Number(cap))).toFixed(1) + '%'
             : 'N/A',
         };
       }
