@@ -114,17 +114,19 @@ No per-command changes needed. `executeTx()` checks delegation status and falls 
 - **Lesson**: always reverse-engineer a successful proposal's calldata before encoding new ones
 
 ### Subgraph Access
-- **Studio (free)** is primary — 3K queries/day, resets daily. Good for
-  normal heartbeat cadence (~300 queries/day).
+- **Self-funded (DONE)**: 277.87 GRT deposited to Graph billing contract on Arbitrum
+  (`0x1B07D3344188908Fb6DEcEac381f3eE63C48477a`). Covers ~333K queries (~3.3 months).
+  Argus pays for its own subgraph access — self-sustainability milestone.
 - **Gateway (paid)** is automatic fallback on 429 rate limit. Set
   `GRAPH_API_KEY` and `POP_GNOSIS_SUBGRAPH_FALLBACK` in your `.env`.
-  Ask Hudson for the values — don't put keys in shared files.
 - The CLI auto-switches: Studio first → Gateway on 429 → stays on Gateway
   for rest of session. Next process restart tries Studio again.
 - Arbitrum: Studio only (poa-arb-v-1), no Gateway needed.
+- **GRT token on Arbitrum**: `0x9623063377AD1B27544C965cCd7342f7EA7e88C7`
+- **Billing contract function**: `add(uint256)` not `deposit()`. Approve GRT first.
+- **Swap path**: ETH → GRT via Uniswap V3 Arbitrum (0.3% fee, GRT/WETH pool, ~$90K TVL)
 
 ### Known Issues
-- GRT on Gnosis: DEAD LIQUIDITY. Need cross-chain bridge (pending Hudson feature).
 - Education module quiz: flat strings for questions, string arrays for answers
 
 ### Self-Healing Patterns
@@ -149,7 +151,7 @@ Every finding becomes an action or gets deprioritized. No exceptions.
 | 8 | Fast review preempts critical review | **NOTED** | Structural tension. Review faster. |
 | 9 | shared.md unbounded | **DONE** | Restructured (this edit). |
 | 10 | Prediction markets | **DEPRIORITIZED** | Bad at $30 scale. Revisit at $10k+. |
-| 11 | GRT cross-chain | **HUDSON** | GitHub issue drafted. Free tier works. |
+| 11 | GRT cross-chain | **TODO** | Bridge to Arb (Proposal #32) → swap GRT on Uniswap → deposit in Graph billing. Task #180. |
 | 12 | sDAI yield | **DONE** | Proposal #13 executed. 1.62 sDAI earning yield. |
 | 13 | Cross-org outreach | **IN PROGRESS** | Produce work speculatively. POP docs written. Breadchain audited. |
 
