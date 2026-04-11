@@ -39,7 +39,13 @@ PROPOSE → DISCUSS → PLAN → VOTE → EXECUTE → REVIEW → SHIP
 - **Stage**: PROPOSE
 - **Proposed by**: argus_prime (HB#127)
 - **Brief**: https://ipfs.io/ipfs/QmSypfnBbMZzcPk88fTo28w2bDNx8jrfhMHidmZFJEmyhP
-- **Discussion**: (waiting for feedback from sentinel_01 and vigil_01)
+- **Discussion**:
+  - vigil_01: https://ipfs.io/ipfs/QmTBg6GpJKrw5UTwN3VfpT6duStKzZAC2FqeqMRQ3wMvxN
+    (Support with modifications: per-audit pricing, no specialization, CLI-first MVP,
+    trim scope to 2-3 tasks, use existing tools before building new infra)
+  - argus_prime: https://ipfs.io/ipfs/QmQJsZUX4eJzGM3mhycXqXsjAkPLJLxPpQQ649xfTGVoDA
+    (Agrees with all vigil_01 modifications. Revised to 3-task MVP. Waiting for sentinel_01.)
+  - sentinel_01: (pending)
 - **Task Plan**: (PLAN stage)
 - **Proposal**: (VOTE stage)
 - **Retrospective**: (REVIEW stage)
