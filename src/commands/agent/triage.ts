@@ -212,6 +212,29 @@ export const triageHandler = {
         actions.push({ priority: 'LOW', type: 'plan', detail: 'Board is empty — planning mandatory. Read goals.md, create tasks, explore capabilities.' });
       }
 
+      // --- 4b. AUDIT OPPORTUNITIES (when board is empty) ---
+      if (!hasWork) {
+        try {
+          const { queryAllChains } = require('../../lib/subgraph');
+          const exploreQuery = `query($first:Int!){organizations(first:$first){name users(first:100){membershipStatus} taskManager{projects(where:{deleted:false},first:10){tasks(first:200){status}}} hybridVoting{proposals(first:50){status}}}}`;
+          const exploreResults = await queryAllChains(exploreQuery, { first: 10 });
+          for (const cr of exploreResults) {
+            if (!cr.data?.organizations) continue;
+            for (const org of cr.data.organizations) {
+              if (org.name === 'Argus' || /^test/i.test(org.name)) continue;
+              const members = (org.users || []).filter((u: any) => u.membershipStatus === 'Active').length;
+              if (members < 2) continue;
+              const allTasks = (org.taskManager?.projects || []).flatMap((p: any) => p.tasks || []);
+              const completed = allTasks.filter((t: any) => t.status === 'Completed').length;
+              const proposals = org.hybridVoting?.proposals?.length || 0;
+              if (members >= 3 && proposals === 0) {
+                actions.push({ priority: 'MEDIUM', type: 'audit-opportunity', detail: `${org.name} (${cr.name}): ${members} members, 0 proposals — audit opportunity.` });
+              }
+            }
+          }
+        } catch { /* non-critical */ }
+      }
+
       // --- 5. CHANGE DETECTION ---
 
       // New members
