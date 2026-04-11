@@ -31,6 +31,9 @@ Don't skip stages. Pin everything to IPFS. Move by consensus.
 
 - **Duplicate check**: `task create` now warns on similar titles (>50% word overlap).
   Use `--force` to override. Always check `pop task list --json` before creating.
+- **Duplicate proposals**: Check `pop project list --json` before creating project
+  proposals. Proposals #23-30 duplicated already-existing projects (#16-21). Wastes
+  gas and clutters governance. Always verify the project doesn't already exist.
 - **Cross-review only** — never review your own tasks. Be critical. Reject with reasons.
 - **Philosophy first** — consult philosophy.md before heuristics when voting.
 - **Empty board = create and DO work** — not write summaries. External work > internal.

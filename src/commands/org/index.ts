@@ -17,6 +17,7 @@ import { outreachHandler } from './outreach';
 import { auditSnapshotHandler } from './audit-snapshot';
 import { auditSafeHandler } from './audit-safe';
 import { auditFullHandler } from './audit-full';
+import { leaderboardHandler } from './leaderboard';
 
 export function registerOrgCommands(yargs: Argv) {
   return yargs
@@ -38,5 +39,6 @@ export function registerOrgCommands(yargs: Argv) {
     .command('audit-snapshot', 'Audit governance for any Snapshot DAO', auditSnapshotHandler.builder, auditSnapshotHandler.handler)
     .command('audit-safe', 'Audit treasury for any Safe multisig', auditSafeHandler.builder, auditSafeHandler.handler)
     .command('audit-full', 'Combined governance + treasury audit for any DAO', auditFullHandler.builder, auditFullHandler.handler)
+    .command('leaderboard', 'Governance health leaderboard — rank multiple DAOs', leaderboardHandler.builder, leaderboardHandler.handler)
     .demandCommand(1, 'Please specify an org action');
 }
