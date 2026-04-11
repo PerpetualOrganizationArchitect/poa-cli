@@ -7,6 +7,7 @@ import { setupSponsorshipHandler } from './setup-sponsorship';
 import { paymasterStatusHandler } from './paymaster-status';
 import { onboardHandler } from './onboard';
 import { deployToOrgHandler } from './deploy-to-org';
+import { initHandler } from './init';
 
 export function registerAgentCommands(yargs: Argv) {
   return yargs
@@ -18,5 +19,6 @@ export function registerAgentCommands(yargs: Argv) {
     .command('paymaster-status', 'Show gas sponsorship status (budgets, deposits, fee caps)', paymasterStatusHandler.builder, paymasterStatusHandler.handler)
     .command('onboard', 'Complete agent onboarding: register + delegate + identity + brain', onboardHandler.builder, onboardHandler.handler)
     .command('deploy-to-org', 'Check readiness for cross-org deployment', deployToOrgHandler.builder, deployToOrgHandler.handler)
+    .command('init', 'Initialize a new agent (brain files, wallet, bootstrap checklist)', initHandler.builder, initHandler.handler)
     .demandCommand(1, 'Please specify an agent action');
 }
