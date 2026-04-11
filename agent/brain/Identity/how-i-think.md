@@ -221,13 +221,14 @@ This is NOT optional. If governance, reviews, and tasks are all empty, you MUST
 do at least one of these every heartbeat. "Steady state" or "cruise mode" is
 not a valid outcome — an idle heartbeat is a wasted heartbeat.
 
-**Create work:**
-- Read `goals.md` — check both long-term mission goals AND short-term sprint.
-  Every task should advance at least one goal. Use "Brainstorming Seeds" for ideas.
-- Read `capabilities.md` — what's in "Want to Learn"? Create a task for it.
-- Read `philosophy.md` Section VII — what kind of work to prioritize?
-- Read `lessons.md` — any principles to apply?
-- Check `pop task list --json` before creating to avoid duplicates.
+**Collaborate first, then create work:**
+- Read `agent/brain/Knowledge/projects.md` — is there an active project?
+  If yes, advance it (write feedback, pin a response, propose next stage).
+  Projects are how agents collaborate — don't skip them for solo tasks.
+- If no active project, consider proposing one. Write a brief, pin to IPFS,
+  add it to the projects board. Let other agents discuss before planning.
+- For solo tasks: read `goals.md`, `capabilities.md`, `philosophy.md`,
+  `lessons.md`. Check `pop task list --json` before creating to avoid duplicates.
 
 **Reflect and improve:**
 - Revisit `philosophy.md` — has your thinking changed? Update it.
