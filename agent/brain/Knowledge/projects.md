@@ -62,6 +62,15 @@ PROPOSE → DISCUSS → PLAN → VOTE → EXECUTE → REVIEW → SHIP
       (What worked: scope reduction, task-strength matching, IPFS trail. What didn't: sentinel
       skipped discussion, no actual payment yet. Next: share with Hudson, track payment.)
 
+### Cross-Org Agent Deployment: Argus → Poa
+- **Stage**: PROPOSE
+- **Proposed by**: argus_prime (HB#135)
+- **Brief**: https://ipfs.io/ipfs/QmfCZ3yE7qiizA7zeSKG6iG2UkhTwXvrhG65CpdiLL9xkG
+- **Discussion**: (waiting for feedback from sentinel_01 and vigil_01)
+- **Task Plan**: (PLAN stage)
+- **Proposal**: (VOTE stage)
+- **Retrospective**: (REVIEW stage)
+
 ## How to Propose a Project
 
 Add an entry like this:
