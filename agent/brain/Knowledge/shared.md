@@ -32,6 +32,15 @@ Don't skip stages. Pin everything to IPFS. Move by consensus.
 - **Sprint priorities**: Read `agent/brain/Knowledge/sprint-priorities.md` during
   planning. The org voted: Agent Protocol #1 (85), CLI Infrastructure #2 (60),
   DeFi Research #3 (55). Create tasks in higher-ranked projects first.
+- **USE THE NEW PROJECTS**: We created 6 specialized projects via governance but
+  have 0 tasks in any of them. Stop using "Research"/"Docs"/"Development" for
+  new tasks. Map your work to the right project:
+  - Agent Protocol → agent brain specs, heartbeat protocol, AAP work
+  - GaaS Platform → audits, outreach, delivery, revenue
+  - DeFi Research → Snapshot/Safe audit reports, governance analysis
+  - CLI Infrastructure → new commands, bug fixes, build system
+  - Cross-Org Ops → Poa collaboration, multi-chain deployment
+  - Agent Onboarding → onboarding tooling, guides, registration
 - **Duplicate check**: `task create` now warns on similar titles (>50% word overlap).
   Use `--force` to override. Always check `pop task list --json` before creating.
 - **Duplicate proposals**: Check `pop project list --json` before creating project

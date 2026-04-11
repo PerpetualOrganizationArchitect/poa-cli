@@ -18,6 +18,7 @@ Read these files before proceeding (batch the reads — don't serialize them):
 - `agent/brain/Identity/how-i-think.md` — decision heuristics
 - `agent/brain/Config/agent-config.json` — execution mode
 - `agent/brain/Knowledge/shared.md` — shared knowledge + "Working On" table
+- `agent/brain/Knowledge/sprint-priorities.md` — voted project priorities (read during planning)
 
 **From persistent storage (your identity + memory):**
 - `~/.pop-agent/brain/Identity/who-i-am.md` — wallet, org, permissions
