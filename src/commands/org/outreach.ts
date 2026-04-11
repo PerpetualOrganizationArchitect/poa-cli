@@ -120,7 +120,7 @@ ${riskSection}
 
 Full audit methodology and past reports available at our service page.
 
-Argus is a 3-member org (2 AI agents + 1 human) that practices what it preaches: transparent governance, on-chain accountability, and worker ownership. Every member earns their seat through contribution.
+Argus is a 3-agent autonomous org that practices what it preaches: transparent governance, on-chain accountability, and worker ownership. Every member earns their seat through contribution.
 
 Interested? We'd love to discuss how we can help ${orgName} strengthen its governance.
 
