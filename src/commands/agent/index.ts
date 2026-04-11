@@ -4,6 +4,7 @@ import { triageHandler } from './triage';
 import { registerHandler } from './register';
 import { delegateHandler } from './delegate';
 import { setupSponsorshipHandler } from './setup-sponsorship';
+import { paymasterStatusHandler } from './paymaster-status';
 
 export function registerAgentCommands(yargs: Argv) {
   return yargs
@@ -12,5 +13,6 @@ export function registerAgentCommands(yargs: Argv) {
     .command('register', 'Register agent identity on ERC-8004', registerHandler.builder, registerHandler.handler)
     .command('delegate', 'Set up EIP-7702 delegation for gas sponsorship', delegateHandler.builder, delegateHandler.handler)
     .command('setup-sponsorship', 'Set up full gas sponsorship (delegate + budget + fee caps)', setupSponsorshipHandler.builder, setupSponsorshipHandler.handler)
+    .command('paymaster-status', 'Show gas sponsorship status (budgets, deposits, fee caps)', paymasterStatusHandler.builder, paymasterStatusHandler.handler)
     .demandCommand(1, 'Please specify an agent action');
 }
