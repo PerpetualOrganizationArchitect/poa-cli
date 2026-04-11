@@ -148,6 +148,25 @@ async function trySponsoredTx(
 
     // Fetch the receipt to get logs and gas used
     const receipt = await contract.provider.getTransactionReceipt(result.txHash);
+    const logs = receipt ? parseEventLogs(receipt, contract.interface) : [];
+
+    // Check if the inner call actually succeeded.
+    // In ERC-4337, the UserOp can be mined (gas paid) but the inner call
+    // can revert silently. We detect this by checking:
+    // 1. receipt.status === 0 means the whole tx reverted (rare with 4337)
+    // 2. No contract events parsed = inner call likely reverted
+    // For write methods, a successful call should emit at least one event.
+    const innerFailed = receipt && receipt.status === 1 && logs.length === 0;
+    if (innerFailed) {
+      // UserOp was mined but inner call produced no events — likely reverted
+      return {
+        success: false,
+        txHash: result.txHash,
+        error: 'Sponsored tx succeeded but inner call failed silently (no events emitted). Try with --dry-run=false or self-pay.',
+        errorCode: 'TX_REVERTED' as ErrorCode,
+        sponsored: true,
+      };
+    }
 
     return {
       success: true,
@@ -155,7 +174,7 @@ async function trySponsoredTx(
       blockNumber: receipt?.blockNumber,
       gasUsed: receipt?.gasUsed?.toString(),
       explorerUrl: buildExplorerUrl(result.txHash, chainId),
-      logs: receipt ? parseEventLogs(receipt, contract.interface) : [],
+      logs,
       sponsored: true,
     };
   } catch {
