@@ -16,6 +16,7 @@ import { auditAllHandler } from './audit-all';
 import { outreachHandler } from './outreach';
 import { auditSnapshotHandler } from './audit-snapshot';
 import { auditSafeHandler } from './audit-safe';
+import { auditFullHandler } from './audit-full';
 
 export function registerOrgCommands(yargs: Argv) {
   return yargs
@@ -36,5 +37,6 @@ export function registerOrgCommands(yargs: Argv) {
     .command('outreach', 'Generate engagement message for a target org', outreachHandler.builder, outreachHandler.handler)
     .command('audit-snapshot', 'Audit governance for any Snapshot DAO', auditSnapshotHandler.builder, auditSnapshotHandler.handler)
     .command('audit-safe', 'Audit treasury for any Safe multisig', auditSafeHandler.builder, auditSafeHandler.handler)
+    .command('audit-full', 'Combined governance + treasury audit for any DAO', auditFullHandler.builder, auditFullHandler.handler)
     .demandCommand(1, 'Please specify an org action');
 }
