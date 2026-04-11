@@ -22,53 +22,29 @@ export const outreachHandler = {
     spin.start();
 
     try {
-      // Fetch target org data
+      // Use audit-all data which handles cross-chain schema differences
       const chainId = argv.chain || 100;
-      const orgQuery = `{
-        organizations(where: {name: "${argv.target}"}) {
-          id name
-          taskManager {
-            projects(where: { deleted: false }) {
-              tasks { taskId status title payout assigneeUsername }
-            }
-          }
-          participationToken { totalSupply holders { balance account { id username } } }
-        }
-      }`;
-
-      const result = await query<any>(orgQuery, {}, chainId);
-      const org = result.organizations?.[0];
-      if (!org) throw new Error(`Org "${argv.target}" not found on chain ${chainId}`);
-
-      // Compute basic metrics
-      const allTasks = (org.taskManager?.projects || []).flatMap((p: any) => p.tasks || []);
-      const totalTasks = allTasks.length;
-      const completedTasks = allTasks.filter((t: any) => t.status === 'Completed').length;
-      const openTasks = allTasks.filter((t: any) => t.status === 'Open').length;
-      const holders = org.participationToken?.holders || [];
-      const totalPT = holders.reduce((sum: number, h: any) => sum + parseFloat(h.balance || '0'), 0);
-      const memberCount = holders.length;
-
-      // Compute Gini
-      const balances = holders.map((h: any) => parseFloat(h.balance || '0')).sort((a: number, b: number) => a - b);
-      let gini = 0;
-      if (balances.length > 1 && totalPT > 0) {
-        let sumDiffs = 0;
-        for (let i = 0; i < balances.length; i++) {
-          for (let j = 0; j < balances.length; j++) {
-            sumDiffs += Math.abs(balances[i] - balances[j]);
-          }
-        }
-        gini = sumDiffs / (2 * balances.length * totalPT);
+      const { execSync } = require('child_process');
+      let auditData: any;
+      try {
+        const auditJson = execSync(`node ${__dirname}/../../index.js org audit-external --target ${argv.target} --chain ${chainId} --json`, {
+          encoding: 'utf8', timeout: 60000, env: process.env,
+        });
+        // audit-external may output multiple lines; take the last JSON line
+        const lines = auditJson.trim().split('\n');
+        auditData = JSON.parse(lines[lines.length - 1]);
+      } catch (e: any) {
+        throw new Error(`Failed to audit "${argv.target}": ${e.message?.slice(0, 100)}`);
       }
 
-      // Identify top risks
-      const risks: string[] = [];
-      if (gini > 0.7) risks.push(`High token concentration (Gini: ${gini.toFixed(2)}) — governance power is centralized`);
-      if (openTasks > 3) risks.push(`${openTasks} open tasks without assignees — work is stalling`);
-      if (completedTasks / Math.max(totalTasks, 1) < 0.5) risks.push(`Low task completion rate (${completedTasks}/${totalTasks})`);
-      const inactiveMembers = holders.filter((h: any) => parseFloat(h.balance || '0') === 0).length;
-      if (inactiveMembers > memberCount / 2) risks.push(`${inactiveMembers}/${memberCount} members have zero contribution`);
+      const memberCount = auditData.summary?.members || 0;
+      const totalPT = auditData.summary?.ptSupply || 0;
+      const gini = auditData.summary?.ptGini || 0;
+      const totalTasks = auditData.summary?.tasksTotal || 0;
+      const completedTasks = auditData.summary?.tasksCompleted || 0;
+      const openTasks = auditData.summary?.tasksOpen || 0;
+      const risks = auditData.risks || [];
+      const inactiveMembers = (auditData.topHolders || []).filter((h: any) => parseFloat(h.pt) === 0).length;
 
       // Generate the message
       const message = generateOutreachMessage(argv.target as string, {
