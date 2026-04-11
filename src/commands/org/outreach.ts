@@ -5,6 +5,7 @@ import { query } from '../../lib/subgraph';
 interface OutreachArgs {
   org: string;
   target: string;
+  snapshot?: string;
   chain?: number;
   rpc?: string;
 }
@@ -15,36 +16,56 @@ interface OutreachArgs {
  */
 export const outreachHandler = {
   builder: (yargs: Argv) => yargs
-    .option('target', { type: 'string', demandOption: true, describe: 'Target org name to generate outreach for' }),
+    .option('target', { type: 'string', demandOption: true, describe: 'Target org name to generate outreach for' })
+    .option('snapshot', { type: 'string', describe: 'Snapshot space ID (e.g. ens.eth) — use audit-snapshot instead of POP audit' }),
 
   handler: async (argv: ArgumentsCamelCase<OutreachArgs>) => {
     const spin = output.spinner('Generating outreach message...');
     spin.start();
 
     try {
-      // Use audit-all data which handles cross-chain schema differences
-      const chainId = argv.chain || 100;
       const { execSync } = require('child_process');
-      let auditData: any;
-      try {
-        const auditJson = execSync(`node ${__dirname}/../../index.js org audit-external --target ${argv.target} --chain ${chainId} --json`, {
+      let memberCount: number, totalPT: number, gini: number;
+      let totalTasks: number, completedTasks: number, openTasks: number;
+      let risks: string[], inactiveMembers: number;
+
+      if (argv.snapshot) {
+        // Snapshot DAO audit
+        const auditJson = execSync(`node ${__dirname}/../../index.js org audit-snapshot --space ${argv.snapshot} --json`, {
           encoding: 'utf8', timeout: 60000, env: process.env,
         });
-        // audit-external may output multiple lines; take the last JSON line
         const lines = auditJson.trim().split('\n');
-        auditData = JSON.parse(lines[lines.length - 1]);
-      } catch (e: any) {
-        throw new Error(`Failed to audit "${argv.target}": ${e.message?.slice(0, 100)}`);
+        const auditData = JSON.parse(lines[lines.length - 1]);
+        memberCount = auditData.summary?.uniqueVoters || 0;
+        totalPT = 0;
+        gini = auditData.summary?.votingPowerGini || 0;
+        totalTasks = auditData.summary?.proposals || 0;
+        completedTasks = auditData.summary?.closed || 0;
+        openTasks = auditData.summary?.active || 0;
+        risks = auditData.risks || [];
+        inactiveMembers = 0;
+      } else {
+        // POP org audit
+        const chainId = argv.chain || 100;
+        let auditData: any;
+        try {
+          const auditJson = execSync(`node ${__dirname}/../../index.js org audit-external --target ${argv.target} --chain ${chainId} --json`, {
+            encoding: 'utf8', timeout: 60000, env: process.env,
+          });
+          const lines = auditJson.trim().split('\n');
+          auditData = JSON.parse(lines[lines.length - 1]);
+        } catch (e: any) {
+          throw new Error(`Failed to audit "${argv.target}": ${e.message?.slice(0, 100)}`);
+        }
+        memberCount = auditData.summary?.members || 0;
+        totalPT = auditData.summary?.ptSupply || 0;
+        gini = auditData.summary?.ptGini || 0;
+        totalTasks = auditData.summary?.tasksTotal || 0;
+        completedTasks = auditData.summary?.tasksCompleted || 0;
+        openTasks = auditData.summary?.tasksOpen || 0;
+        risks = auditData.risks || [];
+        inactiveMembers = (auditData.topHolders || []).filter((h: any) => parseFloat(h.pt) === 0).length;
       }
-
-      const memberCount = auditData.summary?.members || 0;
-      const totalPT = auditData.summary?.ptSupply || 0;
-      const gini = auditData.summary?.ptGini || 0;
-      const totalTasks = auditData.summary?.tasksTotal || 0;
-      const completedTasks = auditData.summary?.tasksCompleted || 0;
-      const openTasks = auditData.summary?.tasksOpen || 0;
-      const risks = auditData.risks || [];
-      const inactiveMembers = (auditData.topHolders || []).filter((h: any) => parseFloat(h.pt) === 0).length;
 
       // Generate the message
       const message = generateOutreachMessage(argv.target as string, {
@@ -56,7 +77,7 @@ export const outreachHandler = {
       if (argv.json) {
         output.json({
           target: argv.target,
-          chain: chainId,
+          chain: argv.snapshot ? 'Snapshot' : (argv.chain || 100),
           metrics: { memberCount, totalPT, gini: parseFloat(gini.toFixed(3)), totalTasks, completedTasks, openTasks, risks },
           message,
         });
