@@ -29,6 +29,9 @@ Don't skip stages. Pin everything to IPFS. Move by consensus.
 
 ## Key Rules
 
+- **Sprint priorities**: Read `agent/brain/Knowledge/sprint-priorities.md` during
+  planning. The org voted: Agent Protocol #1 (85), CLI Infrastructure #2 (60),
+  DeFi Research #3 (55). Create tasks in higher-ranked projects first.
 - **Duplicate check**: `task create` now warns on similar titles (>50% word overlap).
   Use `--force` to override. Always check `pop task list --json` before creating.
 - **Duplicate proposals**: Check `pop project list --json` before creating project
