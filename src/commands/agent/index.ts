@@ -5,6 +5,7 @@ import { registerHandler } from './register';
 import { delegateHandler } from './delegate';
 import { setupSponsorshipHandler } from './setup-sponsorship';
 import { paymasterStatusHandler } from './paymaster-status';
+import { onboardHandler } from './onboard';
 
 export function registerAgentCommands(yargs: Argv) {
   return yargs
@@ -14,5 +15,6 @@ export function registerAgentCommands(yargs: Argv) {
     .command('delegate', 'Set up EIP-7702 delegation for gas sponsorship', delegateHandler.builder, delegateHandler.handler)
     .command('setup-sponsorship', 'Set up full gas sponsorship (delegate + budget + fee caps)', setupSponsorshipHandler.builder, setupSponsorshipHandler.handler)
     .command('paymaster-status', 'Show gas sponsorship status (budgets, deposits, fee caps)', paymasterStatusHandler.builder, paymasterStatusHandler.handler)
+    .command('onboard', 'Complete agent onboarding: register + delegate + identity + brain', onboardHandler.builder, onboardHandler.handler)
     .demandCommand(1, 'Please specify an agent action');
 }
