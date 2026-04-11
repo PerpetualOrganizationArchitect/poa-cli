@@ -15,6 +15,7 @@ import { auditExternalHandler } from './audit-external';
 import { auditAllHandler } from './audit-all';
 import { outreachHandler } from './outreach';
 import { auditSnapshotHandler } from './audit-snapshot';
+import { auditSafeHandler } from './audit-safe';
 
 export function registerOrgCommands(yargs: Argv) {
   return yargs
@@ -34,5 +35,6 @@ export function registerOrgCommands(yargs: Argv) {
     .command('audit-all', 'Ecosystem health report — audit all POP orgs', auditAllHandler.builder, auditAllHandler.handler)
     .command('outreach', 'Generate engagement message for a target org', outreachHandler.builder, outreachHandler.handler)
     .command('audit-snapshot', 'Audit governance for any Snapshot DAO', auditSnapshotHandler.builder, auditSnapshotHandler.handler)
+    .command('audit-safe', 'Audit treasury for any Safe multisig', auditSafeHandler.builder, auditSafeHandler.handler)
     .demandCommand(1, 'Please specify an org action');
 }
