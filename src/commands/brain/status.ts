@@ -31,11 +31,14 @@ export const statusHandler = {
         });
       } else {
         console.log('');
-        console.log('  Brain layer — MVP step 5 (gossipsub announcements)');
+        console.log('  Brain layer — P2P CRDT substrate');
         console.log('  ' + '─'.repeat(60));
         console.log(`  Helia version:    ${info.heliaVersion}`);
         console.log(`  Peer ID:          ${info.peerId}`);
+        console.log(`  PeerId source:    ${info.peerIdSource}`);
+        console.log(`  Peer key file:    ${info.peerKeyPath}`);
         console.log(`  Connected peers:  ${info.connectedPeers}`);
+        console.log(`  Bootstrap known:  ${info.bootstrapPeerCount}`);
         console.log(`  Blockstore path:  ${info.blockstorePath}`);
         console.log('');
         if (info.listeningAddrs.length > 0) {

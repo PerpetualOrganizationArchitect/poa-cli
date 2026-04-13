@@ -40,13 +40,115 @@ export function getBrainHome(): string {
 
 export interface BrainNodeInfo {
   peerId: string;
+  peerIdSource: 'persisted' | 'freshly-generated';
   listeningAddrs: string[];
   connectedPeers: number;
+  bootstrapPeerCount: number;
   heliaVersion: string;
   blockstorePath: string;
+  peerKeyPath: string;
   subscribedTopics: string[];
   topicPeerCounts: Record<string, number>;
 }
+
+/**
+ * Canonical public IPFS bootstrap peers. These are the Protocol Labs
+ * public bootstrap nodes, used by `go-ipfs`, `kubo`, and every default
+ * Helia install. They're multi-operator, censorship-resistant at the
+ * substrate level, and free to use.
+ *
+ * Brain peers join the DHT via these + use Circuit Relay v2 to punch
+ * through NAT when both sides are behind firewalls. On a fresh machine
+ * with no static peer list, these are the only way to be discoverable
+ * from another agent running anywhere on the internet.
+ */
+const DEFAULT_BOOTSTRAP_PEERS: string[] = [
+  '/dnsaddr/bootstrap.libp2p.io/p2p/QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN',
+  '/dnsaddr/bootstrap.libp2p.io/p2p/QmQCU2EcMqAqQPR2i9bChDtGNJchTbq5TbXJJ16u19uLTa',
+  '/dnsaddr/bootstrap.libp2p.io/p2p/QmbLHAnMoJPWSCR5Zhtx6BHJX9KiKNN6tpvbUcqanj75Nb',
+  '/dnsaddr/bootstrap.libp2p.io/p2p/QmcZf59bWwK5XFi76CZX8cbJ4BhTzzA3gU1ZjYZcYW3dwt',
+];
+
+/**
+ * Path to the persistent libp2p PeerId private key. Lives alongside the
+ * blockstore under <brain-home>/peer-key.json. Format:
+ *   { keyType: "Ed25519", privateKey: "0x<hex>" }
+ *
+ * Generated once per brain home on first boot; reused on every
+ * subsequent boot so the PeerId is stable across restarts. Without
+ * this, every process gets a random PeerId and any static peer list
+ * (or reputation-tracking peer) goes stale instantly.
+ *
+ * Security note: this file sits next to POP_PRIVATE_KEY in the same
+ * filesystem under the same threat model — anyone who can read one
+ * can read the other. No encryption; no passphrase. Operators who
+ * want to rotate their PeerId delete the file manually.
+ */
+function getPeerKeyPath(): string {
+  return join(getBrainHome(), 'peer-key.json');
+}
+
+/**
+ * Load the persisted libp2p private key, or generate + persist a new
+ * one if none exists. Returns the private key object that libp2p@2.x
+ * expects for its `privateKey` createLibp2p option, plus a flag
+ * indicating whether the key was loaded or freshly generated (for
+ * operator-visible status output).
+ *
+ * Corrupt or unreadable key files fall back to fresh generation with
+ * a warning — never crash the node over a half-written JSON file.
+ */
+async function getOrCreatePeerPrivateKey(): Promise<{ privateKey: any; source: 'persisted' | 'freshly-generated' }> {
+  const path = getPeerKeyPath();
+  const {
+    generateKeyPair,
+    privateKeyFromProtobuf,
+    privateKeyToProtobuf,
+  } = await esmImport<any>('@libp2p/crypto/keys');
+
+  if (existsSync(path)) {
+    try {
+      const raw = JSON.parse(readFileSync(path, 'utf8'));
+      if (typeof raw?.privateKey === 'string' && raw.privateKey.startsWith('0x')) {
+        const bytes = Uint8Array.from(Buffer.from(raw.privateKey.slice(2), 'hex'));
+        // Stored as a protobuf-framed private key (keyType discriminator
+        // + key material — libp2p's canonical on-disk format). The hex
+        // contains the output of privateKeyToProtobuf, not .raw bytes.
+        const privateKey = privateKeyFromProtobuf(bytes);
+        return { privateKey, source: 'persisted' };
+      }
+      throw new Error('malformed peer-key.json — missing hex privateKey');
+    } catch (err: any) {
+      if (process.env.POP_BRAIN_DEBUG) {
+        console.error(`[brain] peer-key.json unreadable (${err.message}) — regenerating`);
+      }
+      // Fall through to fresh generation.
+    }
+  }
+
+  // Ed25519 is the default for libp2p PeerIds — small, fast, ubiquitous.
+  const privateKey = await generateKeyPair('Ed25519');
+  // Serialize via privateKeyToProtobuf so the on-disk format is the
+  // canonical libp2p wire format. The earlier version of this code
+  // stored privateKey.raw (32 raw Ed25519 bytes) which does NOT
+  // round-trip through privateKeyFromProtobuf — that path expects the
+  // protobuf envelope with the keyType discriminator. Without it the
+  // load silently fails and we regenerate a new PeerId on every boot.
+  const protobufBytes: Uint8Array = privateKeyToProtobuf(privateKey);
+  const hex = '0x' + Buffer.from(protobufBytes).toString('hex');
+  writeFileSync(
+    path,
+    JSON.stringify({ keyType: 'Ed25519', privateKey: hex }, null, 2),
+  );
+  return { privateKey, source: 'freshly-generated' };
+}
+
+/**
+ * Track whether the currently-cached node was booted with a persisted
+ * or freshly-generated PeerId. Surfaced in getBrainNodeInfo so status
+ * output can tell the operator which path was taken.
+ */
+let cachedPeerIdSource: 'persisted' | 'freshly-generated' | null = null;
 
 /**
  * Gossipsub topic name for a brain doc. Versioned so we can bump the
@@ -105,39 +207,45 @@ export async function initBrainNode(): Promise<any> {
   const { createLibp2p } = await esmImport<any>('libp2p');
   const { tcp } = await esmImport<any>('@libp2p/tcp');
   const { mdns } = await esmImport<any>('@libp2p/mdns');
+  const { bootstrap } = await esmImport<any>('@libp2p/bootstrap');
   const { noise } = await esmImport<any>('@chainsafe/libp2p-noise');
   const { yamux } = await esmImport<any>('@chainsafe/libp2p-yamux');
   const { identify } = await esmImport<any>('@libp2p/identify');
   const { gossipsub } = await esmImport<any>('@chainsafe/libp2p-gossipsub');
+  const { circuitRelayTransport } = await esmImport<any>('@libp2p/circuit-relay-v2');
+  const { autoNAT } = await esmImport<any>('@libp2p/autonat');
 
   const brainHome = getBrainHome();
   const blockstorePath = join(brainHome, 'helia-blocks');
   if (!existsSync(blockstorePath)) mkdirSync(blockstorePath, { recursive: true });
 
   // Persistent blockstore — CRDT blocks survive across CLI invocations.
-  // This is the MVP step 2 upgrade from the ephemeral default of step 1.
-  // If blocks vanish between runs, every agent startup has to re-fetch
-  // from peers before local reads work; with persistence the local state
-  // is always instantly readable.
-  //
-  // Datastore stays in-memory for now. The default datastore carries
-  // libp2p peer info, WebRTC certificates, etc. — ephemeral network
-  // state that's cheap to regenerate. Making it FS-persistent adds a
-  // first-run bootstrap wrinkle (certificate files the code expects to
-  // read haven't been written yet) that's orthogonal to the CRDT goal.
-  // Layer it in later when we care about stable PeerIds across restarts.
-  //
   // The `as any` coercion bypasses a TypeScript version-skew between
   // blockstore-fs@2's bundled `interface-*` packages and Helia's top-level
   // copy. Runtime shape is correct; types can't see through duplicated
   // class declarations.
   const blockstore = new FsBlockstore(blockstorePath) as any;
 
-  // MVP step 5: libp2p with gossipsub + tcp transport + mDNS discovery.
-  // This is where agents actually see each other. No static peer list, no
-  // bootstrap — mDNS is enough for a 2-process local test, and the design
-  // is explicitly peer-to-peer (no Argus-operated relay). Public bootstrap
-  // peers and Circuit Relay v2 layer in later if we need WAN discovery.
+  // Persistent libp2p PeerId. Without this, every process gets a random
+  // PeerId and any static peer list / reputation tracking goes stale
+  // immediately. Generated once per brain home on first boot; reused on
+  // every subsequent boot. File format documented in getOrCreatePeerPrivateKey.
+  const { privateKey, source } = await getOrCreatePeerPrivateKey();
+  cachedPeerIdSource = source;
+
+  // libp2p config: now wired for cross-machine sync.
+  //
+  // Peer discovery: mdns (same-LAN), bootstrap (public IPFS bootstrap
+  // peers for WAN discovery). The bootstrap list is the canonical
+  // Protocol Labs list — multi-operator, censorship-resistant, free.
+  //
+  // Transports: tcp for direct dial AND circuitRelayTransport for NAT
+  // traversal via public Circuit Relay v2 nodes. When this peer is behind
+  // NAT and can't be reached directly, AutoNAT detects it and libp2p
+  // arranges to be reachable via a public relay.
+  //
+  // Services: identify (protocol handshake), pubsub (gossipsub for head
+  // announcements), autoNAT (reachability detection).
   //
   // gossipsub is configured with allowPublishToZeroTopicPeers so that a
   // publisher whose local topic has no subscribers yet doesn't throw —
@@ -145,13 +253,18 @@ export async function initBrainNode(): Promise<any> {
   // best-effort. `emitSelf: false` because we don't want local subscribers
   // echoing back our own publishes.
   const libp2p = await createLibp2p({
+    privateKey,
     addresses: { listen: ['/ip4/0.0.0.0/tcp/0'] },
-    transports: [tcp()],
+    transports: [tcp(), circuitRelayTransport()],
     streamMuxers: [yamux()],
     connectionEncrypters: [noise()],
-    peerDiscovery: [mdns()],
+    peerDiscovery: [
+      mdns(),
+      bootstrap({ list: DEFAULT_BOOTSTRAP_PEERS }),
+    ],
     services: {
       identify: identify(),
+      autonat: autoNAT(),
       pubsub: gossipsub({
         allowPublishToZeroTopicPeers: true,
         emitSelf: false,
@@ -217,12 +330,37 @@ export async function getBrainNodeInfo(): Promise<BrainNodeInfo> {
     }
   }
 
+  // Bootstrap peer count: how many of the canonical Protocol Labs
+  // bootstrap peers (from DEFAULT_BOOTSTRAP_PEERS) are currently listed
+  // in libp2p's peer store. This is NOT the same as "connected peers"
+  // (bootstrap discovery populates the peer store even before a
+  // connection is established), but it's a useful reachability proxy:
+  // if this number is 0, the bootstrap DNS lookup failed or the DNS
+  // addresses haven't resolved yet.
+  let bootstrapPeerCount = 0;
+  try {
+    const bootstrapPeerIds = new Set(
+      DEFAULT_BOOTSTRAP_PEERS
+        .map(addr => addr.split('/p2p/')[1])
+        .filter(Boolean),
+    );
+    const peers = await libp2p.peerStore.all();
+    bootstrapPeerCount = peers.filter((p: any) =>
+      bootstrapPeerIds.has(p.id?.toString?.()),
+    ).length;
+  } catch {
+    // Peer store lookup failures are not worth crashing status output.
+  }
+
   return {
     peerId,
+    peerIdSource: cachedPeerIdSource ?? 'freshly-generated',
     listeningAddrs,
     connectedPeers,
+    bootstrapPeerCount,
     heliaVersion,
     blockstorePath: join(getBrainHome(), 'helia-blocks'),
+    peerKeyPath: getPeerKeyPath(),
     subscribedTopics,
     topicPeerCounts,
   };
