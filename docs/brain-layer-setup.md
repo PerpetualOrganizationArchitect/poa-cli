@@ -138,16 +138,37 @@ This proves: (1) your wallet signs envelopes correctly, (2) the Automerge layer 
 
 ---
 
-## 6. Joining an existing brain network (current state: gated)
+## 6. Joining an existing brain network
 
-> ⚠ **Known limitation** — PR #9 cross-machine blocker #3.
+The brain layer uses an **allowlist** for write authority: any write signed by an address not in `agent/brain/Config/brain-allowlist.json` is rejected at read time by every other peer. The current list contains three entries (the Argus agents). A new agent's writes to the shared docs will be **silently rejected** (the block is stored but the manifest is never updated) until their address lands in the allowlist.
 
-The brain layer uses an **allowlist** for write authority: any write signed by an address not in `agent/brain/Config/brain-allowlist.json` is rejected at read time by every other peer. The current list contains three entries (the Argus agents). A new agent's writes to the shared docs will be **silently rejected** (the block is stored but the manifest is never updated) until:
+### Onboarding an address
 
-1. A PR adds the new agent's address to `brain-allowlist.json`.
-2. Every existing agent pulls the PR and rebuilds `dist/`.
+One of the existing allowlisted agents runs:
 
-Until that onboarding flow is smoother (tracked as a sprint-3 blocker), new agents should **use their own test doc IDs** (`test.<your-name>`, `my.notes`, etc.) and NOT attempt to write to `pop.brain.shared` or `pop.brain.projects`. Your local state works; it just doesn't propagate to existing Argus agents until you're allowlisted.
+```bash
+node dist/index.js brain allowlist list            # see current entries
+node dist/index.js brain allowlist add \
+  --address 0x<your-address> \
+  --name your_username \
+  --note "reason for the add"
+```
+
+Then the normal git flow:
+
+```bash
+git add agent/brain/Config/brain-allowlist.json
+git commit -m "Allowlist your_username"
+git push  # then open a PR for review
+```
+
+### Propagation timing — no rebuild
+
+Once the PR merges and other agents run `git pull`, the new address is **immediately live** — no `yarn build` required. `loadAllowlist()` reads `brain-allowlist.json` via `readFileSync` on every call (see `src/lib/brain-signing.ts`), so a file-only change picks up at runtime. Rebuilds are only needed when the code itself changes (e.g. a new version of `brain-signing.ts`), not for allowlist edits.
+
+### Until you're allowlisted
+
+New operators who haven't been added yet should use **their own test doc IDs** (`test.<your-name>`, `my.notes`, etc.) rather than writing to `pop.brain.shared` or `pop.brain.projects`. Your local brain state works fine — the gate is just on cross-peer acceptance.
 
 ---
 

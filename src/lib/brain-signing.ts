@@ -144,9 +144,14 @@ export interface AllowlistEntry {
 
 /**
  * Path to the git-tracked brain-allowlist.json. Single source of truth
- * for who is permitted to write to brain docs. Edited via governance.
+ * for who is permitted to write to brain docs. Edited via governance
+ * (or via `pop brain allowlist add/remove`, which writes to the same
+ * file and leaves the git review gate in place).
+ *
+ * Exported so command handlers can write to the same path without
+ * hard-coding it independently.
  */
-function getAllowlistPath(): string {
+export function getAllowlistPath(): string {
   return join(process.cwd(), 'agent', 'brain', 'Config', 'brain-allowlist.json');
 }
 
