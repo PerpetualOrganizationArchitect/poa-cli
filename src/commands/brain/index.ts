@@ -12,6 +12,7 @@ import { newProjectHandler } from './new-project';
 import { advanceStageHandler } from './advance-stage';
 import { removeProjectHandler } from './remove-project';
 import { allowlistHandler } from './allowlist';
+import { migrateProjectsHandler } from './migrate-projects';
 
 export function registerBrainCommands(yargs: Argv) {
   return yargs
@@ -28,5 +29,6 @@ export function registerBrainCommands(yargs: Argv) {
     .command('advance-stage', 'Move a project forward in the lifecycle (propose → discuss → ... → ship)', advanceStageHandler.builder, advanceStageHandler.handler)
     .command('remove-project', 'Soft-delete a project entry (tombstone; filtered from snapshot output)', removeProjectHandler.builder, removeProjectHandler.handler)
     .command('allowlist <action>', 'Manage the brain allowlist (list/add/remove)', allowlistHandler.builder, allowlistHandler.handler)
+    .command('migrate-projects', 'Import projects.md into a pop.brain.projects doc (sprint-3 follow-up to step 8)', migrateProjectsHandler.builder, migrateProjectsHandler.handler)
     .demandCommand(1, 'Please specify a brain action');
 }
