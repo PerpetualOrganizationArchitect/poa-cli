@@ -13,6 +13,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:brain-merge": "yarn build && node test/scripts/brain-merge-e2e.js",
+    "test:peer-persistence": "yarn build && node test/scripts/brain-peer-persistence.js",
+    "test:xmachine-smoke": "yarn build && POP_BRAIN_HOME=${POP_BRAIN_HOME:-/tmp/brain-xmachine-loopback} sh -c 'ROLE=publish node test/scripts/brain-cross-machine-smoke.js && ROLE=verify node test/scripts/brain-cross-machine-smoke.js'",
     "lint": "tsc --noEmit"
   },
   "dependencies": {

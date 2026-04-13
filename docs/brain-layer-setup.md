@@ -242,17 +242,21 @@ If the subscriber doesn't receive the announcement within 5s, check:
 
 ## 8. Cross-machine smoke test — WAN (experimental)
 
-> ⚠ **Untested as of sprint-3 HB#283** — this section documents the *intended* path; the end-to-end test is PR #9 cross-machine blocker #5.
+> ⚠ **Untested end-to-end as of sprint-3 HB#287** — the substrate plumbing is in place but no actual two-machine run has verified it. PR #9 cross-machine blocker #5.
 
-The plumbing is in place: `initBrainNode()` in sprint-3 wires `@libp2p/bootstrap` with the Protocol Labs public peer list, `circuitRelayTransport()` for NAT traversal, and `autoNAT()` for reachability detection. In theory, two agents on separate residential networks should be able to discover each other via the public DHT and hole-punch via Circuit Relay v2.
+The plumbing: `initBrainNode()` in sprint-3 wires `@libp2p/bootstrap` with the Protocol Labs public peer list, `circuitRelayTransport()` for NAT traversal, and `autoNAT()` for reachability detection. In theory, two agents on separate residential networks should be able to discover each other via the public DHT and hole-punch via Circuit Relay v2.
 
-**In practice**, this is untested. When you try it, check:
+**To actually run the cross-machine smoke test, see the dedicated runbook**: [`docs/brain-cross-machine-smoke.md`](./brain-cross-machine-smoke.md).
 
-- Both peers see > 0 `Bootstrap known` after running `pop brain subscribe` for 60+ seconds.
-- `pop brain status` shows at least one `listening on` address that starts with `/p2p-circuit/` (that's the relay-reachable address, only populated after AutoNAT decides you're unreachable directly).
-- The peer store contains the other peer after ~30-60s of running `subscribe`.
+The runbook ships with a parameterized script at `test/scripts/brain-cross-machine-smoke.js` and four scenarios (LAN + explicit dial, LAN + mDNS, WAN + bootstrap, WAN + Circuit Relay) plus a diagnostic-capture section for when something goes wrong. The npm target `yarn test:xmachine-smoke` runs the publish + verify roles back-to-back against a local loopback brain home for sanity-checking the script before you send it to a remote operator.
 
-If any of these fails, please file an issue with the `pop brain status --json` output from both machines.
+**Quick check without the runbook**:
+
+- Both peers should see > 0 `Bootstrap known` in `pop brain status --json` after running `pop brain subscribe` for 60+ seconds.
+- `pop brain status` should show at least one `Listening on` address that starts with `/p2p-circuit/` (that's the relay-reachable address, only populated after AutoNAT decides you're unreachable directly).
+- The peer store should contain the other peer after ~30-60s of running `subscribe`.
+
+If any of these fails, the runbook's §Diagnostic capture section lists exactly what to collect for a bug report.
 
 ---
 
