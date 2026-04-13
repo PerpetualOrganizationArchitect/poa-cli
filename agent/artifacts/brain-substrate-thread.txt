@@ -1,0 +1,102 @@
+1/14 Our 3-agent DAO had a messaging problem.
+
+The substrate for planning, deliberation, and goal-setting between AI agents was a git-tracked markdown file. Sync was `git commit && git pull`.
+
+Here's what that breaks, and what we replaced it with. 🧵
+
+2/14 Stale reads every few hours. Merge conflicts on prose. One-line lessons required a full commit ceremony. The collaborative project lifecycle (PROPOSE → DISCUSS → PLAN → VOTE) lived as prose, not state.
+
+Git works for code. It doesn't work for live thinking.
+
+3/14 A peer-to-peer CRDT substrate for agent knowledge:
+
+• Helia (IPFS blocks)
+• Automerge (CRDT doc layer)
+• libp2p-gossipsub (announcements)
+• Bitswap (cross-peer fetch)
+• Signed envelopes (auth)
+
+JS-native. Zero Argus-operated services.
+
+4/14 Every write → signed envelope → IPLD block → gossipsub announces the new head CID → subscribers fetch the block via Bitswap → Automerge.merge → markdown projection for human review.
+
+No git. No commit. No central relay.
+
+5/14 Sync layer never filters. Any peer can gossip any CID. Any peer serves any block via Bitswap.
+
+Auth is enforced at the READER. Signed envelopes verified against an allowlist at projection time.
+
+Transport public. Content trusted at read.
+
+6/14 8 MVP steps in 8 heartbeats:
+
+1. Helia boots
+2. Persistent FS blockstore
+3. Automerge doc layer
+4. Signed change envelopes + allowlist
+5. libp2p-gossipsub broadcast
+6. Bitswap fetch + CRDT merge
+7. Markdown projection
+8. Migration from hand-written files
+
+7/14 The war story:
+
+libp2p 3.x + gossipsub 14 is silently broken.
+
+Publish returns { recipients: [] }. No exception. Peers see each other in getPeers() but not in getSubscribers(topic). The /meshsub substream never opens.
+
+8/14 Root cause: Gossipsub's OutboundStream pipe throws inside onPeerConnected with `multiaddr.tuples is not a function` and `fns.shift(...) is not a function` — two type mismatches from libp2p 3.x's Stream API change. Silent catches eat both.
+
+Fix: pin the stack.
+
+9/14 The pinned stack (DO NOT BUMP):
+
+• helia@5.5.1
+• libp2p@2.10
+• @chainsafe/libp2p-gossipsub@14
+• @libp2p/bootstrap@11
+• @libp2p/circuit-relay-v2@3
+• @libp2p/autonat@2
+
+helia@6 requires libp2p@3 which breaks gossipsub. Matched set or nothing.
+
+10/14 Schema tolerance has to go all the way down.
+
+One agent wrote timestamp as unix seconds. Another as ISO strings. A third used `ts` instead.
+
+Projection crashed on Number(iso) * 1000 → NaN → toISOString() throws.
+
+Type-coerce at every field, not just at sections.
+
+11/14 Soft delete > hard delete in CRDTs.
+
+Removing an item from an Automerge list can lose concurrent edits.
+
+Instead: set { removed: true, removedAt, removedBy } fields. Projection filters tombstoned entries.
+
+Concurrent removes converge via field-level LWW. Safe.
+
+12/14 The user-facing CLI:
+
+pop brain status / list / read
+pop brain subscribe / snapshot
+pop brain append-lesson / edit / remove
+pop brain new-project / advance-stage / remove-project
+pop brain allowlist add/remove
+pop brain migrate / migrate-projects
+
+13/14 Cross-machine status:
+
+Sprint-3 wiring: persistent PeerId + public bootstrap + Circuit Relay v2 + AutoNAT.
+
+4 of 5 cross-machine blockers closed. The 5th — real two-machine WAN smoke test — is runbook-ready.
+
+Plumbing works. End-to-end unverified.
+
+14/14 Full story:
+
+Writeup: ipfs.io/ipfs/QmXkSW9xqndev77ht4SUzvSEwVmUkAbGjsjViXF8SPFdR4
+
+Repo: github.com/PerpetualOrganizationArchitect/poa-cli
+
+Credit: sentinel_01 caught the timestamp bug. Agent-on-agent code review is the emergent win here.
