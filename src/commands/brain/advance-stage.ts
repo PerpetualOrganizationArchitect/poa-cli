@@ -1,0 +1,162 @@
+/**
+ * pop brain advance-stage — move a project through the lifecycle.
+ *
+ * Second write command for the pop.brain.projects doc shape. Finds a
+ * project by id, advances its stage to either an explicit --to target
+ * or the next stage in the canonical PROPOSE → DISCUSS → PLAN → VOTE
+ * → EXECUTE → REVIEW → SHIP sequence, and records a lastStageAdvanceAt
+ * timestamp. Short-circuits no-op transitions, errors cleanly on
+ * not-found, and refuses to advance past 'ship'.
+ *
+ * Design note: the canonical order is a SOFT convention at the data
+ * layer — any stage string is accepted on disk (so legacy / scripted
+ * writes can use custom stages). advance-stage enforces the order
+ * only for the --to-omitted "next stage" case. Passing --to <stage>
+ * sets the stage directly without checking that the transition makes
+ * sense (this allows 'discuss → ship' when the operator knows what
+ * they're doing, at the cost of letting a typo jump over stages).
+ */
+
+import type { Argv, ArgumentsCamelCase } from 'yargs';
+import {
+  openBrainDoc,
+  applyBrainChange,
+  stopBrainNode,
+} from '../../lib/brain';
+import type { ProjectStage } from '../../lib/brain-projections';
+import * as output from '../../lib/output';
+
+interface AdvanceArgs {
+  doc: string;
+  projectId: string;
+  to?: ProjectStage;
+}
+
+const STAGE_ORDER: ProjectStage[] = [
+  'propose', 'discuss', 'plan', 'vote', 'execute', 'review', 'ship',
+];
+
+function nextStage(current: string): ProjectStage | null {
+  const idx = STAGE_ORDER.indexOf(current as ProjectStage);
+  if (idx === -1) return null; // Unknown current stage — caller errors.
+  if (idx === STAGE_ORDER.length - 1) return null; // Already at ship.
+  return STAGE_ORDER[idx + 1];
+}
+
+export const advanceStageHandler = {
+  builder: (yargs: Argv) =>
+    yargs
+      .option('doc', {
+        describe: 'Brain document ID (typically pop.brain.projects)',
+        type: 'string',
+        demandOption: true,
+      })
+      .option('project-id', {
+        describe: 'The project.id to advance',
+        type: 'string',
+        demandOption: true,
+      })
+      .option('to', {
+        describe: 'Explicit target stage (default: next stage in canonical order)',
+        type: 'string',
+        choices: STAGE_ORDER,
+      }),
+
+  handler: async (argv: ArgumentsCamelCase<AdvanceArgs>) => {
+    try {
+      // Pre-flight: locate the project, emit actionable not-found error.
+      const { doc: currentDoc } = await openBrainDoc(argv.doc);
+      const projects: any[] = Array.isArray(currentDoc?.projects) ? currentDoc.projects : [];
+      const target = projects.find((p: any) => p?.id === argv.projectId);
+      if (!target) {
+        const candidates = projects
+          .map((p: any) => p?.id)
+          .filter((id: any) => typeof id === 'string')
+          .slice(0, 8);
+        output.error(
+          `Project "${argv.projectId}" not found in ${argv.doc}. ` +
+            `Available ids (first 8): ${candidates.join(', ') || '(none)'}`,
+        );
+        process.exitCode = 1;
+        return;
+      }
+
+      // Resolve the target stage.
+      let nextStageValue: ProjectStage;
+      if (argv.to) {
+        nextStageValue = argv.to;
+      } else {
+        const computed = nextStage(target.stage ?? '');
+        if (!computed) {
+          if (target.stage === 'ship') {
+            output.error(
+              `Project "${argv.projectId}" is already at stage 'ship' — no next stage. ` +
+                `Use --to <stage> if you need to override.`,
+            );
+          } else {
+            output.error(
+              `Project "${argv.projectId}" has unknown current stage "${target.stage}" — ` +
+                `cannot compute next stage automatically. Pass --to <stage> to set explicitly.`,
+            );
+          }
+          process.exitCode = 1;
+          return;
+        }
+        nextStageValue = computed;
+      }
+
+      // Short-circuit: stage is already the target.
+      if (target.stage === nextStageValue) {
+        if (output.isJsonMode()) {
+          output.json({
+            status: 'noop',
+            docId: argv.doc,
+            projectId: argv.projectId,
+            stage: nextStageValue,
+          });
+        } else {
+          console.log(`Project "${argv.projectId}" is already at stage '${nextStageValue}'. No-op.`);
+        }
+        return;
+      }
+
+      const now = Math.floor(Date.now() / 1000);
+      const priorStage = target.stage;
+
+      // Apply the transition. Re-find inside the change fn — Automerge
+      // proxies from readBrainDoc don't carry into change().
+      const result = await applyBrainChange(argv.doc, (doc: any) => {
+        if (!Array.isArray(doc.projects)) return;
+        const idx = doc.projects.findIndex((p: any) => p?.id === argv.projectId);
+        if (idx === -1) return;
+        const project = doc.projects[idx];
+        project.stage = nextStageValue;
+        project.lastStageAdvanceAt = now;
+      });
+
+      if (output.isJsonMode()) {
+        output.json({
+          status: 'ok',
+          docId: argv.doc,
+          projectId: argv.projectId,
+          priorStage,
+          stage: nextStageValue,
+          lastStageAdvanceAt: now,
+          headCid: result.headCid,
+        });
+      } else {
+        console.log('');
+        console.log(`  Project "${argv.projectId}" advanced in ${argv.doc}`);
+        console.log(`  ${priorStage} → ${nextStageValue}`);
+        console.log(`  lastStageAdvanceAt: ${new Date(now * 1000).toISOString()}`);
+        console.log(`  new head: ${result.headCid}`);
+        console.log('');
+      }
+    } catch (err: any) {
+      output.error(err.message);
+      process.exitCode = 1;
+    } finally {
+      await stopBrainNode();
+    }
+  },
+};
