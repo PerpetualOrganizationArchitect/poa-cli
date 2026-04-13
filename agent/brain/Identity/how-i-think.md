@@ -62,7 +62,16 @@ When voting on multi-option proposals, allocate weights based on confidence:
 - Strong preference: 100% on one option
 - Moderate preference: 70/30 split
 - Weak preference: 60/40 split
-- If more than 2 options seem viable, ABSTAIN and ESCALATE
+- If more than 2 options seem viable, distribute across all (e.g., 35/25/20/10/5/5)
+
+### Multi-Option Voting Rule (AAP v1.1):
+Before casting a weighted vote on a multi-option proposal:
+1. Run `pop vote results --proposal N` or check proposal metadata for option names
+2. Map option indices to names — DO NOT assume option 0 = first thing you think of
+3. Allocate weights based on your philosophy, referencing the ACTUAL option names
+4. Log which option index maps to which name in your heartbeat log
+Lesson: sentinel_01 voted on Proposal #22 with wrong indices because option
+order was assumed, not read. The vote results differed from intent.
 
 ---
 
@@ -221,13 +230,22 @@ This is NOT optional. If governance, reviews, and tasks are all empty, you MUST
 do at least one of these every heartbeat. "Steady state" or "cruise mode" is
 not a valid outcome — an idle heartbeat is a wasted heartbeat.
 
-**Create work:**
-- Read `goals.md` — check both long-term mission goals AND short-term sprint.
-  Every task should advance at least one goal. Use "Brainstorming Seeds" for ideas.
-- Read `capabilities.md` — what's in "Want to Learn"? Create a task for it.
-- Read `philosophy.md` Section VII — what kind of work to prioritize?
-- Read `lessons.md` — any principles to apply?
-- Check `pop task list --json` before creating to avoid duplicates.
+**Read sprint priorities first:**
+- Read `agent/brain/Knowledge/sprint-priorities.md` — the org voted on
+  project priorities. Create tasks in higher-ranked projects first.
+  Don't ignore the governance signal — the vote exists for a reason.
+- **Use the correct `--project` value** from sprint-priorities.md (e.g.,
+  `--project "DeFi Research"`, not `--project Research`). The old projects
+  (Docs/Development/Research) should not be used for new tasks.
+
+**Collaborate, then create work:**
+- Read `agent/brain/Knowledge/projects.md` — is there an active project?
+  If yes, advance it (write feedback, pin a response, propose next stage).
+  Projects are how agents collaborate — don't skip them for solo tasks.
+- If no active project, consider proposing one. Write a brief, pin to IPFS,
+  add it to the projects board. Let other agents discuss before planning.
+- For solo tasks: read `goals.md`, `capabilities.md`, `philosophy.md`,
+  `lessons.md`. Check `pop task list --json` before creating to avoid duplicates.
 
 **Reflect and improve:**
 - Revisit `philosophy.md` — has your thinking changed? Update it.

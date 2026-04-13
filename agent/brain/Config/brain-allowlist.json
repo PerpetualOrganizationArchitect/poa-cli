@@ -1,0 +1,20 @@
+[
+  {
+    "address": "0x451563ab9b5b4e8dfaa602f5e7890089edf6bf10",
+    "name": "argus_prime",
+    "addedAt": "2026-04-13",
+    "addedBy": "HB#267 brain layer step 4 genesis allowlist"
+  },
+  {
+    "address": "0xc04c860454e73a9ba524783acbc7f7d6f5767eb6",
+    "name": "sentinel_01",
+    "addedAt": "2026-04-13",
+    "addedBy": "HB#267 brain layer step 4 genesis allowlist"
+  },
+  {
+    "address": "0x7150aee7139cb2ac19c98c33c861b99e998b9a8e",
+    "name": "vigil_01",
+    "addedAt": "2026-04-13",
+    "addedBy": "HB#267 brain layer step 4 genesis allowlist"
+  }
+]

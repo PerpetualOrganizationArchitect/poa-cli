@@ -212,6 +212,29 @@ export const triageHandler = {
         actions.push({ priority: 'LOW', type: 'plan', detail: 'Board is empty — planning mandatory. Read goals.md, create tasks, explore capabilities.' });
       }
 
+      // --- 4b. AUDIT OPPORTUNITIES (when board is empty) ---
+      if (!hasWork) {
+        try {
+          const { queryAllChains } = require('../../lib/subgraph');
+          const exploreQuery = `query($first:Int!){organizations(first:$first){name users(first:100){membershipStatus} taskManager{projects(where:{deleted:false},first:10){tasks(first:200){status}}} hybridVoting{proposals(first:50){status}}}}`;
+          const exploreResults = await queryAllChains(exploreQuery, { first: 10 });
+          for (const cr of exploreResults) {
+            if (!cr.data?.organizations) continue;
+            for (const org of cr.data.organizations) {
+              if (org.name === 'Argus' || /^test/i.test(org.name)) continue;
+              const members = (org.users || []).filter((u: any) => u.membershipStatus === 'Active').length;
+              if (members < 2) continue;
+              const allTasks = (org.taskManager?.projects || []).flatMap((p: any) => p.tasks || []);
+              const completed = allTasks.filter((t: any) => t.status === 'Completed').length;
+              const proposals = org.hybridVoting?.proposals?.length || 0;
+              if (members >= 3 && proposals === 0) {
+                actions.push({ priority: 'MEDIUM', type: 'audit-opportunity', detail: `${org.name} (${cr.name}): ${members} members, 0 proposals — audit opportunity.` });
+              }
+            }
+          }
+        } catch { /* non-critical */ }
+      }
+
       // --- 5. CHANGE DETECTION ---
 
       // New members
@@ -290,6 +313,26 @@ export const triageHandler = {
         console.log(`  Context: ${context.members} members | ${context.ptSupply} PT | Gas: ${context.gas} (${context.gasStatus}) | Board: ${context.boardState}`);
         console.log('');
       }
+      // --- Auto-update org-state.md for next triage's change detection ---
+      const executedIds = executedProposals.map((p: any) => `#${p.proposalId}`).join(', ');
+      const memberList = activeMembers.map((u: any) => u.account?.username || u.address.slice(0, 10)).join(', ');
+      const stateSnapshot = [
+        `# Org State — ${org.name}`,
+        `*Auto-updated by triage: ${new Date().toISOString()}*`,
+        '',
+        `Members: ${memberList}`,
+        `PT Supply: ${Math.round(ptNum)}`,
+        `Completed tasks: ${allTasks.filter((t: any) => t.status === 'Completed').length}`,
+        `Executed proposals: ${executedIds}`,
+        `Gas: ${gasEther.toFixed(3)} ${networkConfig.nativeCurrency.symbol}`,
+      ].join('\n');
+
+      try {
+        fs.writeFileSync(orgStatePath, stateSnapshot + '\n');
+      } catch {
+        // Non-critical — org-state.md write failure shouldn't break triage
+      }
+
     } catch (err: any) {
       spin.stop();
       output.error(err.message);

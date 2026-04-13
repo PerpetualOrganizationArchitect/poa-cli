@@ -69,11 +69,12 @@ export const listHandler = {
             : '';
           const voteCount = (p.votes || []).length;
 
+          const displayStatus = p.executionFailed ? 'ExecFailed' : p.status;
           rows.push([
             p.proposalId,
             'hybrid',
             p.title || p.metadata?.description?.substring(0, 40) || 'Untitled',
-            p.status,
+            displayStatus,
             `${p.numOptions}`,
             `${voteCount}`,
             p.winningOption != null ? `#${p.winningOption}` : '-',
@@ -94,11 +95,12 @@ export const listHandler = {
             : '';
           const voteCount = (p.votes || []).length;
 
+          const ddDisplayStatus = p.executionFailed ? 'ExecFailed' : p.status;
           rows.push([
             p.proposalId,
             'dd',
             p.title || p.metadata?.description?.substring(0, 40) || 'Untitled',
-            p.status,
+            ddDisplayStatus,
             `${p.numOptions}`,
             `${voteCount}`,
             p.winningOption != null ? `#${p.winningOption}` : '-',

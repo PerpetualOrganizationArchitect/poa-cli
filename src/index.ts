@@ -32,6 +32,7 @@ import { registerPaymasterCommands } from './commands/paymaster';
 import { registerRoleCommands } from './commands/role';
 import { registerConfigCommands } from './commands/config';
 import { registerAgentCommands } from './commands/agent';
+import { registerBrainCommands } from './commands/brain';
 
 async function main() {
   const cli = yargs(hideBin(process.argv))
@@ -50,6 +51,7 @@ async function main() {
     .command('role <action>', 'Role applications', registerRoleCommands)
     .command('config <action>', 'View and validate configuration', registerConfigCommands)
     .command('agent <action>', 'Agent operations & monitoring', registerAgentCommands)
+    .command('brain <action>', 'P2P CRDT brain layer (live-sync knowledge)', registerBrainCommands)
     .option('org', {
       type: 'string',
       description: 'Organization ID or name (or set POP_DEFAULT_ORG)',

@@ -39,6 +39,7 @@ export const NETWORKS: Record<string, NetworkConfig> = {
       BREAD: '0xa555d5344f6FB6c65da19e403Cb4c1eC4a1a5Ee3',
       USDC: '0xDDAfbb505ad214D7b80b1f830fcCc89B60fB7A83',
       WXDAI: '0xe91D153E0b41518A2Ce8Dd3D7944Fa863463a97d',
+      sDAI: '0xaf204776c7245bF4147c2612BF6e5972Ee483701',
     },
   },
   sepolia: {

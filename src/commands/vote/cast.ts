@@ -4,6 +4,8 @@ import { createWriteContract } from '../../lib/contracts';
 import { executeTx } from '../../lib/tx';
 import * as output from '../../lib/output';
 import { resolveVotingContracts } from './helpers';
+import { query } from '../../lib/subgraph';
+import { resolveOrgModules } from '../../lib/resolve';
 
 interface CastArgs {
   org: string;
@@ -73,10 +75,23 @@ export const castHandler = {
       spin.stop();
 
       if (result.success) {
+        // Resolve option names for clarity
+        let optionMap = '';
+        try {
+          const modules = await resolveOrgModules(argv.org, argv.chain);
+          const pq = `{ organization(id: "${modules.orgId}") { hybridVoting { proposals(where: {proposalId: ${argv.proposal}}) { metadata { optionNames } } } } }`;
+          const pResult = await query<any>(pq, {}, argv.chain);
+          const names = pResult.organization?.hybridVoting?.proposals?.[0]?.metadata?.optionNames || [];
+          if (names.length > 0) {
+            optionMap = optionIndices.map((idx: number, i: number) => `${names[idx] || 'Option ' + idx}: ${weights[i]}%`).join(', ');
+          }
+        } catch { /* non-critical */ }
+
         output.success(`Vote cast on proposal #${argv.proposal}`, {
           txHash: result.txHash, explorerUrl: result.explorerUrl,
           options: optionIndices.join(','),
           weights: weights.join(','),
+          ...(optionMap ? { allocation: optionMap } : {}),
         });
       } else {
         output.error('Vote failed', { error: result.error, errorCode: result.errorCode });

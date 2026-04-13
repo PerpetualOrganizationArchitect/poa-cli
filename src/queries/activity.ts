@@ -119,6 +119,8 @@ export const FETCH_ORG_ACTIVITY = `
       winningOption
       isValid
       wasExecuted
+      executionFailed
+      executionError
       votes { voter optionIndexes optionWeights }
     }
 
