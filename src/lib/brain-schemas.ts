@@ -125,14 +125,21 @@ function validateSharedDoc(doc: any, errors: string[], warnings: string[]): void
   void warnings;
 }
 
+// HB#180 fix: these MUST match the ProjectStage union in
+// src/lib/brain-projections.ts. The original #346 schema used
+// proposed/building/shipped/retrospective/archived which are NOT the
+// canonical CLI labels — `pop brain new-project` defaults to "propose"
+// and the lifecycle is propose → discuss → plan → vote → execute → review → ship.
+// The mismatch was caught by my own validator when I tried to seed a
+// project entry HB#180. Source of truth is brain-projections.ts ProjectStage type.
 const VALID_PROJECT_STAGES = new Set([
-  'proposed',
+  'propose',
   'discuss',
   'plan',
-  'building',
-  'shipped',
-  'retrospective',
-  'archived',
+  'vote',
+  'execute',
+  'review',
+  'ship',
 ]);
 
 function validateProject(p: any, index: number, errors: string[]): void {

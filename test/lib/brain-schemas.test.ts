@@ -65,11 +65,19 @@ describe('validateBrainDocShape — pop.brain.projects', () => {
   it('accepts a canonical project', () => {
     const doc = {
       projects: [
-        { id: 'proj-1', name: 'My Project', stage: 'proposed', proposedBy: '0xabc' },
+        { id: 'proj-1', name: 'My Project', stage: 'propose', proposedBy: '0xabc' },
       ],
     };
     const result = validateBrainDocShape('pop.brain.projects', doc);
     expect(result.ok).toBe(true);
+  });
+
+  it('accepts all canonical lifecycle stages', () => {
+    for (const stage of ['propose', 'discuss', 'plan', 'vote', 'execute', 'review', 'ship']) {
+      const doc = { projects: [{ id: 'p', name: 'n', stage }] };
+      const result = validateBrainDocShape('pop.brain.projects', doc);
+      expect(result.ok).toBe(true);
+    }
   });
 
   it('rejects a project with an invalid stage', () => {
@@ -83,7 +91,7 @@ describe('validateBrainDocShape — pop.brain.projects', () => {
 
   it('rejects a project missing id', () => {
     const doc = {
-      projects: [{ name: 'No id', stage: 'proposed' }],
+      projects: [{ name: 'No id', stage: 'propose' }],
     };
     const result = validateBrainDocShape('pop.brain.projects', doc);
     expect(result.ok).toBe(false);
