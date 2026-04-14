@@ -108,10 +108,11 @@ async function waitForDaemonSocket(home, timeoutMs = 15_000) {
   throw new Error(`Daemon socket never appeared at ${sockPath} within ${timeoutMs}ms`);
 }
 
-async function daemonStart(home, label) {
+async function daemonStart(home, label, extraEnv = {}) {
   mkdirSync(home, { recursive: true });
-  const env = { POP_BRAIN_HOME: home };
-  log(label, `starting daemon with POP_BRAIN_HOME=${home}`);
+  const env = { POP_BRAIN_HOME: home, ...extraEnv };
+  const peers = extraEnv.POP_BRAIN_PEERS;
+  log(label, `starting daemon with POP_BRAIN_HOME=${home}` + (peers ? ` POP_BRAIN_PEERS=${peers}` : ''));
   const res = cliSync(env, ['brain', 'daemon', 'start']);
   if (res.status !== 0) {
     throw new Error(`daemon start failed: ${res.stdout}\n${res.stderr}`);
@@ -237,46 +238,37 @@ async function main() {
 
   let failed = false;
   try {
-    // 1. Start both daemons.
-    await daemonStart(HOME_A, 'A');
+    // 1. Start daemon B first (no peers yet — it's the listener).
     await daemonStart(HOME_B, 'B');
 
-    // 2. Read each daemon's listen multiaddrs and explicitly wire them
-    //    together. mDNS does not reliably propagate over loopback on
-    //    macOS, so we bypass automatic discovery and tell daemon A to
-    //    dial daemon B using B's /p2p/<peerId> multiaddr.
-    await sleep(2_000); // small wait for both daemons to have publish addrs
-    const statusA0 = await daemonStatus(HOME_A);
+    // 2. Read daemon B's listen addrs so we can pass them to daemon A
+    //    via POP_BRAIN_PEERS (task #349 ship). No more manual dial IPC.
+    await sleep(2_000); // small wait for listenAddrs to be populated
     const statusB0 = await daemonStatus(HOME_B);
-    log('A', `peerId=${statusA0.peerId}`);
-    log('A', `listenAddrs=${(statusA0.listenAddrs || []).join(', ')}`);
     log('B', `peerId=${statusB0.peerId}`);
     log('B', `listenAddrs=${(statusB0.listenAddrs || []).join(', ')}`);
-
-    // Prefer loopback addresses for the dial — the two daemons are on
-    // the same machine so 127.0.0.1 is the most reliable path.
     const loopbackAddrs = (statusB0.listenAddrs || [])
       .filter(a => a.startsWith('/ip4/127.0.0.1/') || a.startsWith('/ip4/0.0.0.0/'))
       .map(a => a.replace('/ip4/0.0.0.0/', '/ip4/127.0.0.1/'));
     if (loopbackAddrs.length === 0) {
       throw new Error(`Daemon B has no loopback multiaddrs: ${(statusB0.listenAddrs || []).join(', ')}`);
     }
-    log('wire', `asking daemon A to dial daemon B at ${loopbackAddrs[0]}`);
-    try {
-      await sendIpc(HOME_A, 'dial', { multiaddr: loopbackAddrs[0] });
-      log('wire', 'dial accepted');
-    } catch (err) {
-      log('wire', `dial failed: ${err.message}`);
-      throw err;
-    }
 
-    // Give the gossipsub mesh a moment to form after the dial.
+    // 3. Start daemon A with POP_BRAIN_PEERS set. Auto-dial runs inside
+    //    daemon startup — no manual dial IPC call needed.
+    log('wire', `daemon A starts with POP_BRAIN_PEERS=${loopbackAddrs[0]}`);
+    await daemonStart(HOME_A, 'A', { POP_BRAIN_PEERS: loopbackAddrs[0] });
+    const statusA0 = await daemonStatus(HOME_A);
+    log('A', `peerId=${statusA0.peerId}`);
+    log('A', `listenAddrs=${(statusA0.listenAddrs || []).join(', ')}`);
+
+    // Give the gossipsub mesh a moment to form after auto-dial.
     await sleep(3_000);
 
     const statusA1 = await daemonStatus(HOME_A);
     const statusB1 = await daemonStatus(HOME_B);
-    log('A', `after dial: connections=${statusA1.connections} knownPeers=${statusA1.knownPeerCount}`);
-    log('B', `after dial: connections=${statusB1.connections} knownPeers=${statusB1.knownPeerCount}`);
+    log('A', `after auto-dial: connections=${statusA1.connections} knownPeers=${statusA1.knownPeerCount}`);
+    log('B', `after auto-dial: connections=${statusB1.connections} knownPeers=${statusB1.knownPeerCount}`);
 
     // 3. Append a lesson via daemon A.
     const title = `two-daemon test ${Date.now()}`;

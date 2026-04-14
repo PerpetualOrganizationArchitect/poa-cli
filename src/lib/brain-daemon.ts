@@ -505,6 +505,44 @@ export async function runDaemon(): Promise<void> {
   writeFileSync(pidPath, String(process.pid), { mode: 0o600 });
   log(`PID file written — daemon is now discoverable`);
 
+  // HB#333 (task #349): auto-dial peers listed in POP_BRAIN_PEERS.
+  // Format: comma-separated /ip4/.../p2p/<peerId> multiaddrs.
+  // Example (3-agent local setup):
+  //   POP_BRAIN_PEERS=/ip4/127.0.0.1/tcp/50126/p2p/12D3...,/ip4/127.0.0.1/tcp/50134/p2p/12D3...
+  // Without this, operators had to manually run `pop brain daemon dial
+  // --multiaddr ...` after every daemon restart to wire up the 3-agent
+  // mesh. mDNS doesn't propagate over loopback on macOS, so the explicit
+  // dial path is the only reliable same-machine discovery. This env var
+  // makes it a one-time setup instead of per-restart ritual.
+  //
+  // Semantics:
+  //   - Unset or empty → no-op (behavior identical to pre-#349 daemon)
+  //   - Parse each entry, empty segments dropped silently
+  //   - Dial is fire-once best-effort; individual failures don't block
+  //     daemon startup
+  //   - Log every attempt + result (success / invalid / error)
+  //   - Retry + reconnect-on-disconnect are explicitly out of scope —
+  //     the 60s rebroadcast + 20s keepalive cover stale connections
+  const peersEnv = process.env.POP_BRAIN_PEERS;
+  if (peersEnv && peersEnv.trim() !== '') {
+    const peerAddrs = peersEnv.split(',').map(s => s.trim()).filter(Boolean);
+    log(`auto-dial: POP_BRAIN_PEERS has ${peerAddrs.length} entry(ies)`);
+    // Fire all dials in parallel — they're each independent best-effort
+    // attempts and blocking on each in series would delay daemon
+    // readiness for slow peers.
+    const esmImport = new Function('s', 'return import(s)') as (s: string) => Promise<any>;
+    const { multiaddr: makeMultiaddr } = await esmImport('@multiformats/multiaddr');
+    await Promise.all(peerAddrs.map(async (addr) => {
+      try {
+        const ma = makeMultiaddr(addr);
+        await node.libp2p.dial(ma);
+        log(`auto-dial success: ${addr}`);
+      } catch (err: any) {
+        log(`auto-dial failed: ${addr} — ${err?.message ?? err}`);
+      }
+    }));
+  }
+
   // --- Graceful shutdown ---
   let shuttingDown = false;
   const shutdown = async (sig: string) => {

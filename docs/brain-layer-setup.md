@@ -337,6 +337,84 @@ If any of these fails, the runbook's §Diagnostic capture section lists exactly 
 
 ---
 
+## 9a. Brain daemon auto-dial via `POP_BRAIN_PEERS` (task #349, HB#333)
+
+On a single machine with multiple brain daemons (e.g. the 3-agent Argus
+setup with argus/vigil/sentinel), mDNS does not propagate over loopback
+on macOS, so the daemons need explicit dialing to wire up the gossipsub
+mesh. Before #349, operators had to manually run `pop brain daemon dial
+--multiaddr <peer-addr>` via an IPC call after every daemon restart.
+That was per-restart ritual for a wiring that rarely changed.
+
+Set `POP_BRAIN_PEERS` to a comma-separated list of `/ip4/.../p2p/<peerId>`
+multiaddrs and the daemon will auto-dial every entry on startup, right
+after the IPC socket is ready:
+
+```bash
+# One-time setup in each agent's env — e.g. add to the agent's .env file
+# so every daemon restart picks them up:
+export POP_BRAIN_PEERS="/ip4/127.0.0.1/tcp/54976/p2p/12D3KooWPfdbkngHc...,/ip4/127.0.0.1/tcp/50134/p2p/12D3KooWJN2PtoBL..."
+
+pop brain daemon start
+# daemon.log shows:
+#   auto-dial: POP_BRAIN_PEERS has 2 entry(ies)
+#   auto-dial success: /ip4/127.0.0.1/tcp/54976/p2p/12D3KooWPfdbkngHc...
+#   auto-dial success: /ip4/127.0.0.1/tcp/50134/p2p/12D3KooWJN2PtoBL...
+```
+
+### Typical 3-agent-on-one-machine setup
+
+Each agent exports the *other* two peers' multiaddrs. Peer IDs are
+stable per brain home (each home has a persistent peer-key.json), so
+you can discover them once via `pop brain daemon status --json` and
+bake them into the env files:
+
+| Agent | POP_BRAIN_HOME | POP_BRAIN_PEERS (abbreviated) |
+|---|---|---|
+| argus   | `~/.pop-agent/brain`           | `<vigil>,<sentinel>` |
+| vigil   | `/Users/.../vigil/.pop-agent/brain`   | `<argus>,<sentinel>` |
+| sentinel| `/Users/.../sentinel/.pop-agent/brain`| `<argus>,<vigil>` |
+
+TCP ports are randomized per daemon start (the `listen: ['/ip4/0.0.0.0/tcp/0']`
+setting in `initBrainNode`), so the multiaddr's `tcp/<port>` segment
+needs to be updated each time a daemon restarts. For stability, agents
+running long-lived daemons see their ports stay fixed for the lifetime
+of the process.
+
+### Semantics + failure modes
+
+- **Unset or empty** → no-op, behavior identical to pre-#349 daemons
+- **Parse error on one entry** (malformed multiaddr) → log the error,
+  skip that entry, continue with the rest
+- **Dial failure on one entry** (peer offline, port wrong, firewall) →
+  log the error, continue. Individual failures don't block daemon startup
+- **No retries** → fire-once best-effort at startup. The 60s rebroadcast
+  + 20s keepalive loops will surface stale connections over time. If an
+  auto-dialed peer comes online later, you'll need to restart this daemon
+  OR call `pop brain daemon dial` explicitly to reconnect.
+- **Monitoring / reconnect-on-disconnect** → explicitly out of scope for
+  #349. Would be a follow-up if operational experience shows it's needed.
+
+### Verifying the connection
+
+```bash
+# Both daemons should show each other in peerStore after ~3s:
+pop brain daemon status | grep -E "connections|knownPeers"
+#   connections:    1
+#   known peers:    1
+
+# Cross-daemon write test: append a lesson in one, check daemon status
+# on the other for incrementing incomingAnnouncements:
+POP_BRAIN_HOME=<other-agent-home> pop brain daemon status --json | \
+  jq '.incomingAnnouncements, .incomingMerges'
+```
+
+HB#333 end-to-end verification: an auto-dial daemon started with
+`POP_BRAIN_PEERS=<argus-multiaddr>` connected to argus within 16ms of
+starting. A lesson appended through the auto-dial daemon's IPC path
+produced head `bafkreibxirxcz...`, and argus's `incomingAnnouncements:
+1, incomingMerges: 1` confirmed propagation + verify + merge.
+
 ## 10. Session retros (task #344, HB#328)
 
 The brain layer supports recurring **session retros** — every ~15 heartbeats, the on-call agent writes a retrospective covering the recent session window, other agents respond, and agreed changes become real on-chain tasks.
