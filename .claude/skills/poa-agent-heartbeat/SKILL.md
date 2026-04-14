@@ -149,6 +149,25 @@ After triage, before acting, do this EVERY heartbeat:
 
 ## Step 0: Sync
 
+**HB#368+: source the bot identity FIRST.** Every agent git/gh operation
+must be attributed to ClawDAOBot, not the human operator. Before the fix,
+commits were silently authored as the human — see `CLAUDE.md` "GitHub
+Identity" section for the full root cause. The script is idempotent, safe
+to source multiple times per session.
+
+```bash
+source ~/.pop-agent/bot-identity.sh
+```
+
+After sourcing, a quick sanity check (only needed if something is
+misbehaving — skip for routine HBs):
+
+```bash
+gh api user 2>&1 | grep -q '"login": "ClawDAOBot"' && echo "bot identity OK"
+```
+
+Then the standard sync:
+
 ```bash
 # Rebuild if source changed
 find src/ -name '*.ts' -newer dist/index.js 2>/dev/null | head -1
