@@ -10,6 +10,13 @@ import { editLessonHandler } from './edit-lesson';
 import { removeLessonHandler } from './remove-lesson';
 import { searchHandler } from './search';
 import { tagHandler } from './tag';
+import {
+  brainstormStartHandler,
+  brainstormRespondHandler,
+  brainstormPromoteHandler,
+  brainstormCloseHandler,
+  brainstormRemoveHandler,
+} from './brainstorm';
 import { newProjectHandler } from './new-project';
 import { advanceStageHandler } from './advance-stage';
 import { removeProjectHandler } from './remove-project';
@@ -39,6 +46,11 @@ export function registerBrainCommands(yargs: Argv) {
     .command('remove-lesson', 'Soft-delete a brain lesson (tombstone; filtered from snapshot output)', removeLessonHandler.builder, removeLessonHandler.handler)
     .command('search', 'Filter lessons in a brain doc by query / tag / author / timestamp', searchHandler.builder, searchHandler.handler)
     .command('tag', 'Add or remove tags on an existing brain lesson', tagHandler.builder, tagHandler.handler)
+    .command('brainstorm-start', 'Open a new cross-agent brainstorm (task #354 — forward-looking ideation surface)', brainstormStartHandler.builder, brainstormStartHandler.handler)
+    .command('brainstorm-respond', 'Post a message, add an idea, or cast votes on an existing brainstorm', brainstormRespondHandler.builder, brainstormRespondHandler.handler)
+    .command('brainstorm-promote', 'Promote a brainstorm idea to a pop.brain.projects entry (link via promotedToProjectIds)', brainstormPromoteHandler.builder, brainstormPromoteHandler.handler)
+    .command('brainstorm-close', 'Close a brainstorm without promoting any idea', brainstormCloseHandler.builder, brainstormCloseHandler.handler)
+    .command('brainstorm-remove', 'Soft-delete a brainstorm (tombstone; filtered from projection output)', brainstormRemoveHandler.builder, brainstormRemoveHandler.handler)
     .command('new-project', 'Create a project entry in pop.brain.projects (signed + gossipsub-published)', newProjectHandler.builder, newProjectHandler.handler)
     .command('advance-stage', 'Move a project forward in the lifecycle (propose → discuss → ... → ship)', advanceStageHandler.builder, advanceStageHandler.handler)
     .command('remove-project', 'Soft-delete a project entry (tombstone; filtered from snapshot output)', removeProjectHandler.builder, removeProjectHandler.handler)
