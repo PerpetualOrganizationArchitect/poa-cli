@@ -88,6 +88,14 @@ import {
 
 export const REBROADCAST_INTERVAL_MS = 60_000;
 export const KEEPALIVE_INTERVAL_MS = 20_000;
+// HB#365: default peer redial interval. Daemon periodically checks each
+// POP_BRAIN_PEERS entry and re-dials any that are not currently in the
+// active connection set. Fixes the "peer drops after one side reboots"
+// fragility: without redial, the cross-device setup becomes manual-restart
+// after any transient disconnect. 30s is a conservative default that's
+// short enough to recover from a reboot within one heartbeat cycle.
+// Override with POP_BRAIN_REDIAL_INTERVAL_MS.
+export const REDIAL_INTERVAL_MS = 30_000;
 export const KEEPALIVE_TOPIC = 'pop/brain/net/v1';
 
 /**
@@ -509,39 +517,86 @@ export async function runDaemon(): Promise<void> {
   // Format: comma-separated /ip4/.../p2p/<peerId> multiaddrs.
   // Example (3-agent local setup):
   //   POP_BRAIN_PEERS=/ip4/127.0.0.1/tcp/50126/p2p/12D3...,/ip4/127.0.0.1/tcp/50134/p2p/12D3...
-  // Without this, operators had to manually run `pop brain daemon dial
-  // --multiaddr ...` after every daemon restart to wire up the 3-agent
-  // mesh. mDNS doesn't propagate over loopback on macOS, so the explicit
-  // dial path is the only reliable same-machine discovery. This env var
-  // makes it a one-time setup instead of per-restart ritual.
+  //
+  // HB#365 (task tbd): periodic redial on disconnect.
+  // Before this, POP_BRAIN_PEERS was fire-once at startup — any
+  // disconnect (peer reboot, network blip, macOS sleep) left the daemon
+  // stuck at connections=0 until manual restart. Now a periodic timer
+  // re-evaluates the list every REDIAL_INTERVAL_MS and dials any peer
+  // that is not currently in the active connection set. Override the
+  // interval via POP_BRAIN_REDIAL_INTERVAL_MS.
   //
   // Semantics:
-  //   - Unset or empty → no-op (behavior identical to pre-#349 daemon)
+  //   - Unset or empty POP_BRAIN_PEERS → no-op, no timer
   //   - Parse each entry, empty segments dropped silently
-  //   - Dial is fire-once best-effort; individual failures don't block
-  //     daemon startup
-  //   - Log every attempt + result (success / invalid / error)
-  //   - Retry + reconnect-on-disconnect are explicitly out of scope —
-  //     the 60s rebroadcast + 20s keepalive cover stale connections
+  //   - Initial dial at startup is still best-effort parallel
+  //   - Every interval tick: for each configured peer, extract the peerId
+  //     suffix, check libp2p.getPeers() membership. If not connected,
+  //     dial. If connected, skip (no duplicate dials).
+  //   - Individual failures logged but never block the timer loop
+  //   - Timer is cleared in shutdown() alongside rebroadcast/keepalive
   const peersEnv = process.env.POP_BRAIN_PEERS;
-  if (peersEnv && peersEnv.trim() !== '') {
-    const peerAddrs = peersEnv.split(',').map(s => s.trim()).filter(Boolean);
-    log(`auto-dial: POP_BRAIN_PEERS has ${peerAddrs.length} entry(ies)`);
-    // Fire all dials in parallel — they're each independent best-effort
-    // attempts and blocking on each in series would delay daemon
-    // readiness for slow peers.
-    const esmImport = new Function('s', 'return import(s)') as (s: string) => Promise<any>;
-    const { multiaddr: makeMultiaddr } = await esmImport('@multiformats/multiaddr');
-    await Promise.all(peerAddrs.map(async (addr) => {
-      try {
-        const ma = makeMultiaddr(addr);
-        await node.libp2p.dial(ma);
-        log(`auto-dial success: ${addr}`);
-      } catch (err: any) {
-        log(`auto-dial failed: ${addr} — ${err?.message ?? err}`);
-      }
-    }));
+  const parsedPeerAddrs: string[] =
+    peersEnv && peersEnv.trim() !== ''
+      ? peersEnv.split(',').map(s => s.trim()).filter(Boolean)
+      : [];
+
+  const esmImportPeers = new Function('s', 'return import(s)') as (s: string) => Promise<any>;
+  let makeMultiaddrLocal: any = null;
+  if (parsedPeerAddrs.length > 0) {
+    const mod = await esmImportPeers('@multiformats/multiaddr');
+    makeMultiaddrLocal = mod.multiaddr;
   }
+
+  // Extract target peerId from /p2p/<id> suffix so we can test
+  // connection membership without re-parsing on every tick.
+  function peerIdOfMultiaddr(addr: string): string | null {
+    const m = /\/p2p\/([^/]+)$/.exec(addr);
+    return m ? m[1] : null;
+  }
+
+  async function dialIfDisconnected(addr: string, reason: 'startup' | 'redial'): Promise<void> {
+    try {
+      const targetPeerId = peerIdOfMultiaddr(addr);
+      if (targetPeerId) {
+        const connected = node.libp2p.getPeers().some((p: any) => p.toString() === targetPeerId);
+        if (connected) {
+          // Already connected — no-op. Quiet in redial loop to avoid log spam.
+          if (reason === 'startup') log(`auto-dial skip (already connected): ${addr}`);
+          return;
+        }
+      }
+      const ma = makeMultiaddrLocal(addr);
+      await node.libp2p.dial(ma);
+      log(`${reason === 'startup' ? 'auto-dial' : 'redial'} success: ${addr}`);
+    } catch (err: any) {
+      log(`${reason === 'startup' ? 'auto-dial' : 'redial'} failed: ${addr} — ${err?.message ?? err}`);
+    }
+  }
+
+  if (parsedPeerAddrs.length > 0) {
+    log(`auto-dial: POP_BRAIN_PEERS has ${parsedPeerAddrs.length} entry(ies)`);
+    // Fire all dials in parallel at startup — independent best-effort.
+    await Promise.all(parsedPeerAddrs.map(a => dialIfDisconnected(a, 'startup')));
+  }
+
+  // HB#365: periodic redial timer. Handles peer reboots, transient
+  // disconnects, and cross-device sessions where the remote side is
+  // occasionally offline. Only runs when POP_BRAIN_PEERS is set.
+  const redialInterval = (() => {
+    const raw = process.env.POP_BRAIN_REDIAL_INTERVAL_MS;
+    if (!raw) return REDIAL_INTERVAL_MS;
+    const n = Number(raw);
+    return Number.isFinite(n) && n >= 5_000 ? n : REDIAL_INTERVAL_MS;
+  })();
+  const redialTimer: NodeJS.Timeout | null =
+    parsedPeerAddrs.length > 0
+      ? setInterval(async () => {
+          for (const addr of parsedPeerAddrs) {
+            await dialIfDisconnected(addr, 'redial');
+          }
+        }, redialInterval)
+      : null;
 
   // --- Graceful shutdown ---
   let shuttingDown = false;
@@ -551,6 +606,7 @@ export async function runDaemon(): Promise<void> {
     log(`shutdown signal ${sig}`);
     clearInterval(rebroadcastTimer);
     clearInterval(keepaliveTimer);
+    if (redialTimer) clearInterval(redialTimer);
     try { pubsub.removeEventListener('message', keepaliveListener); } catch {}
     for (const u of unsubscribes) {
       try { u(); } catch {}
@@ -576,6 +632,7 @@ export async function runDaemon(): Promise<void> {
   log(
     `daemon ready — rebroadcast=${REBROADCAST_INTERVAL_MS}ms ` +
     `keepalive=${KEEPALIVE_INTERVAL_MS}ms ` +
+    (redialTimer ? `redial=${redialInterval}ms ` : '') +
     `subscribed=${subscribedDocs.size} docs`,
   );
 
