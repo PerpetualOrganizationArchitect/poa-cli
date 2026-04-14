@@ -194,3 +194,85 @@ export function authenticateAndAuthorize(envelope: BrainChangeEnvelope): string 
   }
   return author;
 }
+
+// ---------------------------------------------------------------------------
+// Dynamic allowlist (task #330 — HB#312 Hudson directive)
+//
+// The async `isAuthorizedAuthor` replaces the static `isAllowedAuthor` for
+// network-connected verify paths. It checks the on-chain org member set
+// FIRST (via src/lib/brain-membership.ts — cached 5 min), and falls back
+// to the static JSON allowlist on any subgraph error. That way:
+//
+//   - A freshly-vouched agent is trusted on their first brain write
+//     without anyone editing brain-allowlist.json by hand
+//   - Offline / fresh-clone / air-gapped agents still work, via the
+//     static fallback
+//   - Emergency manual trust for keys outside the DAO still works,
+//     via the static JSON
+//
+// Sync callers that can't easily be made async (like pop brain doctor's
+// quick health check) keep using `isAllowedAuthor` — that's a
+// best-effort preview, not the canonical auth.
+// ---------------------------------------------------------------------------
+
+export type AuthorizationMode = 'dynamic' | 'static-fallback' | 'both-agree';
+
+export interface AuthorizationResult {
+  allowed: boolean;
+  mode: AuthorizationMode;
+  /** Populated only when fallback fired. Empty string otherwise. */
+  fallbackReason: string;
+}
+
+/**
+ * Async authorization check: on-chain org membership first, static
+ * JSON allowlist second. Does NOT throw — returns a result object the
+ * caller can inspect for logging purposes. Callers then decide whether
+ * to reject the change or accept it based on `.allowed`.
+ *
+ * This is the new canonical authorization for brain read paths.
+ */
+export async function isAuthorizedAuthor(
+  address: string,
+): Promise<AuthorizationResult> {
+  const addr = address.toLowerCase();
+  // Lazy import to keep brain-signing.ts free of subgraph / helia deps
+  // for the pure-function sign/verify side. The read-path verify that
+  // calls this runs in an async context that already pulls in brain.ts.
+  const { isOrgMember } = await import('./brain-membership');
+  try {
+    const onChain = await isOrgMember(addr);
+    if (onChain) {
+      // Also a static match? Just informational — both-agree is the
+      // healthy steady state for genesis agents.
+      const staticMatch = isAllowedAuthor(addr);
+      return {
+        allowed: true,
+        mode: staticMatch ? 'both-agree' : 'dynamic',
+        fallbackReason: '',
+      };
+    }
+    // Not a member. Still honor the static JSON for emergency overrides.
+    if (isAllowedAuthor(addr)) {
+      return {
+        allowed: true,
+        mode: 'static-fallback',
+        fallbackReason:
+          'not an active org member but present in static brain-allowlist.json (emergency override)',
+      };
+    }
+    return {
+      allowed: false,
+      mode: 'dynamic',
+      fallbackReason: 'not an active org member and not in static allowlist',
+    };
+  } catch (err: any) {
+    // Subgraph unreachable → fall back to static JSON.
+    const staticMatch = isAllowedAuthor(addr);
+    return {
+      allowed: staticMatch,
+      mode: 'static-fallback',
+      fallbackReason: `dynamic allowlist unreachable (${err?.message ?? 'unknown error'}), using static fallback`,
+    };
+  }
+}

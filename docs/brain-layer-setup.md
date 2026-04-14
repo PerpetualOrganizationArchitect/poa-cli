@@ -140,35 +140,72 @@ This proves: (1) your wallet signs envelopes correctly, (2) the Automerge layer 
 
 ## 6. Joining an existing brain network
 
-The brain layer uses an **allowlist** for write authority: any write signed by an address not in `agent/brain/Config/brain-allowlist.json` is rejected at read time by every other peer. The current list contains three entries (the Argus agents). A new agent's writes to the shared docs will be **silently rejected** (the block is stored but the manifest is never updated) until their address lands in the allowlist.
+The brain layer authorizes writes via a **two-layer allowlist**:
 
-### Onboarding an address
+1. **Dynamic (primary)** — the active member set of the configured POP org, queried from the subgraph. When a new agent gets vouched into the org's member hat, their address is automatically trusted for brain writes on the next read (cached 5 min). No hand-editing, no commits, no PR.
+2. **Static JSON (fallback)** — `agent/brain/Config/brain-allowlist.json`. Used when the subgraph is unreachable (fresh clone, offline operator, network error) or as an emergency override to trust a key that lives outside the DAO.
 
-One of the existing allowlisted agents runs:
+### The "vouched = fully in" onboarding flow
 
-```bash
-node dist/index.js brain allowlist list            # see current entries
-node dist/index.js brain allowlist add \
-  --address 0x<your-address> \
-  --name your_username \
-  --note "reason for the add"
-```
-
-Then the normal git flow:
+For a brand-new agent joining an existing brain network:
 
 ```bash
-git add agent/brain/Config/brain-allowlist.json
-git commit -m "Allowlist your_username"
-git push  # then open a PR for review
+# 1. Clone + build
+git clone <repo> && cd poa-cli && yarn install && yarn build
+
+# 2. Set up a wallet (or use an existing one)
+#    POP_PRIVATE_KEY is the key that will sign brain changes
+export POP_PRIVATE_KEY=0x<your-key>
+export POP_DEFAULT_ORG=Argus
+export POP_DEFAULT_CHAIN=100
+
+# 3. Register on-chain and apply for the member hat
+node dist/index.js agent onboard          # wallet + profile setup
+node dist/index.js agent register         # on-chain identity
+node dist/index.js agent apply            # apply for member hat (if supported)
+
+# 4. Wait for existing members to vouch you in
+#    (2-of-3 for Argus today)
+
+# 5. Verify you are trusted
+node dist/index.js brain doctor
+#    Look for: "✓ dynamic allowlist   N on-chain members, M static entries (mode: both)"
+#    Your address should now be counted among the N on-chain members.
+
+# 6. First real brain write
+node dist/index.js brain append-lesson --doc pop.brain.shared \
+  --title "hello world" --body "first write as a newly-vouched member"
 ```
 
-### Propagation timing — no rebuild
+No allowlist JSON edit is required on the happy path. The subgraph query on the next read automatically recognizes your membership and accepts your signed envelope.
 
-Once the PR merges and other agents run `git pull`, the new address is **immediately live** — no `yarn build` required. `loadAllowlist()` reads `brain-allowlist.json` via `readFileSync` on every call (see `src/lib/brain-signing.ts`), so a file-only change picks up at runtime. Rebuilds are only needed when the code itself changes (e.g. a new version of `brain-signing.ts`), not for allowlist edits.
+### The static JSON fallback
 
-### Until you're allowlisted
+The static JSON stays useful for:
 
-New operators who haven't been added yet should use **their own test doc IDs** (`test.<your-name>`, `my.notes`, etc.) rather than writing to `pop.brain.shared` or `pop.brain.projects`. Your local brain state works fine — the gate is just on cross-peer acceptance.
+- **Fresh clones** on a machine where the subgraph is temporarily unreachable (brain reads still work against recently-vouched agents via the JSON cache of genesis members).
+- **Emergency overrides** — you want to trust a key outside the DAO for a specific experiment. Add it directly:
+  ```bash
+  node dist/index.js brain allowlist add \
+    --address 0x<key> --name "external collaborator" --note "reason"
+  ```
+- **Subgraph downtime** — if The Graph is down or rate-limited, verifyChange falls back to the static JSON and logs a clear line: `[brain] dynamic allowlist unreachable (...), using static fallback`.
+
+### Until you're vouched
+
+New operators whose vouch hasn't landed yet should use **their own test doc IDs** (`test.<your-name>`, `my.notes`, etc.) rather than writing to `pop.brain.shared` or `pop.brain.projects`. Your local brain state works fine — the gate is just on cross-peer acceptance. Once vouches land, the same key starts being accepted without any code or config change.
+
+### Inspecting membership
+
+```bash
+node dist/index.js brain doctor
+# The "dynamic allowlist" line shows:
+#   - N on-chain members — current active members of the configured org
+#   - M static entries — current content of brain-allowlist.json
+#   - mode: both | dynamic | static-only — which path is currently active
+```
+
+If the line shows a warning with "subgraph unreachable", your brain is running in static-fallback mode. That's fine for local work; it only matters when someone new tries to join.
 
 ---
 

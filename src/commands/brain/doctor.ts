@@ -242,6 +242,39 @@ function checkAllowlist(): CheckResult {
   }
 }
 
+async function checkDynamicMembership(): Promise<CheckResult> {
+  // Task #330: surface whether the on-chain dynamic allowlist is reachable
+  // and how many authorized signers it resolves to. Falls back to a warn,
+  // never a fail, because the static JSON is a legitimate offline path.
+  const { tryFetchOrgMembers } = await import('../../lib/brain-membership');
+  try {
+    const members = await tryFetchOrgMembers();
+    const staticCount = loadAllowlist().length;
+    if (members === null) {
+      return {
+        name: 'dynamic allowlist',
+        status: 'warn',
+        detail: `subgraph unreachable — using static fallback (${staticCount} entries). Set POP_DEFAULT_ORG / POP_DEFAULT_CHAIN or check network.`,
+      };
+    }
+    const mode =
+      staticCount === 0 ? 'dynamic'
+        : members.size === 0 ? 'static-only'
+        : 'both';
+    return {
+      name: 'dynamic allowlist',
+      status: 'pass',
+      detail: `${members.size} on-chain member${members.size === 1 ? '' : 's'}, ${staticCount} static entries (mode: ${mode})`,
+    };
+  } catch (err: any) {
+    return {
+      name: 'dynamic allowlist',
+      status: 'warn',
+      detail: `check crashed — ${err?.message ?? 'unknown'}`,
+    };
+  }
+}
+
 function checkDocManifest(): CheckResult {
   const path = join(getBrainHome(), 'doc-heads.json');
   if (!existsSync(path)) {
@@ -328,6 +361,7 @@ export const doctorHandler = {
       checks.push(checkBrainHome());
       checks.push(await checkPeerKey());
       checks.push(checkAllowlist());
+      checks.push(await checkDynamicMembership());
       checks.push(checkDocManifest());
 
       // libp2p init is the integration check — may take a few seconds.

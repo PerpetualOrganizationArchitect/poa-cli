@@ -24,6 +24,7 @@ import {
   signBrainChange,
   verifyBrainChange,
   isAllowedAuthor,
+  isAuthorizedAuthor,
   unwrapAutomergeBytes,
   type BrainChangeEnvelope,
 } from './brain-signing';
@@ -572,11 +573,18 @@ export async function openBrainDoc<T = any>(docId: string): Promise<{ doc: any; 
     // Unwrap, verify, check allowlist, then load the inner Automerge.
     const envelope = JSON.parse(new TextDecoder().decode(envelopeBytes)) as BrainChangeEnvelope;
     const author = verifyBrainChange(envelope);
-    if (!isAllowedAuthor(author)) {
+    const authz = await isAuthorizedAuthor(author);
+    if (!authz.allowed) {
       throw new Error(
-        `Brain doc "${docId}" head is signed by ${author}, not in allowlist. ` +
-        `Refusing to load. Edit agent/brain/Config/brain-allowlist.json to trust this author.`
+        `Brain doc "${docId}" head is signed by ${author}, not authorized. ` +
+        `${authz.fallbackReason}. ` +
+        `Either vouch this address into the Argus member hat, or add it to ` +
+        `agent/brain/Config/brain-allowlist.json for an emergency override.`
       );
+    }
+    if (authz.mode === 'static-fallback' && authz.fallbackReason) {
+      // Surface the fallback path so operators can see when dynamic is down.
+      console.error(`[brain] ${authz.fallbackReason}`);
     }
     const automergeBytes = unwrapAutomergeBytes(envelope);
     const doc = Automerge.load(automergeBytes);
@@ -776,11 +784,15 @@ export async function fetchAndMergeRemoteHead(
   } catch (err: any) {
     return { action: 'reject', reason: `signature verify failed: ${err.message}` };
   }
-  if (!isAllowedAuthor(author)) {
+  const authz = await isAuthorizedAuthor(author);
+  if (!authz.allowed) {
     return {
       action: 'reject',
-      reason: `author ${author} not in brain-allowlist.json — block stored but manifest NOT updated`,
+      reason: `author ${author} not authorized (${authz.fallbackReason}) — block stored but manifest NOT updated`,
     };
+  }
+  if (authz.mode === 'static-fallback' && authz.fallbackReason) {
+    console.error(`[brain] ${authz.fallbackReason}`);
   }
 
   const remoteAutomergeBytes = unwrapAutomergeBytes(remoteEnvelope);
