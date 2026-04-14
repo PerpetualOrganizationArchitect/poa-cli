@@ -253,9 +253,19 @@ export async function initBrainNode(): Promise<any> {
   // the write has already persisted locally and the announcement is
   // best-effort. `emitSelf: false` because we don't want local subscribers
   // echoing back our own publishes.
+  // HB#364: optional fixed listen port via POP_BRAIN_LISTEN_PORT.
+  // When set, the daemon binds TCP to a predictable port so committed
+  // static peer lists (brain-peers.json) remain valid across restarts.
+  // When unset, fall back to random port (libp2p tcp/0) for ephemeral
+  // CLI invocations that don't need to be addressable. Cross-device
+  // onboarding is gated on this being set on at least one side.
+  const rawListenPort = process.env.POP_BRAIN_LISTEN_PORT?.trim();
+  const listenPort = rawListenPort && /^\d+$/.test(rawListenPort) ? Number(rawListenPort) : 0;
+  const listenAddrs = [`/ip4/0.0.0.0/tcp/${listenPort}`];
+
   const libp2p = await createLibp2p({
     privateKey,
-    addresses: { listen: ['/ip4/0.0.0.0/tcp/0'] },
+    addresses: { listen: listenAddrs },
     transports: [tcp(), circuitRelayTransport()],
     streamMuxers: [yamux()],
     connectionEncrypters: [noise()],
