@@ -19,6 +19,7 @@ import { join } from 'path';
 import { writeFileSync, mkdirSync, existsSync, readFileSync } from 'fs';
 import { readBrainDoc, stopBrainNode } from '../../lib/brain';
 import { projectForDoc } from '../../lib/brain-projections';
+import { parseSharedMarkdown } from '../../lib/brain-migrate';
 import * as output from '../../lib/output';
 
 interface SnapshotArgs {
@@ -28,10 +29,51 @@ interface SnapshotArgs {
 }
 
 /**
- * Count top-level H3 headers in a generated brain markdown projection.
- * Both pop.brain.shared (lessons) and pop.brain.projects (projects)
- * use `### ` as the per-item header, so this doubles as a "content
- * item count" for regression detection.
+ * Count unique lesson ids in a rendered `.generated.md` projection.
+ *
+ * Task #359 (HB#361): this previously used `/^### /gm` which matched EVERY
+ * line starting with `### ` in the markdown, INCLUDING lines inside lesson
+ * bodies that contain `### ` as literal content. After HB#358 (#357) taught
+ * the parser to preserve H3 body content, body H3s started inflating the
+ * naive count and the regression guard reported false mismatches.
+ *
+ * The fix is in two parts:
+ *   1. For the **local projection** side of the comparison, count
+ *      `doc.lessons.filter(!removed).length` directly — the doc is in
+ *      scope, no parsing needed, no inflation possible. Done inline at
+ *      the call site.
+ *   2. For the **existing-file** side, we don't have the old doc, so we
+ *      parse the markdown structurally (via the HB#358 parser) and count
+ *      UNIQUE ids. Unique-id counting dedupes the ghost lessons produced
+ *      by one lesson's body containing `### ` at line-start: the parser
+ *      will start "new lessons" at each body H3, but those ghosts often
+ *      share slug-fallback ids with their neighbors (or with the enclosing
+ *      real lesson), so counting unique-ids compresses the inflation
+ *      back out. The count reflects the best estimate of how many
+ *      distinct-id lessons are structurally present in the file.
+ *
+ * For non-shared docs (projects, retros), the naive H3 count is still
+ * usable because their bodies don't typically contain `### ` lines —
+ * kept as a fallback.
+ */
+function countLessonsInProjectedMarkdown(md: string): number {
+  const parsed = parseSharedMarkdown(md, {
+    defaultAuthor: 'snapshot-regression-guard',
+    defaultTimestamp: 0,
+  });
+  const uniqueIds = new Set<string>();
+  for (const l of parsed.lessons) {
+    if (l && typeof l.id === 'string' && l.id !== '') {
+      uniqueIds.add(l.id);
+    }
+  }
+  return uniqueIds.size;
+}
+
+/**
+ * Legacy H3 counter — kept as a fallback for non-shared docs (projects,
+ * retros) whose projections don't embed H3 content inside bodies. New
+ * shared-doc logic uses `countLessonsInProjectedMarkdown` instead.
  */
 function countH3Items(md: string): number {
   const matches = md.match(/^### /gm);
@@ -102,8 +144,31 @@ export const snapshotHandler = {
       // continue without committing the regressed file.
       if (existsSync(outPath) && !argv.force) {
         const existingContent = readFileSync(outPath, 'utf8');
-        const existingCount = countH3Items(existingContent);
-        const newCount = countH3Items(markdown);
+        // Task #359 (HB#361): shared-doc regression guard uses
+        // doc-direct counting for the local side and structural unique-id
+        // parsing for the existing-file side. Naive /^### /gm counting
+        // was inflated by body-embedded `### ` lines after HB#358 taught
+        // the parser to preserve them. Other docs fall back to the naive
+        // H3 counter (their bodies don't embed H3s).
+        const isSharedDoc = docId === 'pop.brain.shared';
+        let existingCount: number;
+        let newCount: number;
+        if (isSharedDoc) {
+          existingCount = countLessonsInProjectedMarkdown(existingContent);
+          // Authoritative count from the in-memory doc — no parsing,
+          // no ghost lessons from body-H3 inflation.
+          const liveLessons = Array.isArray((doc as any)?.lessons)
+            ? ((doc as any).lessons as any[]).filter((l) => l?.removed !== true)
+            : [];
+          const liveIds = new Set<string>();
+          for (const l of liveLessons) {
+            if (l && typeof l.id === 'string' && l.id !== '') liveIds.add(l.id);
+          }
+          newCount = liveIds.size;
+        } else {
+          existingCount = countH3Items(existingContent);
+          newCount = countH3Items(markdown);
+        }
         if (newCount < existingCount) {
           const existingCid = parseExistingHeadCid(existingContent);
           const msg =
