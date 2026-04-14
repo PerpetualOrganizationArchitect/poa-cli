@@ -325,11 +325,15 @@ agreed changes into real on-chain tasks → the retro auto-advances to
 
 ---
 
-## Step 2.5: No-op prevention check (HB#325+, task #342)
+## Step 2.5: Substantive-work check (HB#325+, task #342, raised HB#206)
 
 Before writing the heartbeat log entry, answer this question honestly:
 
-**"Did this heartbeat produce at least ONE of the following?"**
+**"Did this heartbeat produce at least TWO of the following, OR one large ship that took most of the HB's real work time?"**
+
+The "one large ship" escape covers HBs where a single task claim + code + tests + submit + commit chain produced a real deliverable (e.g. #346 brain-schemas shipping HB#168, #353 migration execution HB#189). Those are full HBs even though they technically produce only 1 top-level artifact. The rule is: if you spent most of the HB's work time on one thing and shipped it end-to-end, you pass.
+
+If you produced only ONE small artifact (e.g. filed a task without claiming it, pushed one commit, wrote one brain lesson, cast one vote), you have NOT passed. Return to Step 2.7 (clustering self-check) and do another action before logging.
 
 - [ ] A **git commit** (I wrote code/docs and committed them)
 - [ ] An **on-chain transaction** (task claim/submit/review, vote cast,
@@ -350,6 +354,15 @@ Before writing the heartbeat log entry, answer this question honestly:
 If **all six** are "no", you are about to write a no-op heartbeat.
 **Stop here.** Per brain lesson `no-op-heartbeats-violate-the-always-plan-rule-the-board-is-n-1776120488`
 (HB#281 canonical retraction), this is a protocol violation.
+
+If only ONE box is checked, you have the opposite failure: an early-stopping
+HB. Per the HB#206 raise of this check, return to Step 2.7 (clustering
+self-check) and produce another substantive artifact before logging. Single-
+action HBs were the HB#203-205 drift pattern that Hudson flagged at HB#206 —
+"your heartbeat was less than 2 min. what needs to change to make them
+longer. its ok to have shorter ones occasionally but it doesnt seem like
+you are doing any work." The substantive work is almost always available;
+the early-stopping instinct is the failure.
 
 ### The failure mode this check prevents
 
@@ -421,6 +434,25 @@ and apply the checklist:
 - "Waiting for the next loop cycle" — 15 minutes of agent time is
   a terrible thing to waste. The loop is not a natural rate limit.
 - "Same as last HB" — see "Stall legibility" above.
+- **"Task-file-as-output" (HB#206)** — filing a task without claiming
+  or shipping it this same HB is rarely a full HB of work. It takes
+  3-5 minutes of real time. If you file a task, either claim and
+  ship it immediately OR do something else substantive in the same HB.
+  HB#205 failed this: one task create, 90 seconds of real work, log
+  and stop. That's the early-stopping pattern Hudson flagged at HB#206.
+- **"Context budget hoarding" (HB#206)** — preserving context for
+  some hypothetical future HB is self-protective, not strategic. The
+  operator signal to slow down is silence; the operator signal to go
+  faster is direct intervention (as at HB#206). Lean toward using
+  context now unless the next action is genuinely fresh-context-
+  required. I was wrong to decline #354 at HB#195 citing context; I
+  was wrong to stop at 1 action HB#203/#205 citing the same. The next
+  HB is not a better time than this HB; it's just a later time.
+- **"Vote-waiting" (HB#206)** — an active vote in progress is NOT a
+  reason to reduce other work. Votes are async by design. Continue
+  shipping other artifacts while the vote window runs; check back at
+  the window close via `pop agent triage --json` which will flag the
+  expired proposal as a HIGH announce action (see task #366).
 
 ### Implementation note
 
@@ -431,6 +463,76 @@ integrity will apply the checklist honestly. The escape hatch
 (`**Blocked:**`) exists for legitimate external blocks so the rule
 never forces dishonest work; it forces the dishonest *framing* of
 idle work as progress.
+
+---
+
+## Step 2.7: Clustering self-check (HB#206+)
+
+After completing your first substantive action AND before writing
+the log entry, re-run `pop agent triage --json` and look at the
+remaining HIGH and MEDIUM actions in the output. For EACH one,
+answer honestly:
+
+**"Is there a valid reason I cannot do this one too, this HB?"**
+
+### Valid reasons to decline
+
+- **Genuinely fresh-context required.** A deep dive on a new module,
+  multi-file refactor, or unfamiliar codebase area that would need
+  focused reasoning I don't have available. Name the specific thing
+  that's missing.
+- **Cross-agent in-flight conflict.** Check `git status --short`
+  and the assignee field on any task touching files you'd edit. If
+  another agent has uncommitted changes or is mid-ship, retreat to
+  a non-conflicting action. Rule from HB#188 brain lesson
+  `cross-agent-in-flight-detection-git-status-is-the-lock-protocol`.
+- **External block.** Hudson review needed, credentials missing,
+  another agent's ship not yet landed. Name the specific unblock
+  event and confirm it's not actually resolved.
+- **Next-HB-cannot-start-cleanly budget ceiling.** The NEXT heartbeat
+  should be able to run the same full-work protocol. If taking on
+  more this HB would leave the next HB unable to even run triage,
+  that's a real ceiling. But "I might need context later" is NOT
+  this ceiling — the later time is rarely the better time.
+
+### Invalid reasons
+
+- "I already did one thing this HB" — the Step 2.5 minimum is now
+  TWO artifacts or one large ship, not one of anything. Keep going.
+- "Saving context for later" — see HB#206 anti-rationalization.
+  The later HB is not the better HB; it's just the later one.
+- "This would take too long" without a concrete estimate — if you
+  can't name a specific reason the action exceeds your remaining
+  budget, the instinct is early-stopping, not a real ceiling.
+- "Another agent might pick it up" without checking whether they
+  actually have it claimed — look at `Assignee` in `pop task view`.
+- "The vote/PR/ship I just did is enough for this HB" — asynchronous
+  work like votes doesn't consume the rest of your HB. Keep going.
+
+### Target shape
+
+A full-work HB typically produces 3+ on-chain or file artifacts,
+not 1. The ship-chain HBs #163-198 averaged 4-6 artifacts each
+(claim + code edit + tests + submit + commit + lesson, or
+2 reviews + brain write + snapshot + log). The HB#203-205 drift
+pattern of 1-2 artifacts each is what Step 2.7 exists to prevent.
+If you find yourself about to write the log entry with only 1
+thing shipped, STOP and pick another action from the re-run triage.
+
+### When clustering naturally stops
+
+There ARE HBs where 1-2 actions is the right answer. Those are:
+
+- **A large end-to-end ship** where one task took most of the HB's
+  work time (qualifies for the Step 2.5 "one large ship" escape)
+- **A genuine `**Blocked:**` state** with all substantive paths
+  externally gated (use the escape hatch format)
+- **First HB of a fresh session** where triage needs a full read
+  and the first action is substantive orientation
+
+In every other case, cluster. The default is "keep going until
+the clustering check finds a valid reason to stop", not "stop at
+the first artifact and hope the checklist passes."
 
 ---
 
