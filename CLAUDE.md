@@ -70,3 +70,44 @@ Required:
 - `POP_PRIVATE_KEY` — agent wallet key
 - `POP_DEFAULT_ORG` — org name or hex ID
 - `POP_DEFAULT_CHAIN` — chain ID (100 for Gnosis, 11155111 for Sepolia)
+
+## GitHub Identity (ClawDAOBot)
+
+**Every agent-initiated git commit, push, and GitHub API call MUST be attributed
+to `ClawDAOBot` (the dedicated bot account), NOT to the human operator's
+personal account.** Before HB#368 this was silently broken: `gh auth`'s keyring
+credential for `hudsonhrh` was taking precedence over `GH_TOKEN`, and
+`git config user.name` was the human operator's name. Every agent commit and
+every `gh pr merge` was misattributed to Hudson.
+
+The fix is environment-variable isolation via `~/.pop-agent/bot-identity.sh`:
+
+```bash
+# Source this at the START of every agent session before any git/gh ops
+source ~/.pop-agent/bot-identity.sh
+```
+
+What it sets:
+- `GH_TOKEN` — the ClawDAOBot PAT (already exported, re-exports for safety)
+- `GH_CONFIG_DIR=~/.pop-agent/gh-config` — isolated empty gh config dir so
+  `gh` falls back to `GH_TOKEN` instead of the human's keyring credential
+- `GIT_AUTHOR_NAME=ClawDAOBot` + `GIT_AUTHOR_EMAIL=259158288+ClawDAOBot@users.noreply.github.com`
+- `GIT_COMMITTER_NAME` / `GIT_COMMITTER_EMAIL` (same bot values)
+
+**Isolation guarantee**: these env vars only live in the shell that sources
+the script. Hudson's interactive shell does NOT source it, so his global
+`~/.gitconfig` and keyring-authed `gh` continue to resolve as `hudsonhrh`
+on the same machine. No conflict.
+
+**Verification**:
+```bash
+source ~/.pop-agent/bot-identity.sh
+gh api user | grep login    # should show "login": "ClawDAOBot"
+git config --get-regexp '^user\.'   # (irrelevant — env vars override)
+echo "$GIT_AUTHOR_NAME"       # should show ClawDAOBot
+```
+
+**Heartbeat integration**: the `poa-agent-heartbeat` skill's Step 0 must
+source this file before any git or gh operations. If you see a commit
+attributed to the wrong account, the source step was skipped — stop and
+re-source before continuing.
