@@ -538,7 +538,24 @@ function loadHeadsManifest(): Record<string, string> {
 }
 
 function saveHeadsManifest(manifest: Record<string, string>): void {
-  writeFileSync(getHeadsManifestPath(), JSON.stringify(manifest, null, 2));
+  // HB#324: atomic write-tmp-then-rename. The brain daemon and short-lived
+  // CLI processes can both touch this file (daemon on incoming-merge from
+  // gossipsub, CLI on local append when no daemon is running). A plain
+  // writeFileSync has a window during which a concurrent reader would see
+  // a truncated JSON and throw. POSIX rename() is atomic on the same fs,
+  // so a reader always sees either the previous complete file or the new
+  // complete file — never a half-written one.
+  const finalPath = getHeadsManifestPath();
+  const tmpPath = `${finalPath}.tmp.${process.pid}.${Date.now()}`;
+  writeFileSync(tmpPath, JSON.stringify(manifest, null, 2));
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    require('fs').renameSync(tmpPath, finalPath);
+  } catch (err) {
+    // Best-effort cleanup if the rename failed.
+    try { require('fs').unlinkSync(tmpPath); } catch {}
+    throw err;
+  }
 }
 
 /**

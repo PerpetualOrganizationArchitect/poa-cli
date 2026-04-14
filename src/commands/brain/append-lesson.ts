@@ -23,7 +23,8 @@ import type { Argv, ArgumentsCamelCase } from 'yargs';
 import { readFileSync, existsSync } from 'fs';
 import { resolve } from 'path';
 import { ethers } from 'ethers';
-import { applyBrainChange, stopBrainNode } from '../../lib/brain';
+import { stopBrainNode } from '../../lib/brain';
+import { routedDispatch } from '../../lib/brain-ops';
 import * as output from '../../lib/output';
 
 interface AppendArgs {
@@ -128,19 +129,19 @@ export const appendLessonHandler = {
         authorLabel = new ethers.Wallet(key).address.toLowerCase();
       }
 
-      // Apply the change — this signs + persists + auto-publishes via
-      // the step 5 gossipsub hook. The envelope's author (from the
-      // signing wallet) is what actually enforces allowlist trust;
-      // lesson.author is just human-readable metadata in the projection.
-      const result = await applyBrainChange(argv.doc, (doc: any) => {
-        if (!Array.isArray(doc.lessons)) doc.lessons = [];
-        doc.lessons.push({
-          id,
-          title: argv.title,
-          author: authorLabel,
-          body,
-          timestamp: now,
-        });
+      // Route through the unified dispatcher (HB#324 ship-2). When a
+      // brain daemon is running, this sends the op via IPC so the
+      // daemon's long-lived gossipsub mesh handles the publish. When
+      // no daemon, it falls back to in-process applyBrainChange via
+      // dispatchOp. Same result shape in both cases.
+      const result = await routedDispatch({
+        type: 'appendLesson',
+        docId: argv.doc,
+        id,
+        title: argv.title,
+        body,
+        author: authorLabel,
+        timestamp: now,
       });
 
       if (output.isJsonMode()) {
@@ -150,7 +151,8 @@ export const appendLessonHandler = {
           lessonId: id,
           headCid: result.headCid,
           author: authorLabel,
-          envelopeAuthor: result.author,
+          envelopeAuthor: result.envelopeAuthor,
+          routedViaDaemon: result.routedViaDaemon,
         });
       } else {
         console.log('');
@@ -158,6 +160,7 @@ export const appendLessonHandler = {
         console.log(`  id:      ${id}`);
         console.log(`  author:  ${authorLabel}`);
         console.log(`  head:    ${result.headCid}`);
+        console.log(`  routed:  ${result.routedViaDaemon ? 'via brain daemon' : 'in-process (no daemon)'}`);
         console.log('');
       }
     } catch (err: any) {

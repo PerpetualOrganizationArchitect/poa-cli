@@ -90,6 +90,25 @@ export const REBROADCAST_INTERVAL_MS = 60_000;
 export const KEEPALIVE_INTERVAL_MS = 20_000;
 export const KEEPALIVE_TOPIC = 'pop/brain/net/v1';
 
+/**
+ * Canonical brain docs every daemon subscribes to at startup regardless
+ * of local manifest state. A fresh brain home has an empty manifest, so
+ * without this list the daemon would not subscribe to any doc topics
+ * and could never receive remote head announcements for
+ * `pop.brain.shared` / `pop.brain.projects` until after its first
+ * local write.
+ *
+ * Adding a new canonical doc here makes every daemon pick it up on
+ * next restart. To experiment with a non-canonical doc, just perform a
+ * local write via `pop brain append-lesson --doc <id>` — the write
+ * path adds the doc to the manifest, and the next daemon loop iteration
+ * picks it up via listBrainDocs().
+ */
+export const CANONICAL_BRAIN_DOCS: string[] = [
+  'pop.brain.shared',
+  'pop.brain.projects',
+];
+
 export function getDaemonPidPath(): string {
   return join(getBrainHome(), 'daemon.pid');
 }
@@ -189,9 +208,11 @@ export async function runDaemon(): Promise<void> {
 
   log(`daemon starting — home=${home} author=${authorAddress}`);
 
-  // Write the PID file. This happens AFTER the environment check so a
-  // failed start doesn't leave a stale PID.
-  writeFileSync(pidPath, String(process.pid), { mode: 0o600 });
+  // HB#324: do NOT write the PID file yet. A fast-following CLI command
+  // that sees the PID file will try to open the IPC socket, which may
+  // not yet exist. The startup race has to be closed by writing the PID
+  // file AFTER the IPC server is listening. See the end of this function
+  // for the actual PID file write.
 
   // Initialize libp2p once for the whole daemon lifetime. All CLI
   // commands invoked while the daemon is up will (eventually) route
@@ -268,7 +289,16 @@ export async function runDaemon(): Promise<void> {
     log(`subscribed doc ${docId}`);
   }
 
-  for (const { docId } of listBrainDocs()) {
+  // Bootstrap subscription: always subscribe to the canonical well-known
+  // doc topics AND every doc currently in the manifest. A fresh brain
+  // home will have an empty manifest but still needs to be listening
+  // for pop.brain.shared and pop.brain.projects announcements so it
+  // can catch up on first contact with a peer.
+  const docsToSubscribe = new Set<string>([
+    ...CANONICAL_BRAIN_DOCS,
+    ...listBrainDocs().map(d => d.docId),
+  ]);
+  for (const docId of docsToSubscribe) {
     try {
       await subscribeDoc(docId);
     } catch (err: any) {
@@ -367,8 +397,20 @@ export async function runDaemon(): Promise<void> {
         const topics = pubsub.getTopics?.() ?? [];
         const peers = node.libp2p.getPeers().map((p: any) => p.toString());
         const connections = node.libp2p.getConnections().length;
+        // Return the full /p2p/<peerId> multiaddrs so operators and test
+        // fixtures can dial this daemon from another process when automatic
+        // discovery (mDNS, bootstrap) isn't finding it.
+        const peerIdStr = node.libp2p.peerId.toString();
+        const listenAddrs: string[] = [];
+        try {
+          for (const ma of node.libp2p.getMultiaddrs()) {
+            const s = ma.toString();
+            listenAddrs.push(s.includes('/p2p/') ? s : `${s}/p2p/${peerIdStr}`);
+          }
+        } catch {}
         return {
-          peerId: node.libp2p.peerId.toString(),
+          peerId: peerIdStr,
+          listenAddrs,
           uptime: Math.floor((Date.now() - stats.startedAt) / 1000),
           connections,
           knownPeerCount: peers.length,
@@ -386,8 +428,61 @@ export async function runDaemon(): Promise<void> {
           logPath,
         };
       }
+      case 'dial': {
+        // Operator/test escape hatch for bringing peers together when
+        // automatic discovery fails. Accepts a `/ip4/.../p2p/<peerId>`
+        // multiaddr and asks libp2p to open a connection.
+        //
+        // Expected params: {multiaddr: string}
+        // Returns: {dialed: string, peerId: string}
+        const addr = _params?.multiaddr;
+        if (!addr || typeof addr !== 'string') {
+          throw new Error('dial: multiaddr (string) is required');
+        }
+        // Lazy import so we don't pull multiaddr into the module namespace
+        // unless someone actually uses this path.
+        const esmImport = new Function('s', 'return import(s)') as (s: string) => Promise<any>;
+        const { multiaddr: makeMultiaddr } = await esmImport('@multiformats/multiaddr');
+        const ma = makeMultiaddr(addr);
+        await node.libp2p.dial(ma);
+        log(`dial via IPC: ${addr}`);
+        return { dialed: addr, peerId: node.libp2p.peerId.toString() };
+      }
       case 'ping': {
         return { pong: true, ts: Date.now() };
+      }
+      case 'applyOp': {
+        // HB#324 ship-2: unified write dispatch. The CLI serialized a
+        // BrainOp into _params.op; we run it through the same dispatchOp
+        // function the CLI would use if no daemon were running. This
+        // keeps the local and routed code paths byte-identical — only
+        // the transport differs.
+        //
+        // Lazy import to avoid a module-level cycle: brain-ops imports
+        // from brain-daemon (getRunningDaemonPid, sendIpcRequest), and
+        // brain-daemon needs to import dispatchOp from brain-ops here.
+        // Defer the require until the first applyOp lands.
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { dispatchOp } = require('./brain-ops');
+        const result = await dispatchOp(_params?.op);
+        // If the op touched a doc we weren't subscribed to, add it to
+        // our live subscription set so incoming announcements for that
+        // doc get handled going forward.
+        const docId = _params?.op?.docId;
+        if (docId && !subscribedDocs.has(docId)) {
+          try { await subscribeDoc(docId); } catch {}
+        }
+        log(
+          `applyOp doc=${docId} type=${_params?.op?.type} head=${result.headCid} ` +
+          `author=${result.envelopeAuthor}`,
+        );
+        // dispatchOp returns routedViaDaemon=false because it ran in the
+        // local (daemon) process. The CLI's routedDispatch will override
+        // this flag to true because it was sent via IPC.
+        return {
+          headCid: result.headCid,
+          envelopeAuthor: result.envelopeAuthor,
+        };
       }
       default:
         throw new Error(`Unknown IPC method: ${method}`);
@@ -402,6 +497,13 @@ export async function runDaemon(): Promise<void> {
     chmodSync(sockPath, 0o600);
   } catch {}
   log(`IPC listening on ${sockPath}`);
+
+  // HB#324: NOW write the PID file, after the IPC socket is listening.
+  // A CLI command that sees the PID file will immediately try to IPC
+  // and that connection must succeed on the first try. Writing the PID
+  // before the server was listening was a startup race bug in ship-1.
+  writeFileSync(pidPath, String(process.pid), { mode: 0o600 });
+  log(`PID file written — daemon is now discoverable`);
 
   // --- Graceful shutdown ---
   let shuttingDown = false;
@@ -445,8 +547,35 @@ export async function runDaemon(): Promise<void> {
 }
 
 /**
- * IPC client helper: send a request to the running daemon. Throws if no
- * daemon is running.
+ * Typed IPC error. Attaches a `.code` for the caller to branch on.
+ *
+ *   phase = 'pre-connect'  The connection was never established (socket
+ *                          missing, ECONNREFUSED). Safe to fall back to a
+ *                          local execution path — the write did not land
+ *                          in the daemon's process.
+ *   phase = 'post-connect' The connection was established and the request
+ *                          was sent, but a response did not come back. The
+ *                          write may or may not have landed. NOT safe to
+ *                          fall back — see routedDispatch() in brain-ops.ts.
+ */
+export class BrainIpcError extends Error {
+  code: string;
+  phase: 'pre-connect' | 'post-connect';
+  constructor(message: string, code: string, phase: 'pre-connect' | 'post-connect') {
+    super(message);
+    this.name = 'BrainIpcError';
+    this.code = code;
+    this.phase = phase;
+  }
+}
+
+/**
+ * IPC client helper: send a request to the running daemon.
+ *
+ * Throws a BrainIpcError whose `.phase` indicates whether the failure is
+ * safe to recover from by falling back to a local code path. Pre-connect
+ * failures (ECONNREFUSED, ENOENT, daemon not running) are safe. Post-connect
+ * failures (timeout, ECONNRESET, EPIPE) leave the write in an unknown state.
  */
 export async function sendIpcRequest(
   method: string,
@@ -455,15 +584,31 @@ export async function sendIpcRequest(
 ): Promise<any> {
   const sockPath = getDaemonSockPath();
   if (!existsSync(sockPath)) {
-    throw new Error(`No brain daemon socket at ${sockPath}. Run "pop brain daemon start".`);
+    throw new BrainIpcError(
+      `No brain daemon socket at ${sockPath}. Run "pop brain daemon start".`,
+      'ENOENT',
+      'pre-connect',
+    );
   }
   return await new Promise((resolve, reject) => {
     const socket = net.createConnection(sockPath);
     let buf = '';
+    let connected = false;
     const timer = setTimeout(() => {
       socket.destroy();
-      reject(new Error(`IPC timeout after ${timeoutMs}ms`));
+      reject(new BrainIpcError(
+        `IPC timeout after ${timeoutMs}ms`,
+        'ETIMEDOUT',
+        connected ? 'post-connect' : 'pre-connect',
+      ));
     }, timeoutMs);
+    socket.on('connect', () => {
+      connected = true;
+      // Now that we have a live connection, write the request. Doing this
+      // in the connect handler (instead of immediately after createConnection)
+      // closes a subtle phase-classification race on fast local sockets.
+      socket.write(JSON.stringify({ id: Date.now().toString(), method, params }) + '\n');
+    });
     socket.on('data', chunk => {
       buf += chunk.toString('utf8');
       const nl = buf.indexOf('\n');
@@ -473,17 +618,27 @@ export async function sendIpcRequest(
         try {
           const res = JSON.parse(line);
           socket.end();
-          if (res.error) reject(new Error(res.error));
-          else resolve(res.result);
+          if (res.error) {
+            // Response-level error (daemon rejected the request). This is
+            // post-connect; the write did not land.
+            reject(new BrainIpcError(res.error, 'EHANDLER', 'post-connect'));
+          } else {
+            resolve(res.result);
+          }
         } catch (err: any) {
-          reject(new Error(`bad ipc response: ${err.message}`));
+          reject(new BrainIpcError(
+            `bad ipc response: ${err.message}`,
+            'EPROTO',
+            'post-connect',
+          ));
         }
       }
     });
     socket.on('error', err => {
       clearTimeout(timer);
-      reject(err);
+      const code = (err as any).code ?? 'EIPC';
+      const phase = connected ? 'post-connect' : 'pre-connect';
+      reject(new BrainIpcError(err.message, code, phase));
     });
-    socket.write(JSON.stringify({ id: Date.now().toString(), method, params }) + '\n');
   });
 }

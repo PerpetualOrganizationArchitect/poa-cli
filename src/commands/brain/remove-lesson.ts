@@ -22,11 +22,8 @@
 
 import type { Argv, ArgumentsCamelCase } from 'yargs';
 import { ethers } from 'ethers';
-import {
-  openBrainDoc,
-  applyBrainChange,
-  stopBrainNode,
-} from '../../lib/brain';
+import { openBrainDoc, stopBrainNode } from '../../lib/brain';
+import { routedDispatch } from '../../lib/brain-ops';
 import * as output from '../../lib/output';
 
 interface RemoveArgs {
@@ -105,22 +102,14 @@ export const removeLessonHandler = {
       const removerAddress = new ethers.Wallet(key).address.toLowerCase();
       const now = Math.floor(Date.now() / 1000);
 
-      // Apply the tombstone inside a single Automerge change so the
-      // whole mutation lands as one signed snapshot. Re-find the
-      // lesson inside the change fn — the pre-flight `target` is
-      // bound to the plain-JS clone from openBrainDoc, not the
-      // mutable Automerge proxy. (Same gotcha as edit-lesson.)
-      const result = await applyBrainChange(argv.doc, (doc: any) => {
-        if (!Array.isArray(doc.lessons)) return;
-        const idx = doc.lessons.findIndex((l: any) => l?.id === argv.lessonId);
-        if (idx === -1) return;
-        const lesson = doc.lessons[idx];
-        lesson.removed = true;
-        lesson.removedAt = now;
-        lesson.removedBy = removerAddress;
-        if (argv.reason !== undefined) {
-          lesson.removedReason = argv.reason;
-        }
+      // Route through the unified dispatcher (HB#324 ship-2).
+      const result = await routedDispatch({
+        type: 'removeLesson',
+        docId: argv.doc,
+        lessonId: argv.lessonId,
+        removedBy: removerAddress,
+        removedAt: now,
+        removedReason: argv.reason,
       });
 
       if (output.isJsonMode()) {
@@ -129,6 +118,7 @@ export const removeLessonHandler = {
           docId: argv.doc,
           lessonId: argv.lessonId,
           headCid: result.headCid,
+          routedViaDaemon: result.routedViaDaemon,
           removedAt: now,
           removedBy: removerAddress,
           removedReason: argv.reason ?? null,
@@ -140,6 +130,7 @@ export const removeLessonHandler = {
         console.log(`  removedAt: ${new Date(now * 1000).toISOString()}`);
         if (argv.reason) console.log(`  reason:    ${argv.reason}`);
         console.log(`  new head:  ${result.headCid}`);
+        console.log(`  routed:    ${result.routedViaDaemon ? 'via brain daemon' : 'in-process (no daemon)'}`);
         console.log('');
         console.log(
           `  The lesson is still in the Automerge doc (pop brain read still shows it). ` +
