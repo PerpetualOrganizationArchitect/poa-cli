@@ -1,0 +1,545 @@
+/**
+ * pop org probe-access — burner-callStatic access-control probe for any contract.
+ *
+ * Codifies the static-analysis methodology vigil_01 used across HB#153-157
+ * to map the access-control gates of HybridVoting, Executor, EligibilityModule,
+ * PaymentManager, and QuickJoin. The methodology:
+ *
+ *   1. For every external/payable function in the ABI:
+ *   2. Construct a callStatic invocation with realistic-shape zero arguments
+ *      (zero address for `address`, 0 for `uint*`, false for `bool`,
+ *      empty bytes for `bytes`, empty arrays for `*[]`, etc).
+ *   3. Spoof `from` to a fresh burner wallet address (no hats, no balances).
+ *   4. Catch the revert. Decode it via Interface.parseError(). Record the
+ *      error name + selector + any args.
+ *   5. Print a verification table: function name | error | likely access
+ *      control gate.
+ *
+ * Result: a contract's full external surface mapped to its access control
+ * model in <5 minutes, zero gas, zero on-chain footprint. Two distinct
+ * gating libraries handled by the same decode path (OpenZeppelin Ownable
+ * via `OwnableUnauthorizedAccount`, custom errors via `NotSuperAdmin` /
+ * `Unauthorized` / `OnlyMasterDeploy` / etc).
+ *
+ * Limitations explicitly handled and surfaced in --help:
+ *   - Functions that revert with `require(string)` instead of a custom
+ *     error fall through to the raw revert message. Still reportable.
+ *   - Some access checks happen mid-function after state reads, so a
+ *     well-shaped argument may pass the access gate and revert later on
+ *     a state check. Those are reported as "passed access check, reverted
+ *     downstream" and the command notes the function name.
+ *   - Reentrancy guards count as access controls for our purposes — a
+ *     `ReentrancyGuardReentrantCall` revert means the gate is sound.
+ *   - The probe never sends a transaction. It is read-only by construction.
+ */
+
+import type { Argv, ArgumentsCamelCase } from 'yargs';
+import { ethers } from 'ethers';
+import * as fs from 'fs';
+import * as path from 'path';
+import { resolveNetworkConfig } from '../../config/networks';
+import * as output from '../../lib/output';
+
+interface ProbeAccessArgs {
+  address: string;
+  abi?: string;
+  selectors?: string;
+  chain?: number;
+  rpc?: string;
+  skipCodeCheck?: boolean;
+}
+
+interface ProbeResult {
+  name: string;
+  selector: string;
+  status: 'gated' | 'passed' | 'unknown' | 'invalid-input' | 'reentrancy-guarded' | 'not-implemented';
+  errorName?: string;
+  errorSignature?: string;
+  errorArgs?: any[];
+  rawMessage?: string;
+  likelyGate: string;
+}
+
+/**
+ * Generate a zero/default value for any Solidity ABI type.
+ * Recurses on tuples / arrays. Returns ethers-compatible JS shapes.
+ */
+function zeroValue(type: string): any {
+  if (type.endsWith('[]')) {
+    return [];
+  }
+  // Fixed-size array like uint256[3]
+  const fixedArrayMatch = type.match(/^(.+)\[(\d+)\]$/);
+  if (fixedArrayMatch) {
+    const [, inner, sizeStr] = fixedArrayMatch;
+    const size = parseInt(sizeStr, 10);
+    return Array.from({ length: size }, () => zeroValue(inner));
+  }
+  if (type === 'address') return ethers.constants.AddressZero;
+  if (type === 'bool') return false;
+  if (type === 'string') return '';
+  if (type === 'bytes') return '0x';
+  if (type.startsWith('bytes')) return ethers.utils.hexZeroPad('0x00', parseInt(type.slice(5), 10) || 32);
+  if (type.startsWith('uint') || type.startsWith('int')) return 0;
+  // Unknown (probably a tuple) — caller handles via recursion on components
+  return null;
+}
+
+/**
+ * Build the input array for a function. Tuples need their `components`
+ * walked recursively because the ABI expresses them as named struct shapes.
+ */
+function buildInputs(inputs: any[]): any[] {
+  return inputs.map((inp) => {
+    if (inp.type === 'tuple') {
+      const obj: Record<string, any> = {};
+      for (const c of inp.components || []) {
+        obj[c.name || c.type] = c.type === 'tuple' ? buildInputs([c])[0] : zeroValue(c.type);
+      }
+      return obj;
+    }
+    if (inp.type.startsWith('tuple[')) {
+      // tuple[] / tuple[N] — empty array of tuples
+      return [];
+    }
+    return zeroValue(inp.type);
+  });
+}
+
+/**
+ * Walk the ethers v5 error envelope through every place a require-string
+ * revert reason might be hiding. Returns the first non-empty string found,
+ * or '' if nothing is recoverable.
+ *
+ * The paths in priority order:
+ *   1. err.reason — set by ethers when it auto-decodes Error(string)
+ *   2. err.errorArgs?.[0] — when ethers sets errorName='Error' and decodes args
+ *   3. err.error?.message — JSON-RPC error message from the upstream node;
+ *      often "execution reverted: <reason>" for public RPCs
+ *   4. err.error?.error?.message — double-nested for some providers
+ *   5. err.error?.body — JSON.parse to extract .error.message
+ *   6. err.data / err.error?.data — manual decode of 0x08c379a0... (Error(string))
+ *   7. err.message — extract via regex for "reverted with reason string '...'"
+ *
+ * HB#161 Compound Governor Bravo dogfood found that probe-access against
+ * old-style require(string) contracts was reporting "no clear gate" for ALL
+ * functions, even though manual callStatic showed the strings clearly.
+ * The fix: walk the envelope properly. (Task #340.)
+ */
+function extractRevertReason(err: any): string {
+  if (err?.reason && typeof err.reason === 'string') return err.reason;
+  if (Array.isArray(err?.errorArgs) && typeof err.errorArgs[0] === 'string') return err.errorArgs[0];
+  if (err?.error?.message && typeof err.error.message === 'string') {
+    // "execution reverted: <reason>" → strip prefix
+    const m = err.error.message.match(/execution reverted:?\s*(.*)/i);
+    if (m && m[1]) return m[1].trim();
+    return err.error.message;
+  }
+  if (err?.error?.error?.message && typeof err.error.error.message === 'string') {
+    const m = err.error.error.message.match(/execution reverted:?\s*(.*)/i);
+    if (m && m[1]) return m[1].trim();
+    return err.error.error.message;
+  }
+  if (err?.error?.body && typeof err.error.body === 'string') {
+    try {
+      const parsed = JSON.parse(err.error.body);
+      const msg = parsed?.error?.message;
+      if (typeof msg === 'string') {
+        const m = msg.match(/execution reverted:?\s*(.*)/i);
+        if (m && m[1]) return m[1].trim();
+        return msg;
+      }
+    } catch { /* ignore */ }
+  }
+  // Manual decode of 0x08c379a0... (Error(string) ABI encoding)
+  const data: string | undefined = err?.data || err?.error?.data;
+  if (typeof data === 'string' && data.startsWith('0x08c379a0') && data.length >= 138) {
+    try {
+      const decoded = ethers.utils.defaultAbiCoder.decode(['string'], '0x' + data.slice(10));
+      if (typeof decoded[0] === 'string') return decoded[0];
+    } catch { /* ignore */ }
+  }
+  // Last resort: regex over err.message for "reason string 'X'"
+  if (err?.message && typeof err.message === 'string') {
+    const m = err.message.match(/reverted with reason string ['"]([^'"]+)['"]/i);
+    if (m && m[1]) return m[1];
+  }
+  return '';
+}
+
+/**
+ * Classify a revert into a likely access-control gate name for the operator.
+ * The point is to surface the gate concept ("OZ Ownable", "custom NotSuperAdmin",
+ * "msg.sender == executor") rather than just the bare error name.
+ */
+function classifyGate(errorName: string | undefined, rawMessage: string): string {
+  // Inspect the require-string regardless of whether errorName is set
+  // (an unknown(0x08c379a0) errorName plus a meaningful reason should
+  // still classify as a require-string gate).
+  const reasonLower = rawMessage.toLowerCase();
+  if (rawMessage) {
+    if (/admin only|only admin|onlyadmin/i.test(reasonLower)) return 'require-string admin gate';
+    if (/only owner|caller is not the owner|onlyowner/i.test(reasonLower)) return 'OZ Ownable require-string variant';
+    if (/only timelock|onlytimelock/i.test(reasonLower)) return 'governance timelock gate';
+    if (/only governor|onlygovernor/i.test(reasonLower)) return 'governance gate';
+    if (/paused/i.test(reasonLower)) return 'Pausable require';
+    if (/access|owner|admin|unauthor|sender/i.test(reasonLower)) return 'require-string access check';
+  }
+  if (!errorName) {
+    return rawMessage ? `require-string downstream: ${rawMessage.slice(0, 60)}` : 'no clear gate (downstream revert?)';
+  }
+  if (errorName.startsWith('unknown(')) {
+    // We have an undecodable selector but maybe a reason string
+    return rawMessage ? `require-string downstream: ${rawMessage.slice(0, 60)}` : `unknown selector ${errorName}`;
+  }
+  if (errorName === 'Error') {
+    // Solidity stdlib Error(string) — ethers sets errorName='Error' when it
+    // decodes the standard require/revert reason. The reason already passed
+    // the access-keyword regex above; if we got here, the reason is a
+    // state/input validation message, not an access check.
+    return rawMessage
+      ? `passed access gate; reverted with: ${rawMessage.slice(0, 60)}`
+      : 'standard require revert (no reason captured)';
+  }
+  if (errorName === 'OwnableUnauthorizedAccount') return 'OZ Ownable (msg.sender == owner)';
+  if (errorName === 'OwnableInvalidOwner') return 'OZ Ownable invalid input';
+  if (errorName === 'NotSuperAdmin') return 'custom super-admin gate (msg.sender == superAdmin)';
+  if (errorName === 'NotAuthorizedAdmin') return 'custom admin-hat gate (wearer of admin hat)';
+  if (errorName === 'NotAuthorizedToVouch') return 'voucher hat eligibility gate';
+  if (errorName === 'Unauthorized') return 'custom Unauthorized() (likely msg.sender == executor)';
+  if (errorName === 'UnauthorizedCaller') return 'custom UnauthorizedCaller() (executor caller check)';
+  if (errorName === 'OnlyMasterDeploy') return 'POP master deployer gate (NOT governance-controlled)';
+  if (errorName === 'TargetSelf') return 'self-target guard (executor cannot call itself)';
+  if (errorName === 'ReentrancyGuardReentrantCall') return 'OZ ReentrancyGuard';
+  if (errorName === 'EnforcedPause') return 'Pausable (paused)';
+  if (errorName === 'CannotVouchForSelf') return 'self-vouch guard';
+  // Heuristic for downstream reverts that are not access checks
+  if (/InvalidProposal|EmptyBatch|NoUsername|InvalidInput|InvalidHat|ZeroAddress|ZeroAmount|InvalidAmount/.test(errorName)) {
+    return 'passed access gate; reverted on input/state validation';
+  }
+  return `custom error: ${errorName}`;
+}
+
+export const probeAccessHandler = {
+  builder: (yargs: Argv) =>
+    yargs
+      .option('address', {
+        type: 'string',
+        demandOption: true,
+        describe: 'Contract address to probe',
+      })
+      .option('abi', {
+        type: 'string',
+        describe:
+          'Path to the ABI JSON file. If omitted, will try src/abi/<contract>.json by name guess; otherwise required.',
+      })
+      .option('selectors', {
+        type: 'string',
+        describe:
+          'Comma-separated function names or 4-byte selectors to probe. If omitted, probes ALL external/payable functions.',
+      })
+      .option('skip-code-check', {
+        type: 'boolean',
+        default: false,
+        describe:
+          'Skip the on-chain selector existence check. Use when probing behind a proxy (EIP-1967) where the runtime code does not contain the implementation selectors, or when you know the ABI matches the target.',
+      })
+      .epilogue(
+        'Limitations:\n' +
+        '  - Functions that revert with require(string) instead of custom errors fall through to raw messages.\n' +
+        '  - Some access checks happen mid-function after state reads, so a well-shaped zero argument may pass\n' +
+        '    the access gate and revert later on a state check. Those are reported as "passed gate, reverted downstream".\n' +
+        '  - Reentrancy guards count as access controls (ReentrancyGuardReentrantCall = sound gate).\n' +
+        '  - The probe never sends a transaction. Read-only by construction.\n' +
+        '\nExamples:\n' +
+        '  pop org probe-access --address 0x409f51250dc5c66bb1d6952f947d841192f1140e \\\n' +
+        '    --abi src/abi/PaymentManager.json\n' +
+        '  pop org probe-access --address 0xb37a97c8136f6d300c399162cefab5b61c675caf \\\n' +
+        '    --abi src/abi/EligibilityModuleNew.json --selectors transferSuperAdmin,setUserJoinTime\n'
+      ),
+
+  handler: async (argv: ArgumentsCamelCase<ProbeAccessArgs>) => {
+    const networkConfig = resolveNetworkConfig(argv.chain);
+    const rpcUrl = (argv.rpc as string) || networkConfig.resolvedRpc;
+    // Use StaticJsonRpcProvider so a chain-id mismatch between --chain and the
+    // override --rpc doesn't blow up with "underlying network changed". This
+    // matters for probing external contracts on chains we don't have in the
+    // network config (HB#161 Compound case used --chain 42161 + Ethereum RPC).
+    // The probe is read-only so we don't actually need chain-id validation.
+    const provider = new ethers.providers.StaticJsonRpcProvider(rpcUrl);
+
+    if (!ethers.utils.isAddress(argv.address)) {
+      output.error(`Invalid contract address: ${argv.address}`);
+      process.exit(1);
+    }
+
+    let abi: any[];
+    try {
+      const abiPath = argv.abi || '';
+      if (!abiPath || !fs.existsSync(abiPath)) {
+        output.error(
+          `--abi <path> is required (or pass a valid src/abi/<name>.json). ` +
+          `Future enhancement: auto-fetch from chain explorer / Sourcify.`
+        );
+        process.exit(1);
+      }
+      const raw = JSON.parse(fs.readFileSync(abiPath, 'utf-8'));
+      abi = Array.isArray(raw) ? raw : raw.abi;
+      if (!Array.isArray(abi)) {
+        output.error(`Could not parse ABI from ${abiPath} — expected array or { abi: [...] }`);
+        process.exit(1);
+      }
+    } catch (err: any) {
+      output.error(`ABI load failed: ${err.message}`);
+      process.exit(1);
+    }
+
+    const iface = new ethers.utils.Interface(abi);
+    const contract = new ethers.Contract(argv.address, abi, provider);
+
+    // Collect external/payable function fragments from the ABI.
+    const allFns = abi.filter(
+      (f) =>
+        f.type === 'function' &&
+        (f.stateMutability === 'nonpayable' || f.stateMutability === 'payable')
+    );
+
+    let targetFns = allFns;
+    if (argv.selectors) {
+      const wanted = argv.selectors.split(',').map((s) => s.trim().toLowerCase());
+      targetFns = allFns.filter((f) => {
+        const sig = `${f.name}(${(f.inputs || []).map((i: any) => i.type).join(',')})`;
+        const sel = ethers.utils.id(sig).slice(0, 10).toLowerCase();
+        return wanted.includes(f.name.toLowerCase()) || wanted.includes(sel);
+      });
+      if (targetFns.length === 0) {
+        output.error(`No functions matched --selectors. Use names or 4-byte selectors.`);
+        process.exit(1);
+      }
+    }
+
+    // Burner address — fresh keypair, never funded, no hats.
+    const burner = ethers.Wallet.createRandom().address;
+
+    // HB#167 (#345): fetch the target contract's runtime code once and use
+    // it to detect ABI-mismatch false positives. If a selector is not present
+    // in the runtime code, callStatic against it hits the fallback/empty
+    // return path and the old probe reported 'passed' (false positive).
+    // Classify those rows as 'not-implemented' instead.
+    //
+    // The scan is a substring check on the hex code. PUSH4 <selector>
+    // appears as `63<selector>` in bytecode, and direct immediates appear
+    // inline — either way the 8-char selector hex appears literally.
+    //
+    // Proxy handling: EIP-1967 proxies store the implementation address at a
+    // fixed slot. If the target's runtime code is missing >90% of ABI selectors
+    // we check the EIP-1967 slot and use the implementation's code instead.
+    // Compound Governor Bravo is a GovernorBravoDelegator (older-style
+    // delegatecall proxy, storage layout predates EIP-1967) — for that case
+    // we fall back to a "skip the check entirely, probe as before" mode so
+    // legacy proxies don't false-negative.
+    //
+    // --skip-code-check forces the bypass unconditionally.
+    let contractCodeLower: string | null = null;
+    if (!argv.skipCodeCheck) {
+      try {
+        const code = await provider.getCode(argv.address);
+        if (!code || code === '0x') {
+          output.error(
+            `No code at ${argv.address} on chain ${networkConfig.chainId}. ` +
+              `The address is an EOA or the contract is not deployed. ` +
+              `Use --skip-code-check to probe anyway.`,
+          );
+          process.exit(1);
+        }
+        contractCodeLower = code.toLowerCase();
+
+        // Quick coverage check: how many ABI selectors appear in the code?
+        const abiSelectorsFound = targetFns.filter((fn) => {
+          const sig = `${fn.name}(${(fn.inputs || []).map((i: any) => i.type).join(',')})`;
+          const sel = ethers.utils.id(sig).slice(2, 10).toLowerCase();
+          return contractCodeLower!.includes(sel);
+        }).length;
+        const coverage = abiSelectorsFound / targetFns.length;
+
+        if (coverage < 0.1) {
+          // Almost nothing matches. Either (a) EIP-1967 proxy, (b) legacy
+          // delegator proxy, (c) completely wrong ABI. Try EIP-1967 first.
+          // Canonical slot = bytes32(uint256(keccak256('eip1967.proxy.implementation')) - 1)
+          const EIP1967_IMPL_SLOT =
+            '0x360894a13ba1a3210667c828492db98dcef42afd4e7f9f47de01b44f10e6fe2c';
+          try {
+            const raw = await provider.getStorageAt(argv.address, EIP1967_IMPL_SLOT);
+            const impl = '0x' + raw.slice(26);
+            if (impl !== '0x0000000000000000000000000000000000000000') {
+              const implCode = await provider.getCode(impl);
+              if (implCode && implCode !== '0x') {
+                contractCodeLower = implCode.toLowerCase();
+                if (!output.isJsonMode()) {
+                  console.log(`  [proxy] followed EIP-1967 → impl ${impl}`);
+                }
+              }
+            }
+          } catch {
+            // getStorageAt failed — some RPCs block state reads. Fall through.
+          }
+
+          // Re-check coverage after potential impl lookup.
+          const recheck = targetFns.filter((fn) => {
+            const sig = `${fn.name}(${(fn.inputs || []).map((i: any) => i.type).join(',')})`;
+            const sel = ethers.utils.id(sig).slice(2, 10).toLowerCase();
+            return contractCodeLower!.includes(sel);
+          }).length;
+
+          if (recheck / targetFns.length < 0.1) {
+            // Still nothing. Assume legacy delegator proxy or exotic dispatch
+            // — disable the selector check entirely and probe as before. That
+            // is strictly better than false-negatives; ABI-mismatch false
+            // positives still affect this case but that's the pre-#345 baseline.
+            contractCodeLower = null;
+            if (!output.isJsonMode()) {
+              console.log(
+                `  [probe] selector-presence check disabled: <10% of ABI ` +
+                  `selectors found in runtime code (legacy proxy or wrong ABI). ` +
+                  `Probing all functions; results may include ABI-mismatch false ` +
+                  `positives.`,
+              );
+            }
+          }
+        }
+      } catch (err: any) {
+        output.error(`Failed to fetch contract code: ${err.message}`);
+        process.exit(1);
+      }
+    }
+
+    const results: ProbeResult[] = [];
+
+    for (const fn of targetFns) {
+      const sig = `${fn.name}(${(fn.inputs || []).map((i: any) => i.type).join(',')})`;
+      const selector = ethers.utils.id(sig).slice(0, 10);
+
+      // Selector-presence check. Skip if --skip-code-check or no code fetched.
+      if (contractCodeLower) {
+        const selectorHex = selector.slice(2).toLowerCase(); // strip 0x
+        if (!contractCodeLower.includes(selectorHex)) {
+          results.push({
+            name: fn.name,
+            selector,
+            status: 'not-implemented',
+            likelyGate: 'selector not in contract runtime code — function not implemented on this target (ABI/contract family mismatch). Use --skip-code-check for proxies.',
+          });
+          continue;
+        }
+      }
+
+      let inputs: any[];
+      try {
+        inputs = buildInputs(fn.inputs || []);
+      } catch (err: any) {
+        results.push({
+          name: fn.name,
+          selector,
+          status: 'invalid-input',
+          rawMessage: `could not build zero-args: ${err.message}`,
+          likelyGate: 'unknown (could not encode probe args)',
+        });
+        continue;
+      }
+
+      try {
+        await contract.callStatic[fn.name](...inputs, { from: burner });
+        // No revert at all → either fully permissionless OR access check
+        // returns silently (rare). Treat as 'passed' with a note.
+        results.push({
+          name: fn.name,
+          selector,
+          status: 'passed',
+          likelyGate: 'no revert from burner — fully permissionless or access check is silent',
+        });
+      } catch (err: any) {
+        // Decode the revert. ethers v5 exposes errorName / errorSignature when
+        // the error is in the Interface. Fallback to error.data parsing if not.
+        let errorName: string | undefined = err.errorName || (err.error && err.error.errorName);
+        let errorSignature: string | undefined = err.errorSignature || (err.error && err.error.errorSignature);
+        let errorArgs: any[] | undefined = err.errorArgs;
+        const errorData: string | undefined =
+          err.data || (err.error && err.error.data) || (err.error && err.error.error && err.error.error.data);
+
+        if (!errorName && errorData && typeof errorData === 'string' && errorData.length >= 10) {
+          try {
+            const parsed = iface.parseError(errorData);
+            errorName = parsed.name;
+            errorSignature = parsed.signature;
+            errorArgs = Array.from(parsed.args);
+          } catch {
+            // Selector not in this contract's interface — surface raw selector
+            errorName = `unknown(${errorData.slice(0, 10)})`;
+          }
+        }
+
+        // HB#162 fix (#340): walk the ethers v5 error envelope for require-string
+        // reasons. Old-style require(string) reverts (Compound Governor Bravo style)
+        // store the reason in err.error.message or err.error.body or as raw
+        // 0x08c379a0... data. The old extraction only checked err.reason || err.message
+        // which was empty for many providers. extractRevertReason walks all the
+        // known paths.
+        const rawMessage = extractRevertReason(err);
+        const isReentrancy = errorName === 'ReentrancyGuardReentrantCall';
+
+        // Status: gated covers both custom-error reverts AND require-string
+        // reverts that produced a meaningful reason. unknown only when we got
+        // nothing usable.
+        const hasUsefulInfo = !!errorName || !!rawMessage;
+        results.push({
+          name: fn.name,
+          selector,
+          status: isReentrancy ? 'reentrancy-guarded' : (hasUsefulInfo ? 'gated' : 'unknown'),
+          errorName,
+          errorSignature,
+          errorArgs: errorArgs ? errorArgs.map((a) => (a && a._isBigNumber ? a.toString() : a)) : undefined,
+          // ALWAYS surface the reason if we extracted one — operators want to see
+          // the actual revert string, not just the gate classification.
+          rawMessage: rawMessage || undefined,
+          likelyGate: classifyGate(errorName, rawMessage),
+        });
+      }
+    }
+
+    // Output
+    if (output.isJsonMode()) {
+      output.json({
+        address: argv.address,
+        chainId: networkConfig.chainId,
+        burnerAddress: burner,
+        functionsProbed: results.length,
+        results,
+      });
+      return;
+    }
+
+    console.log('');
+    console.log(`Burner-callStatic probe of ${argv.address}`);
+    console.log(`Chain: ${networkConfig.chainId} | Burner: ${burner}`);
+    console.log('═'.repeat(80));
+    console.log(`${'Function'.padEnd(36)} ${'Status'.padEnd(20)} Likely Gate`);
+    console.log('─'.repeat(80));
+    for (const r of results) {
+      const status =
+        r.status === 'gated' ? `\x1b[32m✓ gated\x1b[0m`
+        : r.status === 'reentrancy-guarded' ? `\x1b[32m✓ reentrancy\x1b[0m`
+        : r.status === 'passed' ? `\x1b[33m⚠ passed\x1b[0m`
+        : r.status === 'invalid-input' ? `\x1b[31m✗ no probe\x1b[0m`
+        : `\x1b[31m✗ unknown\x1b[0m`;
+      console.log(`${r.name.padEnd(36)} ${status.padEnd(35)} ${r.likelyGate}`);
+      if (r.errorName && r.errorSignature) {
+        console.log(`  ${' '.repeat(34)} ${'  '.padEnd(20)} (error: ${r.errorSignature})`);
+      }
+    }
+    console.log('');
+    console.log(`Summary: ${results.filter((r) => r.status === 'gated' || r.status === 'reentrancy-guarded').length} gated, ` +
+      `${results.filter((r) => r.status === 'passed').length} passed-burner, ` +
+      `${results.filter((r) => r.status === 'unknown' || r.status === 'invalid-input').length} unknown.`);
+    console.log('');
+  },
+};
