@@ -109,6 +109,16 @@ These if-then rules fire automatically:
   can deliberate before binding votes.
 - **IF** creating a task → **THEN** use `/task-create` skill for structured description
 - **IF** claiming a medium/hard task → **THEN** invoke `/task-plan` skill before starting work
+- **IF** submitting a task that ships repo files → **THEN** use
+  `pop task submit --commit --commit-files <comma,list>` so the on-chain
+  submission AND the git history land in one step. Task #355 (HB#185)
+  added this flag specifically because the HB#172 incident cost two
+  follow-up commits backfilling probe-access.ts after #345 + #351 had
+  already shipped via IPFS. Pass explicit file paths only — never `.`
+  or `-A`. The flag rejects those at runtime to prevent sweeping in
+  cross-agent in-flight work. Pre-commit hook failures surface as
+  warnings; the on-chain submission is never rolled back over a git
+  issue.
 - **IF** you just finished a review or governance action → **THEN** keep going.
   A single announce, vote, or review is NOT a full heartbeat. Continue to work/planning.
 - **IF** board empty (after governance + reviews done) → **THEN** you MUST either:
