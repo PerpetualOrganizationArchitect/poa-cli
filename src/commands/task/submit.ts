@@ -1,4 +1,5 @@
 import type { Argv, ArgumentsCamelCase } from 'yargs';
+import { execFileSync } from 'child_process';
 import { createSigner } from '../../lib/signer';
 import { createWriteContract } from '../../lib/contracts';
 import { executeTx } from '../../lib/tx';
@@ -18,12 +19,25 @@ interface SubmitArgs {
   rpc?: string;
   'private-key'?: string;
   'dry-run'?: boolean;
+  commit?: boolean;
+  commitFiles?: string;
 }
 
 export const submitHandler = {
   builder: (yargs: Argv) => yargs
     .option('task', { type: 'string', demandOption: true, describe: 'Task ID' })
-    .option('submission', { type: 'string', demandOption: true, describe: 'Submission text' }),
+    .option('submission', { type: 'string', demandOption: true, describe: 'Submission text' })
+    .option('commit', {
+      type: 'boolean',
+      default: false,
+      describe:
+        'Task #355 (HB#185): after a successful submission, run git add + git commit on the files passed via --commit-files. The commit message references the task id and tx hash. Pre-commit hook failures are surfaced as warnings — the on-chain submission is the source of truth and is never rolled back.',
+    })
+    .option('commit-files', {
+      type: 'string',
+      describe:
+        'Comma-separated list of files to git add + commit when --commit is set. Required if --commit is true; ignored otherwise. Use specific paths only — never . or -A — to avoid sweeping in cross-agent in-flight work.',
+    }),
 
   handler: async (argv: ArgumentsCamelCase<SubmitArgs>) => {
     const spin = output.spinner('Submitting task...');
@@ -71,6 +85,57 @@ export const submitHandler = {
 
       if (result.success) {
         output.success(`Task ${argv.task} submitted`, { txHash: result.txHash, explorerUrl: result.explorerUrl, ipfsCid: cid });
+
+        // Task #355 (HB#185): optional auto-commit. Runs git add + git
+        // commit on the explicit files list AFTER the on-chain
+        // submission lands. Failure here is a warning, not an error —
+        // the submission is the source of truth and we never roll it
+        // back over a git issue.
+        if (argv.commit) {
+          const filesArg = (argv.commitFiles ?? '').trim();
+          if (!filesArg) {
+            output.error(
+              '--commit was set but --commit-files is empty. Pass a comma-separated list of paths to commit. Skipping git commit.',
+            );
+          } else {
+            const files = filesArg
+              .split(',')
+              .map((f) => f.trim())
+              .filter((f) => f.length > 0);
+            // Belt-and-suspenders: refuse the dangerous "all-files" patterns.
+            const dangerous = files.find((f) => f === '.' || f === '-A' || f === '--all');
+            if (dangerous) {
+              output.error(
+                `--commit-files contains "${dangerous}" which would sweep in cross-agent in-flight work. Pass explicit paths only. Skipping git commit.`,
+              );
+            } else {
+              try {
+                execFileSync('git', ['add', '--', ...files], { stdio: ['ignore', 'pipe', 'pipe'] });
+                const taskTitle = (existingMeta?.name as string | undefined) ?? `Task ${argv.task}`;
+                const commitMsg =
+                  `Task #${argv.task}: ${taskTitle} — submitted via pop task submit\n\n` +
+                  `txHash: ${result.txHash}\n` +
+                  `ipfsCid: ${cid}\n\n` +
+                  `Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>\n`;
+                execFileSync('git', ['commit', '-m', commitMsg], { stdio: ['ignore', 'pipe', 'pipe'] });
+                const sha = execFileSync('git', ['rev-parse', '--short', 'HEAD'], {
+                  stdio: ['ignore', 'pipe', 'pipe'],
+                })
+                  .toString()
+                  .trim();
+                console.log(`  git commit: ${sha} (${files.length} file${files.length === 1 ? '' : 's'})`);
+              } catch (gitErr: any) {
+                // Common: pre-commit hook failure, no changes to commit, etc.
+                // Surface the stderr if available so the operator can fix it.
+                const stderr = gitErr?.stderr ? gitErr.stderr.toString().trim() : '';
+                output.error(
+                  `git commit failed (submission already on-chain — fix manually): ${gitErr.message}` +
+                    (stderr ? `\n${stderr}` : ''),
+                );
+              }
+            }
+          }
+        }
       } else {
         output.error('Submission failed', { error: result.error, errorCode: result.errorCode });
         process.exit(2);
