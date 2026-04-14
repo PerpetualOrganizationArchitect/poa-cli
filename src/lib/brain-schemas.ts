@@ -25,6 +25,8 @@
  * SCHEMAS ARE DEFINED ONCE HERE and NOT duplicated in the CLI commands.
  */
 
+import type { ProjectStage } from './brain-projections';
+
 export interface ValidationResult {
   ok: boolean;
   errors: string[];
@@ -125,22 +127,38 @@ function validateSharedDoc(doc: any, errors: string[], warnings: string[]): void
   void warnings;
 }
 
-// HB#180 fix: these MUST match the ProjectStage union in
-// src/lib/brain-projections.ts. The original #346 schema used
-// proposed/building/shipped/retrospective/archived which are NOT the
-// canonical CLI labels — `pop brain new-project` defaults to "propose"
-// and the lifecycle is propose → discuss → plan → vote → execute → review → ship.
-// The mismatch was caught by my own validator when I tried to seed a
-// project entry HB#180. Source of truth is brain-projections.ts ProjectStage type.
-const VALID_PROJECT_STAGES = new Set([
-  'propose',
-  'discuss',
-  'plan',
-  'vote',
-  'execute',
-  'review',
-  'ship',
-]);
+// HB#183 (lesson cross-module-enum-drift): the source of truth for the
+// project lifecycle stages is the ProjectStage union type in
+// src/lib/brain-projections.ts. We MUST NOT retype the values here —
+// drift between the schema and the projection breaks at runtime
+// (HB#180 incident: schema enum was {proposed, building, ...},
+// canonical was {propose, discuss, ...}, validator rejected legitimate
+// new-project writes). The literal-array-as-type pattern below lets
+// TypeScript keep both the runtime Set and the union type in sync from
+// one declaration. If the canonical lifecycle ever changes,
+// brain-projections.ts ProjectStage stays the source of truth — update
+// that union, then update PROJECT_STAGES here in lockstep, and the
+// vitest "accepts all canonical lifecycle stages" case fails loudly
+// if drift creeps back in.
+// The literal tuple is what gives us a runtime Set; the satisfies clause
+// below proves at compile time that this list is structurally identical
+// to the ProjectStage union from brain-projections. If brain-projections
+// adds or removes a stage and this list isn't updated, tsc fails the
+// build at the satisfies line — drift is impossible.
+const PROJECT_STAGES = ['propose', 'discuss', 'plan', 'vote', 'execute', 'review', 'ship'] as const;
+// Compile-time bidirectional drift check.
+// Direction 1 (literal → union): every literal in PROJECT_STAGES must
+// be a valid ProjectStage. tsc fails if you add a typo to the tuple.
+const _stagesAreValid: readonly ProjectStage[] = PROJECT_STAGES;
+// Direction 2 (union → literal): every member of ProjectStage must
+// appear in PROJECT_STAGES. tsc fails if brain-projections adds a new
+// stage and this tuple isn't updated. The conditional-type trick
+// reduces to `true` only when the two sets are structurally equal.
+type _StagesMatchUnion = [ProjectStage] extends [typeof PROJECT_STAGES[number]] ? true : false;
+const _stagesMatchUnion: _StagesMatchUnion = true;
+void _stagesAreValid;
+void _stagesMatchUnion;
+const VALID_PROJECT_STAGES: ReadonlySet<ProjectStage> = new Set(PROJECT_STAGES);
 
 function validateProject(p: any, index: number, errors: string[]): void {
   if (p == null || typeof p !== 'object') {
