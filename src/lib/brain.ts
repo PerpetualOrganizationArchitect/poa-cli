@@ -859,6 +859,65 @@ export async function fetchAndMergeRemoteHead(
 
   // Case B: we have a local head, load it and merge.
   const { doc: localDoc } = await openBrainDoc(docId);
+
+  // Task #350 (HB#335): detect disjoint Automerge histories before
+  // attempting the merge. Automerge.merge() and Automerge.applyChanges()
+  // BOTH silently drop remote content when the two docs don't share a
+  // common fork ancestor — verified empirically in HB#335 dogfood. This
+  // is a fundamental property of Automerge: docs must share a root
+  // initialized via the same from()/init() call for cross-doc operations
+  // to work. The detection here refuses the merge with a clear error
+  // and leaves the local manifest unchanged. The block stays in the
+  // blockstore for post-mortem inspection.
+  //
+  // Detection: if local and remote both have changes and zero change
+  // hashes overlap, they have disjoint histories.
+  try {
+    const localChanges = Automerge.getAllChanges(localDoc);
+    const remoteChanges = Automerge.getAllChanges(remoteDoc);
+    if (localChanges.length > 0 && remoteChanges.length > 0) {
+      // Automerge change objects have a .hash field in dev builds, but
+      // the binary serialized form also carries it. The canonical way
+      // to extract hashes is via Automerge.decodeChange.
+      const localHashes = new Set<string>();
+      for (const c of localChanges) {
+        const decoded = Automerge.decodeChange(c);
+        localHashes.add(decoded.hash);
+      }
+      let overlap = false;
+      for (const c of remoteChanges) {
+        const decoded = Automerge.decodeChange(c);
+        if (localHashes.has(decoded.hash)) {
+          overlap = true;
+          break;
+        }
+      }
+      if (!overlap) {
+        if (process.env.POP_BRAIN_DEBUG) {
+          console.error(
+            `[brain] disjoint-history detected for doc="${docId}" — ` +
+            `local has ${localChanges.length} changes, remote has ${remoteChanges.length} changes, ` +
+            `zero overlap. Refusing merge to prevent silent data loss (task #350).`,
+          );
+        }
+        return {
+          action: 'reject',
+          reason:
+            `disjoint Automerge histories (local ${localChanges.length} changes, remote ${remoteChanges.length} changes, zero overlap) — ` +
+            `both docs were independently initialized. Automerge requires shared-root docs for cross-doc merge; the remote block is stored but the manifest is unchanged to prevent silent data loss. ` +
+            `Workaround: bootstrap the other agent's brain home from the committed agent/brain/Knowledge/${docId}.generated.md via \`pop brain migrate\` before their first write. See task #350 for the shared-genesis fix.`,
+        };
+      }
+    }
+  } catch (err: any) {
+    // If the disjoint-history detection itself fails (e.g. Automerge API
+    // change), log and fall through to the merge attempt. Better to
+    // possibly-drop than to definitely-fail.
+    if (process.env.POP_BRAIN_DEBUG) {
+      console.error(`[brain] disjoint-history check failed: ${err?.message ?? err}`);
+    }
+  }
+
   const mergedDoc = Automerge.merge(localDoc, remoteDoc);
 
   // Decide what to do with the merge. Compare Automerge heads rather
