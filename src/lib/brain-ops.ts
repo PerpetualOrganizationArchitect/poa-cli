@@ -131,13 +131,71 @@ export interface RemoveProjectOp {
   removedReason?: string;
 }
 
+// --- Retros (task #344) ------------------------------------------------
+
+export interface RetroChangeInput {
+  id: string;
+  summary: string;
+  details?: string;
+  status?: 'proposed' | 'agreed' | 'modified' | 'rejected' | 'filed';
+}
+
+export interface StartRetroOp {
+  type: 'startRetro';
+  docId: string;
+  retroId: string;
+  author: string;
+  /** HB number when the retro was started. */
+  hb: number;
+  window: { from: number; to: number };
+  observations: {
+    worked?: string;
+    didntWork?: string;
+  };
+  proposedChanges: RetroChangeInput[];
+  createdAt: number;
+}
+
+export interface RespondToRetroOp {
+  type: 'respondToRetro';
+  docId: string;
+  retroId: string;
+  author: string;
+  hb?: number;
+  message: string;
+  votePerChange?: Record<string, 'agree' | 'modify' | 'reject'>;
+  timestamp: number;
+}
+
+export interface UpdateChangeStatusOp {
+  type: 'updateChangeStatus';
+  docId: string;
+  retroId: string;
+  changeId: string;
+  newStatus: 'proposed' | 'agreed' | 'modified' | 'rejected' | 'filed';
+  filedTaskId?: string;
+}
+
+export interface RemoveRetroOp {
+  type: 'removeRetro';
+  docId: string;
+  retroId: string;
+  removedBy: string;
+  removedAt: number;
+  removedReason?: string;
+}
+
 export type BrainOp =
   | AppendLessonOp
   | EditLessonOp
   | RemoveLessonOp
   | NewProjectOp
   | AdvanceStageOp
-  | RemoveProjectOp;
+  | RemoveProjectOp
+  | StartRetroOp
+  | RespondToRetroOp
+  | UpdateChangeStatusOp
+  | RemoveRetroOp;
 
 export interface DispatchResult {
   headCid: string;
@@ -272,6 +330,160 @@ export async function dispatchOp(op: BrainOp): Promise<DispatchResult> {
         project.removedAt = op.removedAt;
         project.removedBy = op.removedBy;
         if (op.removedReason) project.removedReason = op.removedReason;
+      });
+      break;
+    }
+
+    case 'startRetro': {
+      applied = await applyBrainChange(op.docId, (doc: any) => {
+        if (!Array.isArray(doc.retros)) doc.retros = [];
+        if (doc.retros.some((r: any) => r && r.id === op.retroId)) {
+          throw new Error(`retro id ${op.retroId} already exists in ${op.docId}`);
+        }
+        // Schema validation at write time (task constraint).
+        if (!op.author) throw new Error('startRetro: author is required');
+        if (!op.window || typeof op.window.from !== 'number' || typeof op.window.to !== 'number') {
+          throw new Error('startRetro: window.from and window.to are required numbers');
+        }
+        if (op.window.to < op.window.from) {
+          throw new Error(`startRetro: window.to (${op.window.to}) must be >= window.from (${op.window.from})`);
+        }
+        if (!Array.isArray(op.proposedChanges)) {
+          throw new Error('startRetro: proposedChanges must be an array');
+        }
+        // Enforce unique change ids within a retro.
+        const seenIds = new Set<string>();
+        for (const change of op.proposedChanges) {
+          if (!change.id || !change.summary) {
+            throw new Error('startRetro: each proposed change requires id and summary');
+          }
+          if (seenIds.has(change.id)) {
+            throw new Error(`startRetro: duplicate change id "${change.id}"`);
+          }
+          seenIds.add(change.id);
+        }
+
+        const entry: any = {
+          id: op.retroId,
+          author: op.author,
+          hb: op.hb,
+          window: { from: op.window.from, to: op.window.to },
+          observations: {},
+          proposedChanges: op.proposedChanges.map(c => {
+            const out: any = {
+              id: c.id,
+              summary: c.summary,
+              status: c.status ?? 'proposed',
+            };
+            if (c.details !== undefined && c.details !== '') out.details = c.details;
+            return out;
+          }),
+          discussion: [],
+          status: 'open',
+          createdAt: op.createdAt,
+        };
+        if (op.observations.worked !== undefined && op.observations.worked !== '') {
+          entry.observations.worked = op.observations.worked;
+        }
+        if (op.observations.didntWork !== undefined && op.observations.didntWork !== '') {
+          entry.observations.didntWork = op.observations.didntWork;
+        }
+        doc.retros.push(entry);
+      });
+      break;
+    }
+
+    case 'respondToRetro': {
+      applied = await applyBrainChange(op.docId, (doc: any) => {
+        if (!Array.isArray(doc.retros)) {
+          throw new Error(`no retros list in doc ${op.docId}`);
+        }
+        const retro = doc.retros.find((r: any) => r && r.id === op.retroId);
+        if (!retro) {
+          throw new Error(`retro ${op.retroId} not found in ${op.docId}`);
+        }
+        if (retro.removed) {
+          throw new Error(`retro ${op.retroId} is tombstoned — cannot respond`);
+        }
+        if (!Array.isArray(retro.discussion)) retro.discussion = [];
+        // Validate votes refer to real change ids if provided.
+        if (op.votePerChange) {
+          const changeIds = new Set(
+            (retro.proposedChanges ?? []).map((c: any) => c?.id).filter((id: any) => typeof id === 'string'),
+          );
+          for (const changeId of Object.keys(op.votePerChange)) {
+            if (!changeIds.has(changeId)) {
+              throw new Error(
+                `respondToRetro: vote references unknown change id "${changeId}" ` +
+                `(retro has: ${Array.from(changeIds).join(', ') || '(none)'})`,
+              );
+            }
+          }
+        }
+        const entry: any = {
+          author: op.author,
+          message: op.message,
+          timestamp: op.timestamp,
+        };
+        if (op.hb !== undefined) entry.hb = op.hb;
+        if (op.votePerChange && Object.keys(op.votePerChange).length > 0) {
+          entry.votePerChange = { ...op.votePerChange };
+        }
+        retro.discussion.push(entry);
+        // Advance retro.status to 'discussed' on first response.
+        if (retro.status === 'open') retro.status = 'discussed';
+      });
+      break;
+    }
+
+    case 'updateChangeStatus': {
+      applied = await applyBrainChange(op.docId, (doc: any) => {
+        if (!Array.isArray(doc.retros)) {
+          throw new Error(`no retros list in doc ${op.docId}`);
+        }
+        const retro = doc.retros.find((r: any) => r && r.id === op.retroId);
+        if (!retro) {
+          throw new Error(`retro ${op.retroId} not found in ${op.docId}`);
+        }
+        if (!Array.isArray(retro.proposedChanges)) {
+          throw new Error(`retro ${op.retroId} has no proposedChanges list`);
+        }
+        const change = retro.proposedChanges.find((c: any) => c && c.id === op.changeId);
+        if (!change) {
+          throw new Error(
+            `change ${op.changeId} not found in retro ${op.retroId} ` +
+            `(available: ${retro.proposedChanges.map((c: any) => c?.id).join(', ')})`,
+          );
+        }
+        change.status = op.newStatus;
+        if (op.newStatus === 'filed' && op.filedTaskId) {
+          change.filedTaskId = op.filedTaskId;
+        }
+        // If all changes are filed or rejected, mark the retro as shipped.
+        const stillOpen = retro.proposedChanges.some((c: any) =>
+          c && c.status !== 'filed' && c.status !== 'rejected',
+        );
+        if (!stillOpen) {
+          retro.status = 'shipped';
+          retro.closedAt = Math.floor(Date.now() / 1000);
+        }
+      });
+      break;
+    }
+
+    case 'removeRetro': {
+      applied = await applyBrainChange(op.docId, (doc: any) => {
+        if (!Array.isArray(doc.retros)) {
+          throw new Error(`no retros list in doc ${op.docId}`);
+        }
+        const retro = doc.retros.find((r: any) => r && r.id === op.retroId);
+        if (!retro) {
+          throw new Error(`retro ${op.retroId} not found in ${op.docId}`);
+        }
+        retro.removed = true;
+        retro.removedAt = op.removedAt;
+        retro.removedBy = op.removedBy;
+        if (op.removedReason) retro.removedReason = op.removedReason;
       });
       break;
     }

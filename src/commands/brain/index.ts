@@ -15,6 +15,9 @@ import { allowlistHandler } from './allowlist';
 import { migrateProjectsHandler } from './migrate-projects';
 import { doctorHandler } from './doctor';
 import { daemonHandler } from './daemon';
+import { retroStartHandler } from './retro-start';
+import { retroListHandler } from './retro-list';
+import { retroShowHandler } from './retro-show';
 
 export function registerBrainCommands(yargs: Argv) {
   return yargs
@@ -34,5 +37,31 @@ export function registerBrainCommands(yargs: Argv) {
     .command('migrate-projects', 'Import projects.md into a pop.brain.projects doc (sprint-3 follow-up to step 8)', migrateProjectsHandler.builder, migrateProjectsHandler.handler)
     .command('doctor', 'Health check for brain layer setup (env, keys, libp2p init, allowlist, manifest)', doctorHandler.builder, doctorHandler.handler)
     .command('daemon <action>', 'Manage the persistent brain daemon (start/stop/status/logs) — keeps libp2p alive so gossipsub announcements actually propagate', daemonHandler.builder as any, daemonHandler.handler as any)
+    .command(
+      'retro <action>',
+      'Manage session retros in pop.brain.retros (start/list/show) — recurring self-reflection cycles with proposed changes and cross-agent discussion',
+      (yargs) =>
+        yargs
+          .command(
+            'start',
+            'Start a new retro with observations + proposed changes',
+            retroStartHandler.builder as any,
+            retroStartHandler.handler as any,
+          )
+          .command(
+            'list',
+            'List retros in pop.brain.retros (optionally filter by --status)',
+            retroListHandler.builder as any,
+            retroListHandler.handler as any,
+          )
+          .command(
+            'show <retro-id>',
+            'Render a single retro as markdown',
+            retroShowHandler.builder as any,
+            retroShowHandler.handler as any,
+          )
+          .demandCommand(1, 'Please specify a retro action: start, list, show'),
+      () => { /* parent command handler is a no-op; subcommands handle it */ },
+    )
     .demandCommand(1, 'Please specify a brain action');
 }

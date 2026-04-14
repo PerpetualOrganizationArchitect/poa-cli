@@ -476,6 +476,266 @@ export function projectProjects(doc: ProjectsBrainDoc, headCid: string | null = 
 }
 
 // ---------------------------------------------------------------------------
+// pop.brain.retros projection — recurring session retrospectives (task #344)
+// ---------------------------------------------------------------------------
+//
+// Retros are a third brain doc shape alongside lessons and projects.
+// Structure (per Hudson HB#340 design):
+//
+//   { retros: [
+//       { id, author, hb, window: {from, to},
+//         observations: {worked, didntWork},
+//         proposedChanges: [{id, summary, details?, status, filedTaskId?}],
+//         discussion: [{author, hb?, message, votePerChange?, timestamp}],
+//         status: 'open' | 'discussed' | 'shipped',
+//         createdAt, closedAt?,
+//         (tombstone fields same as lessons/projects) } ] }
+//
+// Same schema-tolerance principle as projectShared / projectProjects:
+// missing fields skip quietly, unknown top-level fields dump as JSON,
+// empty doc renders a placeholder rather than crashing.
+
+export type RetroChangeStatus = 'proposed' | 'agreed' | 'modified' | 'rejected' | 'filed';
+export type RetroStatus = 'open' | 'discussed' | 'shipped';
+export type RetroVote = 'agree' | 'modify' | 'reject';
+
+export interface RetroProposedChange {
+  id: string;
+  summary: string;
+  details?: string;
+  status: RetroChangeStatus;
+  filedTaskId?: string;
+  [k: string]: any;
+}
+
+export interface RetroDiscussionEntry {
+  author?: string;
+  hb?: number;
+  message?: string;
+  votePerChange?: Record<string, RetroVote>;
+  timestamp?: number;
+  [k: string]: any;
+}
+
+export interface BrainRetro {
+  id: string;
+  author?: string;
+  hb?: number;
+  window?: { from?: number; to?: number };
+  observations?: {
+    worked?: string;
+    didntWork?: string;
+  };
+  proposedChanges?: RetroProposedChange[];
+  discussion?: RetroDiscussionEntry[];
+  status?: RetroStatus;
+  createdAt?: number;
+  closedAt?: number;
+  removed?: boolean;
+  removedAt?: number;
+  removedBy?: string;
+  removedReason?: string;
+  [k: string]: any;
+}
+
+export interface RetrosBrainDoc {
+  retros?: BrainRetro[];
+  [k: string]: any;
+}
+
+const CHANGE_STATUS_EMOJI: Record<string, string> = {
+  proposed: '📝',
+  agreed: '✅',
+  modified: '✏️',
+  rejected: '❌',
+  filed: '🎯',
+};
+
+function renderProposedChange(c: RetroProposedChange): string {
+  const emoji = CHANGE_STATUS_EMOJI[c.status] ?? '•';
+  const parts: string[] = [];
+  parts.push(`- ${emoji} **${c.id}** — ${c.summary}`);
+  if (c.status === 'filed' && c.filedTaskId) {
+    parts.push(`  *filed as task #${c.filedTaskId}*`);
+  } else {
+    parts.push(`  *status: ${c.status}*`);
+  }
+  if (c.details) {
+    // Indent the detail body under the bullet so it renders as part of the item.
+    const indented = c.details.split('\n').map(line => `  ${line}`).join('\n');
+    parts.push(indented);
+  }
+  return parts.join('\n');
+}
+
+function renderRetroDiscussionEntry(entry: RetroDiscussionEntry): string {
+  const bits: string[] = [];
+  if (entry.author) bits.push(`**${entry.author}**`);
+  if (entry.hb) bits.push(`HB#${entry.hb}`);
+  const iso = formatTimestamp(entry.timestamp);
+  if (iso) bits.push(`*${iso}*`);
+  const header = bits.join(' · ');
+  const lines: string[] = [];
+  lines.push(`- ${header}`);
+  if (entry.message) {
+    const indented = entry.message.split('\n').map(line => `  ${line}`).join('\n');
+    lines.push(indented);
+  }
+  if (entry.votePerChange && Object.keys(entry.votePerChange).length > 0) {
+    const votes = Object.entries(entry.votePerChange)
+      .map(([changeId, vote]) => `${changeId}=${vote}`)
+      .join(', ');
+    lines.push(`  *votes: ${votes}*`);
+  }
+  return lines.join('\n');
+}
+
+function renderRetro(r: BrainRetro): string {
+  const parts: string[] = [];
+  parts.push(`### ${r.id}`);
+  parts.push('');
+
+  const meta: string[] = [];
+  if (r.author) meta.push(`**Author**: ${r.author}`);
+  if (r.hb) meta.push(`**At HB**: #${r.hb}`);
+  if (r.window) {
+    const fromLabel = r.window.from ? `#${r.window.from}` : '?';
+    const toLabel = r.window.to ? `#${r.window.to}` : '?';
+    meta.push(`**Window**: ${fromLabel}..${toLabel}`);
+  }
+  if (r.status) meta.push(`**Status**: ${r.status}`);
+  const createdIso = formatTimestamp(r.createdAt);
+  if (createdIso) meta.push(`**Created**: ${createdIso}`);
+  if (r.closedAt) {
+    const closedIso = formatTimestamp(r.closedAt);
+    if (closedIso) meta.push(`**Closed**: ${closedIso}`);
+  }
+  parts.push(meta.join(' · '));
+  parts.push('');
+
+  if (r.observations?.worked) {
+    parts.push('**What worked**');
+    parts.push('');
+    parts.push(r.observations.worked);
+    parts.push('');
+  }
+  if (r.observations?.didntWork) {
+    parts.push('**What didn\'t work**');
+    parts.push('');
+    parts.push(r.observations.didntWork);
+    parts.push('');
+  }
+
+  if (Array.isArray(r.proposedChanges) && r.proposedChanges.length > 0) {
+    parts.push('**Proposed changes**');
+    parts.push('');
+    for (const change of r.proposedChanges) parts.push(renderProposedChange(change));
+    parts.push('');
+  }
+
+  if (Array.isArray(r.discussion) && r.discussion.length > 0) {
+    parts.push('**Discussion**');
+    parts.push('');
+    for (const entry of r.discussion) parts.push(renderRetroDiscussionEntry(entry));
+    parts.push('');
+  }
+
+  // Dump unknown per-retro fields (same pattern as renderProject).
+  const known = new Set([
+    'id', 'author', 'hb', 'window', 'observations',
+    'proposedChanges', 'discussion', 'status', 'createdAt', 'closedAt',
+    'removed', 'removedAt', 'removedBy', 'removedReason',
+  ]);
+  const extra = Object.keys(r).filter(k => !known.has(k));
+  if (extra.length > 0) {
+    parts.push('*Extra fields*');
+    parts.push('');
+    parts.push('```json');
+    const subset: Record<string, any> = {};
+    for (const k of extra) subset[k] = (r as any)[k];
+    parts.push(JSON.stringify(subset, null, 2));
+    parts.push('```');
+    parts.push('');
+  }
+
+  return parts.join('\n');
+}
+
+/**
+ * Project a pop.brain.retros doc to markdown.
+ *
+ * Same invariants as projectShared / projectProjects: pure function,
+ * schema-tolerant, empty doc renders a placeholder.
+ */
+export function projectRetros(doc: RetrosBrainDoc, headCid: string | null = null): string {
+  const parts: string[] = [];
+  parts.push(GENERATED_BANNER);
+  parts.push('# Session Retros — `pop.brain.retros`');
+  if (headCid) parts.push(`*Head CID: \`${headCid}\`*`);
+  parts.push('');
+
+  const allRetros = Array.isArray(doc.retros) ? doc.retros : [];
+  const liveRetros = allRetros.filter(r => r?.removed !== true);
+  const tombstonedRetros = allRetros.filter(r => r?.removed === true);
+
+  if (liveRetros.length === 0 && tombstonedRetros.length === 0) {
+    parts.push('*(no retros yet)*');
+    parts.push('');
+  } else if (liveRetros.length === 0) {
+    parts.push('*(no live retros — all entries tombstoned)*');
+    parts.push('');
+  } else {
+    // Summary table (live only).
+    parts.push('## Summary');
+    parts.push('');
+    parts.push('| ID | Author | Window | Status | Changes |');
+    parts.push('|---|---|---|---|---|');
+    for (const r of liveRetros) {
+      const id = (r.id ?? '(no id)').replace(/\|/g, '\\|');
+      const author = (r.author ?? '(unknown)').replace(/\|/g, '\\|');
+      const windowLabel = r.window
+        ? `#${r.window.from ?? '?'}..#${r.window.to ?? '?'}`
+        : '(no window)';
+      const status = r.status ?? 'open';
+      const changeCount = Array.isArray(r.proposedChanges) ? r.proposedChanges.length : 0;
+      parts.push(`| ${id} | ${author} | ${windowLabel} | ${status} | ${changeCount} |`);
+    }
+    parts.push('');
+
+    // Per-retro detail blocks (live only).
+    parts.push('## Retros');
+    parts.push('');
+    for (const r of liveRetros) parts.push(renderRetro(r));
+  }
+
+  if (tombstonedRetros.length > 0) {
+    parts.push('## Removed retros');
+    parts.push('');
+    parts.push(`*(${tombstonedRetros.length} retro${tombstonedRetros.length === 1 ? '' : 's'} tombstoned)*`);
+    parts.push('');
+    const lastThree = tombstonedRetros.slice(-3).map(r => r?.id ?? '(no id)');
+    for (const id of lastThree) parts.push(`- ${id}`);
+    parts.push('');
+  }
+
+  // Unknown top-level fields — dump as JSON.
+  const known = new Set(['retros']);
+  const unknownKeys = Object.keys(doc).filter(k => !known.has(k));
+  if (unknownKeys.length > 0) {
+    parts.push('## Other fields');
+    parts.push('');
+    parts.push('```json');
+    const subset: Record<string, any> = {};
+    for (const k of unknownKeys) subset[k] = (doc as any)[k];
+    parts.push(JSON.stringify(subset, null, 2));
+    parts.push('```');
+    parts.push('');
+  }
+
+  return parts.join('\n').replace(/\n+$/, '\n');
+}
+
+// ---------------------------------------------------------------------------
 // Dispatch registry — pick the right projector by docId
 // ---------------------------------------------------------------------------
 //
@@ -489,6 +749,10 @@ const PROJECTOR_REGISTRY: Array<{ match: (docId: string) => boolean; fn: BrainPr
   {
     match: (id) => id === 'pop.brain.projects' || id.startsWith('pop.brain.projects.'),
     fn: projectProjects as BrainProjectorFn,
+  },
+  {
+    match: (id) => id === 'pop.brain.retros' || id.startsWith('pop.brain.retros.'),
+    fn: projectRetros as BrainProjectorFn,
   },
 ];
 
