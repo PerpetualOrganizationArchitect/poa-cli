@@ -1,0 +1,3 @@
+IERC8004Identity.sol
+IERC8004Reputation.sol
+IERC8004Validation.sol

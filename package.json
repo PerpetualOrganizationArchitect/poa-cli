@@ -7,12 +7,16 @@
   },
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && mkdir -p dist/abi && cp src/abi/*.json dist/abi/",
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:brain-merge": "yarn build && node test/scripts/brain-merge-e2e.js",
+    "test:peer-persistence": "yarn build && node test/scripts/brain-peer-persistence.js",
+    "test:xmachine-smoke": "yarn build && POP_BRAIN_HOME=${POP_BRAIN_HOME:-/tmp/brain-xmachine-loopback} POP_PRIVATE_KEY=${POP_PRIVATE_KEY:-$(grep -h '^POP_PRIVATE_KEY=' ~/.pop-agent/.env 2>/dev/null | head -1 | cut -d= -f2)} sh -c 'ROLE=publish node test/scripts/brain-cross-machine-smoke.js && ROLE=verify node test/scripts/brain-cross-machine-smoke.js'",
+    "onboard": "bash scripts/onboard.sh",
+    "apply": "bash scripts/apply.sh",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
@@ -20,6 +24,9 @@
     "@chainsafe/libp2p-gossipsub": "^14",
     "@chainsafe/libp2p-noise": "^16",
     "@chainsafe/libp2p-yamux": "^7",
+    "@libp2p/autonat": "^2.0.38",
+    "@libp2p/bootstrap": "^11.0.47",
+    "@libp2p/circuit-relay-v2": "^3.2.24",
     "@libp2p/identify": "^3",
     "@libp2p/mdns": "^11",
     "@libp2p/tcp": "^10",

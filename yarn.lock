@@ -1185,7 +1185,7 @@
   resolved "https://registry.yarnpkg.com/@leichtgewicht/ip-codec/-/ip-codec-2.0.5.tgz#4fc56c15c580b9adb7dc3c333a134e540b44bfb1"
   integrity sha512-Vo+PSpZG2/fmgmiNzYK9qWRh8h/CHrwD0mo1h1DzL4yzHNSfWYujGTYsWGreD000gcgmZ7K4Ys6Tx9TxtsKdDw==
 
-"@libp2p/autonat@^2.0.19":
+"@libp2p/autonat@^2.0.19", "@libp2p/autonat@^2.0.38":
   version "2.0.38"
   resolved "https://registry.yarnpkg.com/@libp2p/autonat/-/autonat-2.0.38.tgz#38ab31e2ede7daaf38b8d4c971d7660903a87b17"
   integrity sha512-SuJUbXsF0YQg926hxb6d/f7x4NEHqWHLSXnR6Og5fJSOv2A1i1xRUe8zXaCuxQkPa+CguH2tAPZ+l1A+NZlF5A==
@@ -1203,7 +1203,7 @@
     protons-runtime "^5.5.0"
     uint8arraylist "^2.4.8"
 
-"@libp2p/bootstrap@^11.0.20":
+"@libp2p/bootstrap@^11.0.20", "@libp2p/bootstrap@^11.0.47":
   version "11.0.47"
   resolved "https://registry.yarnpkg.com/@libp2p/bootstrap/-/bootstrap-11.0.47.tgz#bac0e737888a537821f5a4ccef0ee68706b08a99"
   integrity sha512-D3V8AHZvX9R0cFD0BKmDp7fKTo+GgPFFWa55z62VP14yA3f3kSAELyZ7NujrD0QXEtUdd/d7suqeJ4tKGsnZ5A==
@@ -1215,7 +1215,7 @@
     "@multiformats/multiaddr" "^12.4.4"
     main-event "^1.0.1"
 
-"@libp2p/circuit-relay-v2@^3.1.10":
+"@libp2p/circuit-relay-v2@^3.1.10", "@libp2p/circuit-relay-v2@^3.2.24":
   version "3.2.24"
   resolved "https://registry.yarnpkg.com/@libp2p/circuit-relay-v2/-/circuit-relay-v2-3.2.24.tgz#2bd568f2be46e813cd201b968590e8da38cfce95"
   integrity sha512-JXSm0dOOpPC+Yax0ngLYWqELHLFmaYPNZOhZkrr0iEtbiXwhDXuDuwT71pwmozp7h/rYd2YFoIk178AhZ4711Q==

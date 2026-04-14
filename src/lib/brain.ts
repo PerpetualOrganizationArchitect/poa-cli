@@ -24,6 +24,7 @@ import {
   signBrainChange,
   verifyBrainChange,
   isAllowedAuthor,
+  isAuthorizedAuthor,
   unwrapAutomergeBytes,
   type BrainChangeEnvelope,
 } from './brain-signing';
@@ -40,13 +41,115 @@ export function getBrainHome(): string {
 
 export interface BrainNodeInfo {
   peerId: string;
+  peerIdSource: 'persisted' | 'freshly-generated';
   listeningAddrs: string[];
   connectedPeers: number;
+  bootstrapPeerCount: number;
   heliaVersion: string;
   blockstorePath: string;
+  peerKeyPath: string;
   subscribedTopics: string[];
   topicPeerCounts: Record<string, number>;
 }
+
+/**
+ * Canonical public IPFS bootstrap peers. These are the Protocol Labs
+ * public bootstrap nodes, used by `go-ipfs`, `kubo`, and every default
+ * Helia install. They're multi-operator, censorship-resistant at the
+ * substrate level, and free to use.
+ *
+ * Brain peers join the DHT via these + use Circuit Relay v2 to punch
+ * through NAT when both sides are behind firewalls. On a fresh machine
+ * with no static peer list, these are the only way to be discoverable
+ * from another agent running anywhere on the internet.
+ */
+const DEFAULT_BOOTSTRAP_PEERS: string[] = [
+  '/dnsaddr/bootstrap.libp2p.io/p2p/QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN',
+  '/dnsaddr/bootstrap.libp2p.io/p2p/QmQCU2EcMqAqQPR2i9bChDtGNJchTbq5TbXJJ16u19uLTa',
+  '/dnsaddr/bootstrap.libp2p.io/p2p/QmbLHAnMoJPWSCR5Zhtx6BHJX9KiKNN6tpvbUcqanj75Nb',
+  '/dnsaddr/bootstrap.libp2p.io/p2p/QmcZf59bWwK5XFi76CZX8cbJ4BhTzzA3gU1ZjYZcYW3dwt',
+];
+
+/**
+ * Path to the persistent libp2p PeerId private key. Lives alongside the
+ * blockstore under <brain-home>/peer-key.json. Format:
+ *   { keyType: "Ed25519", privateKey: "0x<hex>" }
+ *
+ * Generated once per brain home on first boot; reused on every
+ * subsequent boot so the PeerId is stable across restarts. Without
+ * this, every process gets a random PeerId and any static peer list
+ * (or reputation-tracking peer) goes stale instantly.
+ *
+ * Security note: this file sits next to POP_PRIVATE_KEY in the same
+ * filesystem under the same threat model — anyone who can read one
+ * can read the other. No encryption; no passphrase. Operators who
+ * want to rotate their PeerId delete the file manually.
+ */
+function getPeerKeyPath(): string {
+  return join(getBrainHome(), 'peer-key.json');
+}
+
+/**
+ * Load the persisted libp2p private key, or generate + persist a new
+ * one if none exists. Returns the private key object that libp2p@2.x
+ * expects for its `privateKey` createLibp2p option, plus a flag
+ * indicating whether the key was loaded or freshly generated (for
+ * operator-visible status output).
+ *
+ * Corrupt or unreadable key files fall back to fresh generation with
+ * a warning — never crash the node over a half-written JSON file.
+ */
+async function getOrCreatePeerPrivateKey(): Promise<{ privateKey: any; source: 'persisted' | 'freshly-generated' }> {
+  const path = getPeerKeyPath();
+  const {
+    generateKeyPair,
+    privateKeyFromProtobuf,
+    privateKeyToProtobuf,
+  } = await esmImport<any>('@libp2p/crypto/keys');
+
+  if (existsSync(path)) {
+    try {
+      const raw = JSON.parse(readFileSync(path, 'utf8'));
+      if (typeof raw?.privateKey === 'string' && raw.privateKey.startsWith('0x')) {
+        const bytes = Uint8Array.from(Buffer.from(raw.privateKey.slice(2), 'hex'));
+        // Stored as a protobuf-framed private key (keyType discriminator
+        // + key material — libp2p's canonical on-disk format). The hex
+        // contains the output of privateKeyToProtobuf, not .raw bytes.
+        const privateKey = privateKeyFromProtobuf(bytes);
+        return { privateKey, source: 'persisted' };
+      }
+      throw new Error('malformed peer-key.json — missing hex privateKey');
+    } catch (err: any) {
+      if (process.env.POP_BRAIN_DEBUG) {
+        console.error(`[brain] peer-key.json unreadable (${err.message}) — regenerating`);
+      }
+      // Fall through to fresh generation.
+    }
+  }
+
+  // Ed25519 is the default for libp2p PeerIds — small, fast, ubiquitous.
+  const privateKey = await generateKeyPair('Ed25519');
+  // Serialize via privateKeyToProtobuf so the on-disk format is the
+  // canonical libp2p wire format. The earlier version of this code
+  // stored privateKey.raw (32 raw Ed25519 bytes) which does NOT
+  // round-trip through privateKeyFromProtobuf — that path expects the
+  // protobuf envelope with the keyType discriminator. Without it the
+  // load silently fails and we regenerate a new PeerId on every boot.
+  const protobufBytes: Uint8Array = privateKeyToProtobuf(privateKey);
+  const hex = '0x' + Buffer.from(protobufBytes).toString('hex');
+  writeFileSync(
+    path,
+    JSON.stringify({ keyType: 'Ed25519', privateKey: hex }, null, 2),
+  );
+  return { privateKey, source: 'freshly-generated' };
+}
+
+/**
+ * Track whether the currently-cached node was booted with a persisted
+ * or freshly-generated PeerId. Surfaced in getBrainNodeInfo so status
+ * output can tell the operator which path was taken.
+ */
+let cachedPeerIdSource: 'persisted' | 'freshly-generated' | null = null;
 
 /**
  * Gossipsub topic name for a brain doc. Versioned so we can bump the
@@ -105,53 +208,74 @@ export async function initBrainNode(): Promise<any> {
   const { createLibp2p } = await esmImport<any>('libp2p');
   const { tcp } = await esmImport<any>('@libp2p/tcp');
   const { mdns } = await esmImport<any>('@libp2p/mdns');
+  const { bootstrap } = await esmImport<any>('@libp2p/bootstrap');
   const { noise } = await esmImport<any>('@chainsafe/libp2p-noise');
   const { yamux } = await esmImport<any>('@chainsafe/libp2p-yamux');
   const { identify } = await esmImport<any>('@libp2p/identify');
   const { gossipsub } = await esmImport<any>('@chainsafe/libp2p-gossipsub');
+  const { circuitRelayTransport } = await esmImport<any>('@libp2p/circuit-relay-v2');
+  const { autoNAT } = await esmImport<any>('@libp2p/autonat');
 
   const brainHome = getBrainHome();
   const blockstorePath = join(brainHome, 'helia-blocks');
   if (!existsSync(blockstorePath)) mkdirSync(blockstorePath, { recursive: true });
 
   // Persistent blockstore — CRDT blocks survive across CLI invocations.
-  // This is the MVP step 2 upgrade from the ephemeral default of step 1.
-  // If blocks vanish between runs, every agent startup has to re-fetch
-  // from peers before local reads work; with persistence the local state
-  // is always instantly readable.
-  //
-  // Datastore stays in-memory for now. The default datastore carries
-  // libp2p peer info, WebRTC certificates, etc. — ephemeral network
-  // state that's cheap to regenerate. Making it FS-persistent adds a
-  // first-run bootstrap wrinkle (certificate files the code expects to
-  // read haven't been written yet) that's orthogonal to the CRDT goal.
-  // Layer it in later when we care about stable PeerIds across restarts.
-  //
   // The `as any` coercion bypasses a TypeScript version-skew between
   // blockstore-fs@2's bundled `interface-*` packages and Helia's top-level
   // copy. Runtime shape is correct; types can't see through duplicated
   // class declarations.
   const blockstore = new FsBlockstore(blockstorePath) as any;
 
-  // MVP step 5: libp2p with gossipsub + tcp transport + mDNS discovery.
-  // This is where agents actually see each other. No static peer list, no
-  // bootstrap — mDNS is enough for a 2-process local test, and the design
-  // is explicitly peer-to-peer (no Argus-operated relay). Public bootstrap
-  // peers and Circuit Relay v2 layer in later if we need WAN discovery.
+  // Persistent libp2p PeerId. Without this, every process gets a random
+  // PeerId and any static peer list / reputation tracking goes stale
+  // immediately. Generated once per brain home on first boot; reused on
+  // every subsequent boot. File format documented in getOrCreatePeerPrivateKey.
+  const { privateKey, source } = await getOrCreatePeerPrivateKey();
+  cachedPeerIdSource = source;
+
+  // libp2p config: now wired for cross-machine sync.
+  //
+  // Peer discovery: mdns (same-LAN), bootstrap (public IPFS bootstrap
+  // peers for WAN discovery). The bootstrap list is the canonical
+  // Protocol Labs list — multi-operator, censorship-resistant, free.
+  //
+  // Transports: tcp for direct dial AND circuitRelayTransport for NAT
+  // traversal via public Circuit Relay v2 nodes. When this peer is behind
+  // NAT and can't be reached directly, AutoNAT detects it and libp2p
+  // arranges to be reachable via a public relay.
+  //
+  // Services: identify (protocol handshake), pubsub (gossipsub for head
+  // announcements), autoNAT (reachability detection).
   //
   // gossipsub is configured with allowPublishToZeroTopicPeers so that a
   // publisher whose local topic has no subscribers yet doesn't throw —
   // the write has already persisted locally and the announcement is
   // best-effort. `emitSelf: false` because we don't want local subscribers
   // echoing back our own publishes.
+  // HB#364: optional fixed listen port via POP_BRAIN_LISTEN_PORT.
+  // When set, the daemon binds TCP to a predictable port so committed
+  // static peer lists (brain-peers.json) remain valid across restarts.
+  // When unset, fall back to random port (libp2p tcp/0) for ephemeral
+  // CLI invocations that don't need to be addressable. Cross-device
+  // onboarding is gated on this being set on at least one side.
+  const rawListenPort = process.env.POP_BRAIN_LISTEN_PORT?.trim();
+  const listenPort = rawListenPort && /^\d+$/.test(rawListenPort) ? Number(rawListenPort) : 0;
+  const listenAddrs = [`/ip4/0.0.0.0/tcp/${listenPort}`];
+
   const libp2p = await createLibp2p({
-    addresses: { listen: ['/ip4/0.0.0.0/tcp/0'] },
-    transports: [tcp()],
+    privateKey,
+    addresses: { listen: listenAddrs },
+    transports: [tcp(), circuitRelayTransport()],
     streamMuxers: [yamux()],
     connectionEncrypters: [noise()],
-    peerDiscovery: [mdns()],
+    peerDiscovery: [
+      mdns(),
+      bootstrap({ list: DEFAULT_BOOTSTRAP_PEERS }),
+    ],
     services: {
       identify: identify(),
+      autonat: autoNAT(),
       pubsub: gossipsub({
         allowPublishToZeroTopicPeers: true,
         emitSelf: false,
@@ -217,12 +341,37 @@ export async function getBrainNodeInfo(): Promise<BrainNodeInfo> {
     }
   }
 
+  // Bootstrap peer count: how many of the canonical Protocol Labs
+  // bootstrap peers (from DEFAULT_BOOTSTRAP_PEERS) are currently listed
+  // in libp2p's peer store. This is NOT the same as "connected peers"
+  // (bootstrap discovery populates the peer store even before a
+  // connection is established), but it's a useful reachability proxy:
+  // if this number is 0, the bootstrap DNS lookup failed or the DNS
+  // addresses haven't resolved yet.
+  let bootstrapPeerCount = 0;
+  try {
+    const bootstrapPeerIds = new Set(
+      DEFAULT_BOOTSTRAP_PEERS
+        .map(addr => addr.split('/p2p/')[1])
+        .filter(Boolean),
+    );
+    const peers = await libp2p.peerStore.all();
+    bootstrapPeerCount = peers.filter((p: any) =>
+      bootstrapPeerIds.has(p.id?.toString?.()),
+    ).length;
+  } catch {
+    // Peer store lookup failures are not worth crashing status output.
+  }
+
   return {
     peerId,
+    peerIdSource: cachedPeerIdSource ?? 'freshly-generated',
     listeningAddrs,
     connectedPeers,
+    bootstrapPeerCount,
     heliaVersion,
     blockstorePath: join(getBrainHome(), 'helia-blocks'),
+    peerKeyPath: getPeerKeyPath(),
     subscribedTopics,
     topicPeerCounts,
   };
@@ -399,13 +548,61 @@ function loadHeadsManifest(): Record<string, string> {
 }
 
 function saveHeadsManifest(manifest: Record<string, string>): void {
-  writeFileSync(getHeadsManifestPath(), JSON.stringify(manifest, null, 2));
+  // HB#324: atomic write-tmp-then-rename. The brain daemon and short-lived
+  // CLI processes can both touch this file (daemon on incoming-merge from
+  // gossipsub, CLI on local append when no daemon is running). A plain
+  // writeFileSync has a window during which a concurrent reader would see
+  // a truncated JSON and throw. POSIX rename() is atomic on the same fs,
+  // so a reader always sees either the previous complete file or the new
+  // complete file — never a half-written one.
+  const finalPath = getHeadsManifestPath();
+  const tmpPath = `${finalPath}.tmp.${process.pid}.${Date.now()}`;
+  writeFileSync(tmpPath, JSON.stringify(manifest, null, 2));
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    require('fs').renameSync(tmpPath, finalPath);
+  } catch (err) {
+    // Best-effort cleanup if the rename failed.
+    try { require('fs').unlinkSync(tmpPath); } catch {}
+    throw err;
+  }
+}
+
+/**
+ * Load the genesis bytes for a canonical brain doc if a
+ * `<docId>.genesis.bin` file exists in the repo's
+ * `agent/brain/Knowledge/` directory.
+ *
+ * Task #352 (HB#337): genesis files are tiny (~150 bytes) binary
+ * Automerge snapshots of the empty canonical doc shape. When every
+ * agent loads from the same genesis bytes before their first write,
+ * all subsequent cross-agent writes share a common root and
+ * `Automerge.merge` correctly combines them. Without the shared
+ * genesis, independent initialization creates disjoint histories
+ * that silently drop content at merge time — see task #350 for the
+ * disjoint-history stopgap and the `retroactive-verification-finds-
+ * what-forward-tests-miss` brain lesson for the full context.
+ *
+ * Returns the raw bytes if the file exists, or null if not
+ * (falls through to `Automerge.init()` for non-canonical docs or
+ * for agents without the genesis files available).
+ */
+function loadGenesisBytes(docId: string): Uint8Array | null {
+  const genesisPath = join(process.cwd(), 'agent', 'brain', 'Knowledge', `${docId}.genesis.bin`);
+  if (!existsSync(genesisPath)) return null;
+  try {
+    const bytes = readFileSync(genesisPath);
+    return Uint8Array.from(bytes);
+  } catch {
+    return null;
+  }
 }
 
 /**
  * Open an Automerge document by ID. If the manifest has a head CID for
  * this ID, loads the state from the blockstore. Otherwise returns a fresh
- * empty doc.
+ * empty doc — seeded from the canonical genesis file if one exists for
+ * this docId (task #352), or a plain `Automerge.init()` as a last resort.
  *
  * Returns the doc plus its current head CID (null for new docs) so the
  * caller can tell whether this was a load or an init.
@@ -417,6 +614,23 @@ export async function openBrainDoc<T = any>(docId: string): Promise<{ doc: any; 
   const headCidStr = manifest[docId];
 
   if (!headCidStr) {
+    // Task #352: shared-genesis bootstrap. If the repo has a canonical
+    // `<docId>.genesis.bin` file, load from it so every agent's first
+    // write builds on the same root doc. Without this, independent
+    // `Automerge.init()` calls produce disjoint histories that silently
+    // drop content at merge time.
+    const genesisBytes = loadGenesisBytes(docId);
+    if (genesisBytes) {
+      try {
+        const doc = Automerge.load(genesisBytes);
+        return { doc, headCid: null };
+      } catch (err: any) {
+        // Genesis file corrupt or incompatible — fall through to init().
+        if (process.env.POP_BRAIN_DEBUG) {
+          console.error(`[brain] failed to load genesis for ${docId}: ${err.message}`);
+        }
+      }
+    }
     return { doc: Automerge.init(), headCid: null };
   }
 
@@ -434,11 +648,18 @@ export async function openBrainDoc<T = any>(docId: string): Promise<{ doc: any; 
     // Unwrap, verify, check allowlist, then load the inner Automerge.
     const envelope = JSON.parse(new TextDecoder().decode(envelopeBytes)) as BrainChangeEnvelope;
     const author = verifyBrainChange(envelope);
-    if (!isAllowedAuthor(author)) {
+    const authz = await isAuthorizedAuthor(author);
+    if (!authz.allowed) {
       throw new Error(
-        `Brain doc "${docId}" head is signed by ${author}, not in allowlist. ` +
-        `Refusing to load. Edit agent/brain/Config/brain-allowlist.json to trust this author.`
+        `Brain doc "${docId}" head is signed by ${author}, not authorized. ` +
+        `${authz.fallbackReason}. ` +
+        `Either vouch this address into the Argus member hat, or add it to ` +
+        `agent/brain/Config/brain-allowlist.json for an emergency override.`
       );
+    }
+    if (authz.mode === 'static-fallback' && authz.fallbackReason) {
+      // Surface the fallback path so operators can see when dynamic is down.
+      console.error(`[brain] ${authz.fallbackReason}`);
     }
     const automergeBytes = unwrapAutomergeBytes(envelope);
     const doc = Automerge.load(automergeBytes);
@@ -463,10 +684,39 @@ export async function openBrainDoc<T = any>(docId: string): Promise<{ doc: any; 
 export async function applyBrainChange<T = any>(
   docId: string,
   changeFn: (doc: T) => void,
+  options?: { allowInvalidShape?: boolean },
 ): Promise<{ headCid: string; doc: any; author: string }> {
   const { doc: oldDoc } = await openBrainDoc<T>(docId);
   const Automerge = await getAutomerge();
   const newDoc = Automerge.change(oldDoc, changeFn);
+
+  // Task #346 (HB#168): write-time schema validation.
+  // Validate pre-change and post-change. Only reject regressions —
+  // valid → invalid transitions. If the doc was already invalid before
+  // this change, the bad state was inherited (historical, pre-enforcement
+  // write), and this write is allowed through so existing docs remain
+  // usable. This preserves the task constraint "existing 30 lessons
+  // must not be retroactively rejected."
+  if (!options?.allowInvalidShape) {
+    const { validateBrainDocShape } = await import('./brain-schemas');
+    const preResult = validateBrainDocShape(docId, oldDoc);
+    const postResult = validateBrainDocShape(docId, newDoc);
+    if (preResult.ok && !postResult.ok) {
+      throw new Error(
+        `Brain write rejected: schema validation failed for ${docId}\n` +
+          postResult.errors.map((e) => `  - ${e}`).join('\n') +
+          `\n\nPre-change doc was valid; this change introduces invalid shape(s). ` +
+          `Fix the CLI call OR pass --allow-invalid-shape to bypass (strongly discouraged).`,
+      );
+    }
+    // If post is still invalid but pre was also invalid, log a warning
+    // and allow through. If pre invalid and post valid, the write is a
+    // partial fix — also allow.
+    if (!preResult.ok && !postResult.ok) {
+      // Silent — inherited bad state, not this write's fault.
+    }
+  }
+
   const automergeBytes: Uint8Array = Automerge.save(newDoc);
 
   // Step 4: wrap the snapshot in a signed envelope before persisting.
@@ -505,6 +755,106 @@ export async function applyBrainChange<T = any>(
   }
 
   return { headCid: cid.toString(), doc: newDoc, author: envelope.author };
+}
+
+/**
+ * Import a raw Automerge snapshot as the new local head for a brain doc.
+ *
+ * Task #353 (HB#348): the post-HB#352 follow-up for migrating the 3 existing
+ * Argus agents off their pre-genesis disjoint Automerge state. The HB#341
+ * export step pinned argus's current state for all 3 canonical docs to IPFS
+ * (Qm...). This function is the receive side: load those bytes into vigil_01
+ * or sentinel_01's brain home as the new shared head so their subsequent
+ * writes build on argus's root instead of their own disjoint root.
+ *
+ * ## Semantics
+ *
+ * - Load the bytes via `Automerge.load()` to validate structural integrity.
+ *   Throws if the bytes are corrupt or not an Automerge snapshot.
+ * - Run the standard write-time schema validator (#346) unless
+ *   `opts.allowInvalidShape` is set.
+ * - Sign a new envelope via `signBrainChange` — the importing agent becomes
+ *   the envelope author for the new head, even though the Automerge content
+ *   is preserved from the source.
+ * - Write the envelope as a new IPLD block, update the manifest, publish the
+ *   head CID via gossipsub (same as applyBrainChange's persist+publish flow).
+ *
+ * ## Safety
+ *
+ * This function REPLACES the local head. If the local brain home already
+ * has content for this docId, that state becomes orphaned (the old envelope
+ * stays in the blockstore, but the manifest no longer points at it). Callers
+ * must decide whether to preserve local-only content before calling:
+ *
+ *   1. `pop brain read --doc <id> --json` to snapshot local state
+ *   2. `pop brain import-snapshot --doc <id> --file <canonical-bytes>`
+ *   3. Replay local-only lessons via `pop brain append-lesson` calls on the
+ *      new shared baseline
+ *
+ * The CLI wrapper (`pop brain import-snapshot`) enforces a `--force` flag
+ * requirement when a local head exists, so there are no accidental replaces.
+ */
+export async function importBrainDoc(
+  docId: string,
+  automergeBytes: Uint8Array,
+  opts?: { allowInvalidShape?: boolean },
+): Promise<{ headCid: string; doc: any; author: string }> {
+  // Ensure helia is initialized (same as applyBrainChange — this is a
+  // write path that needs the libp2p publish hook).
+  await initBrainNode();
+  const Automerge = await getAutomerge();
+
+  // Validate by loading. Throws if bytes are corrupt or not a valid
+  // Automerge snapshot.
+  const doc = Automerge.load(automergeBytes);
+
+  // Schema validation (same pipeline as applyBrainChange post-#346).
+  if (!opts?.allowInvalidShape) {
+    const { validateBrainDocShape } = await import('./brain-schemas');
+    const result = validateBrainDocShape(docId, doc);
+    if (!result.ok) {
+      throw new Error(
+        `Imported snapshot fails schema validation for ${docId}:\n` +
+        result.errors.map((e: string) => `  - ${e}`).join('\n') +
+        `\n\nPass --allow-invalid-shape to bypass (strongly discouraged).`,
+      );
+    }
+  }
+
+  // Sign a NEW envelope with the imported bytes. The envelope author is
+  // the importing agent (from POP_PRIVATE_KEY), not the source agent.
+  // That's correct: the importer is vouching for the import, and the
+  // Automerge content carries the history of whoever wrote it.
+  const envelope = await signBrainChange(automergeBytes);
+  const envelopeBytes = new TextEncoder().encode(JSON.stringify(envelope));
+
+  // Persist + publish — same flow as applyBrainChange.
+  const { CID } = await esmImport<any>('multiformats/cid');
+  const { sha256 } = await esmImport<any>('multiformats/hashes/sha2');
+  const { FsBlockstore } = await esmImport<any>('blockstore-fs');
+  const hash = await sha256.digest(envelopeBytes);
+  const cid = CID.createV1(0x55, hash);
+  const bs = new FsBlockstore(join(getBrainHome(), 'helia-blocks'));
+  await bs.open();
+  try {
+    await bs.put(cid, envelopeBytes);
+  } finally {
+    await bs.close();
+  }
+  const manifest = loadHeadsManifest();
+  manifest[docId] = cid.toString();
+  saveHeadsManifest(manifest);
+
+  // Publish the new head via gossipsub. Best-effort — local write has
+  // already persisted, and missed announcements recover at next peer
+  // reconnect via the usual rebroadcast loop.
+  try {
+    await publishBrainHead(docId, cid.toString(), envelope.author);
+  } catch {
+    // publishBrainHead already swallows errors; belt-and-suspenders.
+  }
+
+  return { headCid: cid.toString(), doc, author: envelope.author };
 }
 
 /**
@@ -638,11 +988,15 @@ export async function fetchAndMergeRemoteHead(
   } catch (err: any) {
     return { action: 'reject', reason: `signature verify failed: ${err.message}` };
   }
-  if (!isAllowedAuthor(author)) {
+  const authz = await isAuthorizedAuthor(author);
+  if (!authz.allowed) {
     return {
       action: 'reject',
-      reason: `author ${author} not in brain-allowlist.json — block stored but manifest NOT updated`,
+      reason: `author ${author} not authorized (${authz.fallbackReason}) — block stored but manifest NOT updated`,
     };
+  }
+  if (authz.mode === 'static-fallback' && authz.fallbackReason) {
+    console.error(`[brain] ${authz.fallbackReason}`);
   }
 
   const remoteAutomergeBytes = unwrapAutomergeBytes(remoteEnvelope);
@@ -663,6 +1017,65 @@ export async function fetchAndMergeRemoteHead(
 
   // Case B: we have a local head, load it and merge.
   const { doc: localDoc } = await openBrainDoc(docId);
+
+  // Task #350 (HB#335): detect disjoint Automerge histories before
+  // attempting the merge. Automerge.merge() and Automerge.applyChanges()
+  // BOTH silently drop remote content when the two docs don't share a
+  // common fork ancestor — verified empirically in HB#335 dogfood. This
+  // is a fundamental property of Automerge: docs must share a root
+  // initialized via the same from()/init() call for cross-doc operations
+  // to work. The detection here refuses the merge with a clear error
+  // and leaves the local manifest unchanged. The block stays in the
+  // blockstore for post-mortem inspection.
+  //
+  // Detection: if local and remote both have changes and zero change
+  // hashes overlap, they have disjoint histories.
+  try {
+    const localChanges = Automerge.getAllChanges(localDoc);
+    const remoteChanges = Automerge.getAllChanges(remoteDoc);
+    if (localChanges.length > 0 && remoteChanges.length > 0) {
+      // Automerge change objects have a .hash field in dev builds, but
+      // the binary serialized form also carries it. The canonical way
+      // to extract hashes is via Automerge.decodeChange.
+      const localHashes = new Set<string>();
+      for (const c of localChanges) {
+        const decoded = Automerge.decodeChange(c);
+        localHashes.add(decoded.hash);
+      }
+      let overlap = false;
+      for (const c of remoteChanges) {
+        const decoded = Automerge.decodeChange(c);
+        if (localHashes.has(decoded.hash)) {
+          overlap = true;
+          break;
+        }
+      }
+      if (!overlap) {
+        if (process.env.POP_BRAIN_DEBUG) {
+          console.error(
+            `[brain] disjoint-history detected for doc="${docId}" — ` +
+            `local has ${localChanges.length} changes, remote has ${remoteChanges.length} changes, ` +
+            `zero overlap. Refusing merge to prevent silent data loss (task #350).`,
+          );
+        }
+        return {
+          action: 'reject',
+          reason:
+            `disjoint Automerge histories (local ${localChanges.length} changes, remote ${remoteChanges.length} changes, zero overlap) — ` +
+            `both docs were independently initialized. Automerge requires shared-root docs for cross-doc merge; the remote block is stored but the manifest is unchanged to prevent silent data loss. ` +
+            `Workaround: bootstrap the other agent's brain home from the committed agent/brain/Knowledge/${docId}.generated.md via \`pop brain migrate\` before their first write. See task #350 for the shared-genesis fix.`,
+        };
+      }
+    }
+  } catch (err: any) {
+    // If the disjoint-history detection itself fails (e.g. Automerge API
+    // change), log and fall through to the merge attempt. Better to
+    // possibly-drop than to definitely-fail.
+    if (process.env.POP_BRAIN_DEBUG) {
+      console.error(`[brain] disjoint-history check failed: ${err?.message ?? err}`);
+    }
+  }
+
   const mergedDoc = Automerge.merge(localDoc, remoteDoc);
 
   // Decide what to do with the merge. Compare Automerge heads rather

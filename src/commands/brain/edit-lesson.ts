@@ -15,11 +15,8 @@
 import type { Argv, ArgumentsCamelCase } from 'yargs';
 import { readFileSync, existsSync } from 'fs';
 import { resolve } from 'path';
-import {
-  openBrainDoc,
-  applyBrainChange,
-  stopBrainNode,
-} from '../../lib/brain';
+import { openBrainDoc, stopBrainNode } from '../../lib/brain';
+import { routedDispatch } from '../../lib/brain-ops';
 import * as output from '../../lib/output';
 
 interface EditArgs {
@@ -30,6 +27,7 @@ interface EditArgs {
   bodyFile?: string;
   author?: string;
   touch?: boolean;
+  allowInvalidShape?: boolean;
 }
 
 export const editLessonHandler = {
@@ -51,6 +49,11 @@ export const editLessonHandler = {
       .option('author', { describe: 'Override the author label', type: 'string' })
       .option('touch', {
         describe: 'Bump the lesson.timestamp to now on edit (default: preserve original timestamp)',
+        type: 'boolean',
+        default: false,
+      })
+      .option('allow-invalid-shape', {
+        describe: 'Bypass write-time schema validation (Task #346).',
         type: 'boolean',
         default: false,
       })
@@ -129,20 +132,23 @@ export const editLessonHandler = {
         return;
       }
 
-      // Apply the edit inside a single Automerge change so the whole
-      // mutation lands as one snapshot. We scan doc.lessons again
-      // inside the change fn because the object handed to change is
-      // a fresh Automerge proxy — can't reuse the `target` ref from
-      // the pre-flight read above.
-      const result = await applyBrainChange(argv.doc, (doc: any) => {
-        if (!Array.isArray(doc.lessons)) return;
-        const idx = doc.lessons.findIndex((l: any) => l?.id === argv.lessonId);
-        if (idx === -1) return;
-        const lesson = doc.lessons[idx];
-        if (argv.title !== undefined) lesson.title = argv.title;
-        if (bodyReplacement !== undefined) lesson.body = bodyReplacement;
-        if (argv.author !== undefined) lesson.author = argv.author;
-        if (argv.touch) lesson.timestamp = Math.floor(Date.now() / 1000);
+      // Route through the unified dispatcher. When the brain daemon is
+      // running, this serializes an `editLesson` op and sends it via IPC
+      // so the write lands in the daemon's long-lived libp2p context.
+      // When no daemon, dispatchOp runs in-process (same applyBrainChange
+      // call path as before).
+      const fields: { title?: string; body?: string; author?: string } = {};
+      if (argv.title !== undefined) fields.title = argv.title;
+      if (bodyReplacement !== undefined) fields.body = bodyReplacement;
+      if (argv.author !== undefined) fields.author = argv.author;
+
+      const result = await routedDispatch({
+        type: 'editLesson',
+        docId: argv.doc,
+        lessonId: argv.lessonId,
+        fields,
+        touch: argv.touch === true,
+        allowInvalidShape: argv.allowInvalidShape,
       });
 
       if (output.isJsonMode()) {
@@ -151,7 +157,8 @@ export const editLessonHandler = {
           docId: argv.doc,
           lessonId: argv.lessonId,
           headCid: result.headCid,
-          envelopeAuthor: result.author,
+          envelopeAuthor: result.envelopeAuthor,
+          routedViaDaemon: result.routedViaDaemon,
           changedKeys,
           before,
           after,
@@ -159,8 +166,9 @@ export const editLessonHandler = {
       } else {
         console.log('');
         console.log(`  Lesson "${argv.lessonId}" updated in ${argv.doc}`);
-        console.log(`  changed: ${changedKeys.join(', ')}`);
+        console.log(`  changed:  ${changedKeys.join(', ')}`);
         console.log(`  new head: ${result.headCid}`);
+        console.log(`  routed:   ${result.routedViaDaemon ? 'via brain daemon' : 'in-process (no daemon)'}`);
         console.log('');
         for (const k of changedKeys) {
           const b = String((before as any)[k] ?? '(unset)').slice(0, 100);

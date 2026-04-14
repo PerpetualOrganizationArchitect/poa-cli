@@ -1,6 +1,20 @@
 /**
  * Network Configuration
- * Mirrors frontend networks.js for full parity
+ * Mirrors frontend networks.js for full parity on POP-deployed chains.
+ *
+ * Chains come in two flavors:
+ *   1. POP-deployed chains (Gnosis, Arbitrum, Sepolia, BaseSepolia) — full
+ *      subgraph + deployment support. Set `isExternal: false` (default).
+ *   2. External chains (Ethereum mainnet, Optimism, Base, Polygon) — no POP
+ *      deployment, no POP subgraph. Used by read-only commands like
+ *      `pop org probe-access` to inspect foreign governance contracts
+ *      (Compound Governor Bravo, Aave V3, Uniswap, etc). Set
+ *      `isExternal: true` so subgraph sweepers skip them.
+ *
+ * Adding an external chain: set `isExternal: true`, leave `subgraphUrl: ''`,
+ * and use an empty `bountyTokens` map. Commands that require a POP subgraph
+ * (org activity, task lists, proposal history) will refuse to run on external
+ * chains — probe-access and other foreign-contract tools work fine.
  */
 
 export interface NetworkConfig {
@@ -10,6 +24,13 @@ export interface NetworkConfig {
   rpcUrl: string;
   blockExplorer: string;
   isTestnet: boolean;
+  /**
+   * True if POP is NOT deployed on this chain. External chains are
+   * useful for read-only contract inspection (probe-access) but
+   * cannot be used for POP operations like task management, voting,
+   * treasury, or governance. Defaults to false when omitted.
+   */
+  isExternal?: boolean;
   subgraphUrl: string;
   bountyTokens: Record<string, string>;
 }
@@ -66,6 +87,57 @@ export const NETWORKS: Record<string, NetworkConfig> = {
       USDC: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
     },
   },
+  // ---------------------------------------------------------------------
+  // External chains (HB#326, task #341) — read-only probe targets.
+  // POP is NOT deployed on any of these. Added so `pop org probe-access
+  // --chain <id>` works without the --rpc workaround from HB#336. See
+  // the NetworkConfig.isExternal field comment at the top of this file
+  // for the semantics.
+  // ---------------------------------------------------------------------
+  ethereum: {
+    chainId: 1,
+    name: 'Ethereum',
+    nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+    rpcUrl: 'https://ethereum-rpc.publicnode.com',
+    blockExplorer: 'https://etherscan.io',
+    isTestnet: false,
+    isExternal: true,
+    subgraphUrl: '',
+    bountyTokens: {},
+  },
+  optimism: {
+    chainId: 10,
+    name: 'Optimism',
+    nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+    rpcUrl: 'https://optimism-rpc.publicnode.com',
+    blockExplorer: 'https://optimistic.etherscan.io',
+    isTestnet: false,
+    isExternal: true,
+    subgraphUrl: '',
+    bountyTokens: {},
+  },
+  base: {
+    chainId: 8453,
+    name: 'Base',
+    nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+    rpcUrl: 'https://base-rpc.publicnode.com',
+    blockExplorer: 'https://basescan.org',
+    isTestnet: false,
+    isExternal: true,
+    subgraphUrl: '',
+    bountyTokens: {},
+  },
+  polygon: {
+    chainId: 137,
+    name: 'Polygon',
+    nativeCurrency: { name: 'MATIC', symbol: 'MATIC', decimals: 18 },
+    rpcUrl: 'https://polygon-bor-rpc.publicnode.com',
+    blockExplorer: 'https://polygonscan.com',
+    isTestnet: false,
+    isExternal: true,
+    subgraphUrl: '',
+    bountyTokens: {},
+  },
 };
 
 /** Home chain for accounts/passkeys */
@@ -94,8 +166,11 @@ export function getSubgraphUrl(chainId: number): string {
 }
 
 export function getAllSubgraphUrls(): Array<{ chainId: number; url: string; name: string }> {
+  // External chains (Ethereum mainnet, Optimism, Base, Polygon) have no
+  // POP subgraph and are read-only probe targets only. Filter them out
+  // here so the subgraph sweeper never tries to query a nonexistent URL.
   return Object.values(NETWORKS)
-    .filter(n => !n.isTestnet)
+    .filter(n => !n.isTestnet && !n.isExternal && n.subgraphUrl)
     .map(n => ({ chainId: n.chainId, url: n.subgraphUrl, name: n.name }));
 }
 

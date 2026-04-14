@@ -8,6 +8,7 @@ import { resolveOrgModules } from '../../lib/resolve';
 import { resolveNetworkConfig } from '../../config/networks';
 import { createReadContract } from '../../lib/contracts';
 import { resolveVotingContracts } from '../vote/helpers';
+import { getNoAllocationSet } from '../../lib/no-alloc-cache';
 import * as output from '../../lib/output';
 
 interface TriageArgs {
@@ -181,10 +182,86 @@ export const triageHandler = {
         actions.push({ priority: 'HIGH', type: 'review', detail: `Task #${t.taskId} "${t.title}" by ${t.assigneeUsername || 'unknown'} — needs review.`, data: { taskId: t.taskId } });
       }
 
-      // Unclaimed distributions
-      const unclaimedDist = (org.paymentManager?.distributions || []).filter((d: any) =>
-        !(d.claims || []).some((c: any) => c.claimer?.toLowerCase() === myAddr)
-      );
+      // Open retros needing response (task #344). Surface a HIGH action
+      // when an open retro exists whose author is NOT me AND I have
+      // not yet posted a response. The retro must be "fresh" — created
+      // within the last ~75 minutes (~5 HBs at 15-min cadence) so we
+      // don't pester the on-call agent with stale retros indefinitely.
+      //
+      // Cost guard: check doc-heads.json directly (cheap filesystem
+      // read) before spinning up the helia node for a brain read. The
+      // typical case is "no retros doc yet" which should skip the
+      // expensive path entirely.
+      try {
+        const manifestPath = path.join(homedir(), '.pop-agent', 'brain', 'doc-heads.json');
+        if (fs.existsSync(manifestPath)) {
+          const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+          if (manifest['pop.brain.retros']) {
+            // Dynamic import so the non-retro-using triage path doesn't
+            // pay the brain.ts module-load cost (which pulls in ethers +
+            // automerge + a lazy helia reference).
+            const { readBrainDoc, stopBrainNode } = require('../../lib/brain');
+            try {
+              const { doc: retrosDoc } = await readBrainDoc('pop.brain.retros');
+              const retros: any[] = Array.isArray(retrosDoc?.retros) ? retrosDoc.retros : [];
+              const freshThresholdSecs = 75 * 60; // 5 HBs x 15 min
+              const nowSecs = Math.floor(Date.now() / 1000);
+              for (const retro of retros) {
+                if (!retro || retro.removed) continue;
+                if (retro.status !== 'open' && retro.status !== 'discussed') continue;
+                const author = (retro.author ?? '').toLowerCase();
+                if (!author || author === myAddr) continue;
+                const age = retro.createdAt ? nowSecs - retro.createdAt : Infinity;
+                if (age > freshThresholdSecs) continue;
+                const discussion: any[] = Array.isArray(retro.discussion) ? retro.discussion : [];
+                const alreadyResponded = discussion.some((e: any) =>
+                  (e?.author ?? '').toLowerCase() === myAddr,
+                );
+                if (alreadyResponded) continue;
+                const changeCount = Array.isArray(retro.proposedChanges)
+                  ? retro.proposedChanges.length
+                  : 0;
+                actions.push({
+                  priority: 'HIGH',
+                  type: 'retro-respond',
+                  detail:
+                    `Retro "${retro.id}" by ${author.slice(0, 10)} needs your response ` +
+                    `(${changeCount} proposed change${changeCount === 1 ? '' : 's'}, ` +
+                    `${Math.floor(age / 60)}min old). ` +
+                    `Run: pop brain retro show ${retro.id} && pop brain retro respond --to ${retro.id} --message "..."`,
+                  data: {
+                    retroId: retro.id,
+                    author,
+                    changeCount,
+                    ageSeconds: age,
+                  },
+                });
+              }
+            } finally {
+              // Tear down the brain node so the triage process can exit
+              // cleanly. readBrainDoc caches the helia instance and it
+              // will hold the event loop open otherwise.
+              try { await stopBrainNode(); } catch { /* best-effort */ }
+            }
+          }
+        }
+      } catch {
+        // Brain retro check is best-effort — a missing manifest, a
+        // malformed doc, or a transient helia error should never break
+        // triage for the rest of the org state.
+      }
+
+      // Unclaimed distributions — skip ones known to have no allocation for this address
+      const noAllocSet = getNoAllocationSet(myAddr);
+      const orgIdLower = modules.orgId.toLowerCase();
+      const unclaimedDist = (org.paymentManager?.distributions || []).filter((d: any) => {
+        // Skip if I've already claimed it
+        if ((d.claims || []).some((c: any) => c.claimer?.toLowerCase() === myAddr)) return false;
+        // Skip if I've verified I have no allocation in this distribution before
+        const cacheKey = `${orgIdLower}-${d.distributionId}`;
+        if (noAllocSet.has(cacheKey)) return false;
+        return true;
+      });
       if (unclaimedDist.length > 0) {
         actions.push({ priority: 'HIGH', type: 'claim', detail: `${unclaimedDist.length} unclaimed distribution(s) — run claim-mine.` });
       }

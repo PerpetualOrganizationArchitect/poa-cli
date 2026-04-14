@@ -14,11 +14,8 @@
 
 import type { Argv, ArgumentsCamelCase } from 'yargs';
 import { ethers } from 'ethers';
-import {
-  openBrainDoc,
-  applyBrainChange,
-  stopBrainNode,
-} from '../../lib/brain';
+import { openBrainDoc, stopBrainNode } from '../../lib/brain';
+import { routedDispatch } from '../../lib/brain-ops';
 import * as output from '../../lib/output';
 
 interface RemoveProjectArgs {
@@ -92,17 +89,14 @@ export const removeProjectHandler = {
       const removerAddress = new ethers.Wallet(key).address.toLowerCase();
       const now = Math.floor(Date.now() / 1000);
 
-      const result = await applyBrainChange(argv.doc, (doc: any) => {
-        if (!Array.isArray(doc.projects)) return;
-        const idx = doc.projects.findIndex((p: any) => p?.id === argv.projectId);
-        if (idx === -1) return;
-        const project = doc.projects[idx];
-        project.removed = true;
-        project.removedAt = now;
-        project.removedBy = removerAddress;
-        if (argv.reason !== undefined) {
-          project.removedReason = argv.reason;
-        }
+      // Route through the unified dispatcher (HB#324 ship-2).
+      const result = await routedDispatch({
+        type: 'removeProject',
+        docId: argv.doc,
+        projectId: argv.projectId,
+        removedBy: removerAddress,
+        removedAt: now,
+        removedReason: argv.reason,
       });
 
       if (output.isJsonMode()) {
@@ -111,6 +105,7 @@ export const removeProjectHandler = {
           docId: argv.doc,
           projectId: argv.projectId,
           headCid: result.headCid,
+          routedViaDaemon: result.routedViaDaemon,
           removedAt: now,
           removedBy: removerAddress,
           removedReason: argv.reason ?? null,
@@ -122,6 +117,7 @@ export const removeProjectHandler = {
         console.log(`  removedAt: ${new Date(now * 1000).toISOString()}`);
         if (argv.reason) console.log(`  reason:    ${argv.reason}`);
         console.log(`  new head:  ${result.headCid}`);
+        console.log(`  routed:    ${result.routedViaDaemon ? 'via brain daemon' : 'in-process (no daemon)'}`);
         console.log('');
         console.log(
           `  The project is still in the Automerge doc (pop brain read still shows it). ` +

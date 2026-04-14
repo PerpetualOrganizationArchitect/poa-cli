@@ -20,7 +20,8 @@ import type { Argv, ArgumentsCamelCase } from 'yargs';
 import { readFileSync, existsSync } from 'fs';
 import { resolve } from 'path';
 import { ethers } from 'ethers';
-import { openBrainDoc, applyBrainChange, stopBrainNode } from '../../lib/brain';
+import { openBrainDoc, stopBrainNode } from '../../lib/brain';
+import { routedDispatch } from '../../lib/brain-ops';
 import type { ProjectStage } from '../../lib/brain-projections';
 import * as output from '../../lib/output';
 
@@ -129,17 +130,16 @@ export const newProjectHandler = {
       const now = Math.floor(Date.now() / 1000);
       const stage = (argv.stage ?? 'propose') as ProjectStage;
 
-      const result = await applyBrainChange(argv.doc, (doc: any) => {
-        if (!Array.isArray(doc.projects)) doc.projects = [];
-        const entry: any = {
-          id,
-          name: argv.name,
-          stage,
-          proposedBy,
-          proposedAt: now,
-        };
-        if (brief !== undefined && brief !== '') entry.brief = brief;
-        doc.projects.push(entry);
+      // Route through the unified dispatcher (HB#324 ship-2).
+      const result = await routedDispatch({
+        type: 'newProject',
+        docId: argv.doc,
+        projectId: id,
+        name: argv.name,
+        brief,
+        stage,
+        proposedBy,
+        proposedAt: now,
       });
 
       if (output.isJsonMode()) {
@@ -151,7 +151,8 @@ export const newProjectHandler = {
           stage,
           proposedBy,
           headCid: result.headCid,
-          envelopeAuthor: result.author,
+          envelopeAuthor: result.envelopeAuthor,
+          routedViaDaemon: result.routedViaDaemon,
         });
       } else {
         console.log('');
@@ -161,6 +162,7 @@ export const newProjectHandler = {
         console.log(`  stage:       ${stage}`);
         console.log(`  proposedBy:  ${proposedBy}`);
         console.log(`  head:        ${result.headCid}`);
+        console.log(`  routed:      ${result.routedViaDaemon ? 'via brain daemon' : 'in-process (no daemon)'}`);
         console.log('');
       }
     } catch (err: any) {

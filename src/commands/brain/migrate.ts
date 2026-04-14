@@ -43,6 +43,7 @@ interface MigrateArgs {
   from: string;
   doc: string;
   force?: boolean;
+  merge?: boolean;
   dryRun?: boolean;
   currentHb?: number;
   author?: string;
@@ -62,6 +63,38 @@ const DEPRECATED_BANNER = (docId: string, headCid: string) => `<!-- DEPRECATED: 
 
 `;
 
+/**
+ * Pure helper: compute which parsed entries should be appended to an
+ * existing list vs skipped because an entry with the same `id` already
+ * exists. Extracted so the --merge dedup logic is unit-testable
+ * independent of the brain daemon / Automerge doc layer.
+ *
+ * Entries without an `id` are ALWAYS added (we can't dedup what has no
+ * key). Callers should ensure parsed entries have ids if they want
+ * dedup semantics — parseSharedMarkdown always assigns an id via
+ * slugify fallback, so in practice every parsed lesson has an id.
+ */
+export function computeMergeDelta<T extends { id?: string }>(
+  existing: readonly T[],
+  parsed: readonly T[],
+): { toAdd: T[]; skippedCount: number } {
+  const existingIds = new Set<string>(
+    existing
+      .map((e) => e?.id)
+      .filter((id): id is string => typeof id === 'string'),
+  );
+  const toAdd: T[] = [];
+  let skippedCount = 0;
+  for (const entry of parsed) {
+    if (entry.id && existingIds.has(entry.id)) {
+      skippedCount += 1;
+      continue;
+    }
+    toAdd.push(entry);
+  }
+  return { toAdd, skippedCount };
+}
+
 export const migrateHandler = {
   builder: (yargs: Argv) =>
     yargs
@@ -76,7 +109,12 @@ export const migrateHandler = {
         demandOption: true,
       })
       .option('force', {
-        describe: 'Re-migrate even if the target doc already has content',
+        describe: 'Re-migrate even if the target doc already has content (DESTRUCTIVE: clears existing lessons/rules before re-seeding)',
+        type: 'boolean',
+        default: false,
+      })
+      .option('merge', {
+        describe: 'Non-destructive append: migrate new entries into an existing doc, deduping by id (mutually exclusive with --force)',
         type: 'boolean',
         default: false,
       })
@@ -108,6 +146,15 @@ export const migrateHandler = {
     const docId = argv.doc;
 
     try {
+      if (argv.force && argv.merge) {
+        output.error(
+          '--force and --merge are mutually exclusive. --force clears and re-seeds; ' +
+            '--merge appends dedup-by-id into existing content. Pick one.',
+        );
+        process.exitCode = 1;
+        return;
+      }
+
       if (!existsSync(srcPath)) {
         output.error(`Source file not found: ${srcPath}`);
         process.exitCode = 1;
@@ -151,20 +198,27 @@ export const migrateHandler = {
         return;
       }
 
-      // Refuse to overwrite an existing doc unless --force.
+      // Refuse to overwrite an existing doc unless --force or --merge.
       const existing = await openBrainDoc(docId);
       const alreadyHasContent =
         existing.headCid !== null &&
         existing.doc &&
         (Object.keys(existing.doc).length > 0);
-      if (alreadyHasContent && !argv.force) {
+      if (alreadyHasContent && !argv.force && !argv.merge) {
         output.error(
           `Target doc "${docId}" already has content at head ${existing.headCid}. ` +
-            'Re-run with --force to re-migrate (will create a new head via CRDT merge).',
+            'Re-run with --merge to append new entries non-destructively (dedup by id), ' +
+            'or --force to clear-and-reseed (DESTRUCTIVE).',
         );
         process.exitCode = 1;
         return;
       }
+
+      // Merge-mode stats: set in the change callback, read after the apply.
+      let lessonsAdded = 0;
+      let lessonsSkipped = 0;
+      let rulesAdded = 0;
+      let rulesSkipped = 0;
 
       // Apply the parsed state in a single Automerge change so the
       // entire migration lands as one content-addressed snapshot.
@@ -176,8 +230,27 @@ export const migrateHandler = {
           doc.rules.splice(0, doc.rules.length);
           doc.lessons.splice(0, doc.lessons.length);
         }
-        for (const r of parsed.rules) doc.rules.push({ ...r });
-        for (const l of parsed.lessons) doc.lessons.push({ ...l });
+        if (argv.merge) {
+          // Non-destructive append: dedup by id against existing entries.
+          const rulesDelta = computeMergeDelta(doc.rules as any[], parsed.rules as any[]);
+          const lessonsDelta = computeMergeDelta(doc.lessons as any[], parsed.lessons as any[]);
+          for (const r of rulesDelta.toAdd) doc.rules.push({ ...r });
+          for (const l of lessonsDelta.toAdd) doc.lessons.push({ ...l });
+          rulesAdded = rulesDelta.toAdd.length;
+          rulesSkipped = rulesDelta.skippedCount;
+          lessonsAdded = lessonsDelta.toAdd.length;
+          lessonsSkipped = lessonsDelta.skippedCount;
+          return;
+        }
+        // Legacy / --force path: append everything unconditionally.
+        for (const r of parsed.rules) {
+          doc.rules.push({ ...r });
+          rulesAdded += 1;
+        }
+        for (const l of parsed.lessons) {
+          doc.lessons.push({ ...l });
+          lessonsAdded += 1;
+        }
       });
 
       // Write the deprecated banner to the source file unless
@@ -194,6 +267,12 @@ export const migrateHandler = {
           status: 'ok',
           docId,
           headCid: result.headCid,
+          mode: argv.merge ? 'merge' : argv.force ? 'force' : 'fresh',
+          rulesAdded,
+          rulesSkipped,
+          lessonsAdded,
+          lessonsSkipped,
+          // Back-compat keys — total parsed, not added.
           rulesMigrated: parsed.rules.length,
           lessonsMigrated: parsed.lessons.length,
           sourceFile: srcPath,
@@ -202,9 +281,15 @@ export const migrateHandler = {
       } else {
         console.log('');
         console.log(`  Migration complete: ${srcPath} → ${docId}`);
+        console.log(`  Mode: ${argv.merge ? 'merge' : argv.force ? 'force' : 'fresh'}`);
         console.log(`  New head CID: ${result.headCid}`);
-        console.log(`  Rules:   ${parsed.rules.length}`);
-        console.log(`  Lessons: ${parsed.lessons.length}`);
+        if (argv.merge) {
+          console.log(`  Rules:   +${rulesAdded} added, ${rulesSkipped} skipped (dup id)`);
+          console.log(`  Lessons: +${lessonsAdded} added, ${lessonsSkipped} skipped (dup id)`);
+        } else {
+          console.log(`  Rules:   ${rulesAdded}`);
+          console.log(`  Lessons: ${lessonsAdded}`);
+        }
         if (!argv.noBanner) {
           console.log(`  Banner written to source file.`);
         }

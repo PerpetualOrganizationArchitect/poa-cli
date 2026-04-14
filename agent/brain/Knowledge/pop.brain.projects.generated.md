@@ -3,7 +3,7 @@
 <!-- Edits to this file will be overwritten on the next `pop brain snapshot` run. -->
 
 # Collaborative Projects — `pop.brain.projects`
-*Head CID: `bafkreigusctb5bhq4m7qsgfynuptnhk23gxamkxnvuxaooovobqbkr6aiq`*
+*Head CID: `bafkreibk74rlqjjwwkk3hkyjdr5ja4f5edfc75l4ep34bizp3fm6yui3ci`*
 
 *(no live projects — all entries tombstoned)*
 

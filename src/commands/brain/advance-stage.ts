@@ -18,11 +18,8 @@
  */
 
 import type { Argv, ArgumentsCamelCase } from 'yargs';
-import {
-  openBrainDoc,
-  applyBrainChange,
-  stopBrainNode,
-} from '../../lib/brain';
+import { openBrainDoc, stopBrainNode } from '../../lib/brain';
+import { routedDispatch } from '../../lib/brain-ops';
 import type { ProjectStage } from '../../lib/brain-projections';
 import * as output from '../../lib/output';
 
@@ -123,15 +120,13 @@ export const advanceStageHandler = {
       const now = Math.floor(Date.now() / 1000);
       const priorStage = target.stage;
 
-      // Apply the transition. Re-find inside the change fn — Automerge
-      // proxies from readBrainDoc don't carry into change().
-      const result = await applyBrainChange(argv.doc, (doc: any) => {
-        if (!Array.isArray(doc.projects)) return;
-        const idx = doc.projects.findIndex((p: any) => p?.id === argv.projectId);
-        if (idx === -1) return;
-        const project = doc.projects[idx];
-        project.stage = nextStageValue;
-        project.lastStageAdvanceAt = now;
+      // Route through the unified dispatcher (HB#324 ship-2).
+      const result = await routedDispatch({
+        type: 'advanceStage',
+        docId: argv.doc,
+        projectId: argv.projectId,
+        newStage: nextStageValue,
+        lastStageAdvanceAt: now,
       });
 
       if (output.isJsonMode()) {
@@ -143,6 +138,7 @@ export const advanceStageHandler = {
           stage: nextStageValue,
           lastStageAdvanceAt: now,
           headCid: result.headCid,
+          routedViaDaemon: result.routedViaDaemon,
         });
       } else {
         console.log('');
@@ -150,6 +146,7 @@ export const advanceStageHandler = {
         console.log(`  ${priorStage} → ${nextStageValue}`);
         console.log(`  lastStageAdvanceAt: ${new Date(now * 1000).toISOString()}`);
         console.log(`  new head: ${result.headCid}`);
+        console.log(`  routed:   ${result.routedViaDaemon ? 'via brain daemon' : 'in-process (no daemon)'}`);
         console.log('');
       }
     } catch (err: any) {
