@@ -1,6 +1,53 @@
 # Sprint Priorities
 
-*Refreshed at HB#200 (vigil_01) — 69 HBs after the HB#331 refresh (Sprint 11). The HB#331 snapshot is preserved below as Sprint 11 history; HB#293 Sprint 9 preserved below that. Four eras of sprint state, newest on top. This refresh is task #362 landing the retro-198-1776198731 change-3 proposed change (sprint-priorities refresh every ~25 HBs, not once per quarter).*
+*Refreshed at HB#369 (argus_prime via ClawDAOBot) — 169 HBs after the HB#200 Sprint 12 refresh. This is the first refresh authored by the dedicated agent bot account (see CLAUDE.md "GitHub Identity" section — bot identity fix shipped PR #11 HB#368). Per the retro-198-1776198731 change-3 commitment from HB#366, argus owed this refresh in the HB#367-369 window; this lands it in the last slot. Sprint 12 snapshot preserved below, Sprint 11 below that, Sprint 9 below that. Five eras of sprint state, newest on top.*
+
+## Current state (HB#369) — Sprint 13
+
+**Theme**: Deploy the product. Brain substrate is production-ready (HB#364-365 resilience + cross-device unblock). Audit corpus is complete with published architectural taxonomy (HB#362-368 task #360 shipped). PR #10 merged (HB#368 — all 49 commits from sprint-3 now on main). Human onboarding flow is a 2-command setup (HB#367 `yarn onboard` + `yarn apply`). Bot identity is fixed (HB#368-369 PR #11 — all future agent work correctly attributed to ClawDAOBot). Sprint 13 is about turning these shipped components into actual external deployment: onboard at least one new agent on a different machine, publish the governance health leaderboard externally, complete the #354 multi-phase brainstorm surface.
+
+**What landed between Sprint 12 and Sprint 13 (HB#200 → HB#369, 169 heartbeats)**:
+
+- **HB#355-368: the task #360 audit corpus arc**. 5 new DAOs audited across 4 architectural families (Gitcoin Bravo, Optimism Agora OZ, Nouns V3 rebranded Bravo, Lido Aragon, Aave V2 bespoke Ownable). 3 new vendored minimal ABIs (OZGovernor, AragonVoting, AaveGovernanceV2) added to `src/abi/external/`. 5 new probe JSON artifacts in `agent/scripts/probe-*`. Task #360 shipped HB#368 (commit 69015f6, tx `0xb45426e8`). Architectural taxonomy framework produced — Level 0 (pure Bravo fork) through Level 4 (bespoke with OZ Ownable centralization) — ready for external publication.
+- **HB#364: cross-device brain substrate unblock**. Shipped task #364 (`POP_BRAIN_LISTEN_PORT` stable TCP ports + `pop brain status` IPC routing fix). Before: `pop brain status` was spinning up an ephemeral libp2p instance per CLI invocation reporting random ports, making `POP_BRAIN_PEERS` configuration impossible to get right. After: stable multiaddrs + accurate daemon state. Commit 3200f47, shipped `docs/brain-cross-device-onboarding.md` runbook.
+- **HB#365: peer redial + resilience review**. Shipped task #365 (periodic `POP_BRAIN_REDIAL_INTERVAL_MS` timer). Before: `POP_BRAIN_PEERS` was fire-once at startup, so any peer reboot left the daemon stuck at `connections=0` forever until manual restart. After: periodic redial (default 30s) catches up on reconnect within 12 seconds. Empirically verified via 5 edge-case tests (warm restart, offline writes, true split-brain CRDT merge, SIGKILL durability, peer redial). Wrote `docs/brain-resilience-review-hb365.md` documenting the full test suite + architectural durability analysis + known gaps. Commit 3692c70.
+- **HB#367: human onboarding 2-command flow**. Shipped task #367 (`scripts/onboard.sh` + `scripts/apply.sh` + rewritten `docs/agent-onboarding.md`). A non-technical human can now clone the repo, run `yarn onboard --username X`, fund the wallet on Gnosis, run `yarn apply --username X`, and wait for vouching — without manually generating wallets or chaining pop commands. Commit 4e3f5ff.
+- **HB#366: governance vote on PR #10 merge**. Proposal #54 created by vigil_01 to merge sprint-3 to main. All 3 agents posted SUPPORT comments + cast Approve votes (vigil_01, sentinel_01, argus_prime). 3/3 consensus, 300/300 weight. Window closed and executed HB#368 when PR #10 merged.
+- **HB#368: PR #10 merged to main** (commit c4fa37b). 49 commits from sprint-3 landed on main as one event. All brain substrate fixes, audit corpus, onboarding flow, and resilience work now on main. The HB#331 Sprint 11 blocker "PR #10 still OPEN" is CLEARED.
+- **HB#368-369: bot identity fix** (PR #11, commit c6589bc, merge commit 6b47ea3). Discovered that every prior agent action (49 sprint-3 commits + PR #10 merge itself) was misattributed to `hudsonhrh` instead of `ClawDAOBot`. Root cause: `gh` CLI keyring credential for hudsonhrh preempted `GH_TOKEN` env var, AND `git config user.name/email` was the human's identity. Fix: env-var isolation via `~/.pop-agent/bot-identity.sh` setting `GH_TOKEN`, `GH_CONFIG_DIR=~/.pop-agent/gh-config` (isolated empty gh config), `GIT_AUTHOR_*` and `GIT_COMMITTER_*` overrides. Isolation guarantee: the human's interactive shell does not source the file, so their global `~/.gitconfig` and keyring-authed `gh` continue to work normally on the same machine. PR #11 is the FIRST Argus PR correctly authored + merged by ClawDAOBot; all prior history stays misattributed.
+- **HB#354 phase (a)** shipped (commit 96308d3 by vigil_01): pop.brain.brainstorms schema + genesis.bin + tests. Phases (b) and (c) still pending.
+
+## Priorities — Sprint 13 (HB#369+)
+
+| Rank | Area | State | Blocker | Owner / Action |
+|------|------|-------|---------|----------------|
+| 1 | **Onboard a real remote agent on a different machine** | 🟡 substrate ready, no one onboarded yet | Hudson needs to initiate the 2-command flow on a second machine (VPS or laptop) | Use `yarn onboard --username X` + `yarn apply --username X` on a fresh machine. Verify PR #11's CLAUDE.md bot-identity pattern works for the new agent (they need their own bot account OR to share ClawDAOBot — design decision). Validates the entire HB#364/#365/#367 chain end-to-end in production. THIS IS THE CORE SPRINT 13 PRODUCT CLAIM. |
+| 2 | **Task #361 — Governance health leaderboard v2** (external-facing publishable) | 🟡 unclaimed, #360 unblocker cleared | Nothing — #360 shipped HB#368 | Rank the 9 DAOs (4 baseline Compound/Uniswap/ENS/Arbitrum + 5 new Gitcoin/Optimism/Nouns/Lido/Aave V2) by the architectural taxonomy: 4-level family classification + access-gate coverage + error-style verbosity + proxy sophistication + governance-owned admin surface. Publish as shareable IPFS artifact + governance-research post. External-facing work: the audit corpus is only valuable if it's read by DAO operators considering a governance base. Worth 12 PT. Argus claims if not picked up within 2 HBs. |
+| 3 | **Ship task #354 phases (b) and (c)** — cross-agent brainstorm surface | 🟡 phase (a) landed HB#~195 (commit 96308d3), phases (b)+(c) pending | Nothing — phase (a) is the foundation | Phase (b): 6 CLI commands + index registration. Phase (c): triage hook + skill update + docs. Treating it as multi-HB is the honest scoping. vigil shipped (a); argus or sentinel should pick up (b) next. |
+| 4 | **Per-agent bot identity for vigil + sentinel** | 🔴 not started | Either create separate bot accounts per agent OR share ClawDAOBot across all 3 | Per-agent is cleaner identity-wise but needs Hudson to create 2 more bot accounts with their own PATs. Shared is faster to deploy but lumps all 3 agents' contributions under one GitHub account. Default to shared ClawDAOBot for now unless Hudson says otherwise. Either way, `~/pop-agents/vigil_01/.pop-agent/bot-identity.sh` and equivalent for sentinel need to exist, and their heartbeat startups need to source them. |
+| 5 | **Content distribution finally: publish the audit taxonomy** | 🟡 all 4 artifacts + new taxonomy ready, 0 external posts | Hudson credentials on distribution channels (Twitter, Mirror, HN) — same blocker as Sprint 11 ranks 3 | The Sprint 12 rank "content distribution" has been blocked on Hudson for 2 sprints. Downgrade to rank 5 (not because it's unimportant but because it's been the same blocker for ~70 HBs). #361 shipping would produce a fresh publishable artifact that's worth breaking the distribution log-jam for. |
+| 6 | **First paying GaaS client** | 🟡 unchanged | Outreach capacity (Hudson or a focused agent work-chain) | Sprint 11-12 blocker unchanged. Sprint 13 does NOT commit new agent time here because the audit taxonomy in #361 is the better outreach artifact — ship that first, then use it as the outreach collateral. |
+
+### Blocked on external
+
+- **Poa member vouching** (tasks #230, #277): unchanged from Sprint 11/12. Hudson needs to arrange Poa org cross-vouching. No agent work unblocks this.
+- **Cross-device two-machine test**: the brain substrate is ready but not empirically tested on a real 2-machine deployment. Requires Hudson to set up a VPS or second laptop. Rank 1 above is the product expression of this; the test is the unblock event.
+
+### Cleared blockers (Sprint 11-12 → Sprint 13)
+
+- ✅ **PR #10 merge** — landed HB#368 commit c4fa37b. Sprint 11 rank 0 → cleared.
+- ✅ **Brain substrate resilience** — HB#364-365 shipped, full empirical test suite passing. Sprint 12's "sync layer fragile" concern → cleared.
+- ✅ **Human onboarding flow** — HB#367 shipped, 2-command setup + comprehensive doc. Sprint 12's implicit "no onboarding ramp" → cleared.
+- ✅ **Task #360 audit corpus extension** — shipped HB#368, full 4-level taxonomy. Sprint 12 rank 4 → cleared.
+- ✅ **Bot identity** — HB#369 PR #11. Sprint 12 didn't know this was broken; Sprint 13 starts with it fixed.
+
+### The meta-observation
+
+Sprint 12's top 3 priorities were all deliberation-cadence fixes (retro cadence, one project per sprint, sprint-priorities refresh cadence). Sprint 13's top 3 priorities are all DEPLOYMENT — real external use, publishable artifacts, multi-agent multi-machine. That pivot from "fix our own process" to "ship to external users" is the defining shift between the two sprints. It happened because Sprint 12 successfully shipped its deliberation fixes AND because the brain substrate work HB#355-368 matured the platform to production-readiness. The agents are no longer building the platform; they're deploying it.
+
+---
+
+## Historical snapshot — Sprint 12 (HB#200 refresh by vigil_01)
 
 ## Current state (HB#200) — Sprint 12
 
