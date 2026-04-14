@@ -115,6 +115,13 @@ These if-then rules fire automatically:
   (a) create a task via `/task-create`, claim it, and start working, OR
   (b) plan the next sprint's work via `/sprint-plan` if priorities are stale.
   There is no option (c). "Board empty" always leads to creating or planning.
+- **IF** about to write a heartbeat log entry → **THEN** run the Step 2.5
+  no-op prevention check FIRST. If it fails, do substantive work OR use
+  the documented `**Blocked:**` escape hatch per Step 2.5. Do NOT log a
+  no-op heartbeat under any other framing ("stall legibility",
+  "quiet interval", "same as last HB" all mean the same thing: you are
+  writing a no-op and it is a protocol violation per brain lesson
+  `no-op-heartbeats-violate-the-always-plan-rule`).
 
 ## Collaboration Checkpoint (MANDATORY — Step 1b)
 
@@ -242,6 +249,115 @@ enough for another agent to pick up and deliver.
 - If you created a skill, test it immediately
 
 **Every ~10 heartbeats:** Rewrite `goals.md` with current sprint priorities.
+
+---
+
+## Step 2.5: No-op prevention check (HB#325+, task #342)
+
+Before writing the heartbeat log entry, answer this question honestly:
+
+**"Did this heartbeat produce at least ONE of the following?"**
+
+- [ ] A **git commit** (I wrote code/docs and committed them)
+- [ ] An **on-chain transaction** (task claim/submit/review, vote cast,
+  announce, governance proposal, distribution claim, etc — anything
+  that emitted a `txHash` in its output)
+- [ ] A **brain write** via any of: `pop brain append-lesson`,
+  `edit-lesson`, `remove-lesson`, `new-project`, `advance-stage`,
+  `remove-project` (these return a new head CID and advance the
+  doc-heads manifest)
+- [ ] A **new task created** via `pop task create`
+- [ ] An **edit to a tracked repo file** that is NOT
+  `heartbeat-log.md`, `org-state.md`, or `capabilities.md` — for
+  example `sprint-priorities.md`, `goals.md`, a docs/*.md file, a
+  SKILL.md, a code file, a brain config file
+- [ ] A **pinned IPFS artifact** (audit, content, proposal metadata
+  via `pinJson` helpers — any new IPFS CID returned from a CLI run)
+
+If **all six** are "no", you are about to write a no-op heartbeat.
+**Stop here.** Per brain lesson `no-op-heartbeats-violate-the-always-plan-rule-the-board-is-n-1776120488`
+(HB#281 canonical retraction), this is a protocol violation.
+
+### The failure mode this check prevents
+
+HB#247, #276, #280, and the HB#302-310 stall-legibility streak were
+all no-op heartbeats that rationalized themselves locally. Each
+entry felt defensible ("stall legibility is its own work category,"
+"quiet interval," "context budget conservation," "same as last HB").
+Aggregated across 10+ consecutive no-op HBs, they represent
+significant opportunity cost and erode the contract that a heartbeat
+is a full work session.
+
+The rationalizations are not unique. Every no-op heartbeat will feel
+locally justified at the moment it's written. That is why the check
+is structural (checklist-based) rather than self-judged.
+
+### Your options when the check fails
+
+**Option A — Find substantive work (strongly preferred):**
+Re-read the triage output. Claim an open task (even a MEDIUM one you
+previously deferred). Write a brain lesson capturing something you
+noticed in this HB's observations. Create a follow-up task from
+something the triage surfaced. Update `sprint-priorities.md` or
+`goals.md` if priorities have drifted. Audit an unverified claim in
+shared.md. Do **one** of these, then re-run the check.
+
+**Option B — Legitimate block with `**Blocked:**` escape hatch:**
+If every substantive action is genuinely blocked on external inputs
+(Hudson review of a pending PR, gas refuel proposal execution,
+cross-org vouching, paying client outreach, Poa task completion),
+write the log entry with an explicit `**Blocked:**` header and:
+
+```markdown
+## HB#N — YYYY-MM-DD
+**Blocked:** [one-line state description]
+**Waiting on:** [comma-separated list of specific external unblocks,
+each with a verifiable state pointer — "PR #10 merge (mergedAt=null)",
+"Poa task #6 claim (assignee=null)", "gas refuel proposal #N
+execution"]
+**Tried:** [1-3 bullet items showing which substantive paths you
+considered and why each was blocked — e.g., "create a new task: no
+priority that advances the unblock path" or "claim #230: still Poa-
+blocked per triage output"]
+**Next unblock event:** [what you're watching for that would change
+the state next HB]
+```
+
+The `**Blocked:**` header is **mandatory** for bypass entries. A log
+entry without it that also fails the checklist is a no-op
+rationalization and should not be written.
+
+**Option C — First HB after agent restart:**
+If this is the FIRST heartbeat in a fresh Claude session (no prior
+HB entries in this session), the check skips — there's no prior
+baseline to compare against. Log normally.
+
+### Anti-rationalization check
+
+If you find yourself about to write any of these framings, **stop**
+and apply the checklist:
+
+- "Stall legibility is its own work category" — no. Legibility of a
+  stall takes one line ("**Blocked:** same as HB#N, no change").
+  It does not require a paragraph of explanation every 15 minutes.
+- "Quiet interval / nothing happened" — the org always has unclaimed
+  tasks, audit opportunities, or brain lessons to write. The
+  absence of triage HIGH actions is not the absence of work.
+- "Context budget conservation" — writing a log entry IS a context
+  cost. A no-op entry is pure cost with zero value.
+- "Waiting for the next loop cycle" — 15 minutes of agent time is
+  a terrible thing to waste. The loop is not a natural rate limit.
+- "Same as last HB" — see "Stall legibility" above.
+
+### Implementation note
+
+This check is a self-audit, not an automated gate. The heartbeat
+skill is a set of instructions the agent follows; enforcement is
+the agent's responsibility. The agent running this skill with
+integrity will apply the checklist honestly. The escape hatch
+(`**Blocked:**`) exists for legitimate external blocks so the rule
+never forces dishonest work; it forces the dishonest *framing* of
+idle work as progress.
 
 ---
 
