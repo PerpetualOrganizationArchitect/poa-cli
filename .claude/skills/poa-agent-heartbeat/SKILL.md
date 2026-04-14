@@ -17,17 +17,81 @@ Each heartbeat: **PERCEIVE → DECIDE → ACT → ENCODE**
 **Always read (every HB):**
 1. `pop agent triage --json` — this IS the observation. One command.
 2. `goals.md` — goal check: "does my planned action advance a goal?"
+3. **`pop brain read --doc pop.brain.shared 2>&1 | tail -60 || true`** — team lessons from the CRDT substrate. See "Dogfood the brain layer" section below.
 
 **Read on trigger:**
-3. `philosophy.md` — ONLY when voting (MANDATORY then — never skip)
-4. `how-i-think.md` — ONLY when voting (heuristics after philosophy)
-5. `shared.md` — ONLY when creating tasks/proposals (for dedup/context)
-6. `lessons.md` — ONLY during planning phase (board empty)
-7. `projects.md` — ONLY during planning or collaborative work
+4. `philosophy.md` — ONLY when voting (MANDATORY then — never skip)
+5. `how-i-think.md` — ONLY when voting (heuristics after philosophy)
+6. `shared.md` — ONLY when creating tasks/proposals (for dedup/context)
+7. `lessons.md` — ONLY during planning phase (board empty)
+8. `projects.md` — ONLY during planning or collaborative work
 
 **Read once per session (not every HB):**
-8. `who-i-am.md` — static identity
-9. `agent-config.json` — execution mode
+9. `who-i-am.md` — static identity
+10. `agent-config.json` — execution mode
+
+## Dogfood the brain layer (HB#311+)
+
+Hudson's directive at HB#311: **the 3 agents here should actually USE the
+brain layer so real errors emerge.** Until now the CRDT substrate has been
+write-only hygiene (snapshot at end of HB). From HB#311 onward, reads and
+writes of lessons go through `pop brain`:
+
+**Writes (lessons):** when you want to record a lesson — something
+surprising, a non-obvious design call, a correction — do NOT edit
+`lessons.md` by hand. Instead:
+
+```bash
+pop brain append-lesson --doc pop.brain.shared \
+  --title "Short imperative title (60 char max)" \
+  --body "Multi-paragraph body. Explain the lesson, the reason, and
+how future agents should apply it. Signs with POP_PRIVATE_KEY,
+publishes head CID via gossipsub, seeds blocks for Bitswap."
+```
+
+The lesson lands in the local Automerge doc, signs with your agent
+key, publishes a gossipsub head announcement. Other agents pick it up
+if they are running a brain node at the same instant — which on a
+single-machine 3-agent setup where agents run sequentially in 15-min
+slots, they probably are NOT. That is exactly the error we want to
+surface: sequential-agent brain sync has a peer-overlap gap, and
+`pop brain subscribe` is the long-running process you would need to
+stay resident to bridge the gap.
+
+**Reads (lessons):** file read #3 above (`pop brain read --doc pop.brain.shared`)
+now runs every HB. If you see content the hand-written `lessons.md`
+doesn't have, your brain home has merged something a peer published.
+If the output is empty or regressed compared to the committed
+`agent/brain/Knowledge/pop.brain.shared.generated.md`, you are
+running solo (no peer overlap this HB) and seeing only your local
+replica. Log the discrepancy in the HB entry — that is data.
+
+**Known gap this wedge will surface:**
+- Agents running in sequential 15-min slots never overlap in time.
+- Gossipsub is broadcast, not store-and-forward. Missed announcements
+  are lost.
+- Convergence requires either (a) co-running agents, (b) a persistent
+  `pop brain subscribe` daemon, (c) git-as-transport for the raw IPLD
+  blocks, or (d) swap transport to Waku (has native store protocol).
+- The snapshot regression guard (HB#301, task #328) prevents silent
+  disk clobber — any HB where local state is behind the committed
+  generated.md will refuse to snapshot with `exit 1`, swallowed by
+  the `|| true` wrapper in Step 3. That is the safety rail, not the
+  sync mechanism.
+
+**How to surface these errors in your HB log:**
+- Count items in `pop brain read` output vs. items in the committed
+  `pop.brain.shared.generated.md`. If read < committed, note it.
+- Note when `pop brain append-lesson` returns a head CID but no peer
+  receives it (you can see "Gossipsub peers: 0" in status output or
+  verbose mode).
+- Note when `pop brain snapshot` exits 1 with the regression error.
+  That is vigil_01's HB#149 bug being caught by the guard.
+
+**Do NOT** delete or bypass the hand-written `lessons.md` yet. Retire
+it only after the dogfood phase produces a converged team state
+across all 3 agents. Until then, `lessons.md` is the canonical
+committed record and the brain layer is a parallel experiment.
 
 ## Implementation Intentions (anti-pattern guards)
 
