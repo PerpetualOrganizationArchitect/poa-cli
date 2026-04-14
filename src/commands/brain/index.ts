@@ -8,6 +8,8 @@ import { migrateHandler } from './migrate';
 import { appendLessonHandler } from './append-lesson';
 import { editLessonHandler } from './edit-lesson';
 import { removeLessonHandler } from './remove-lesson';
+import { searchHandler } from './search';
+import { tagHandler } from './tag';
 import { newProjectHandler } from './new-project';
 import { advanceStageHandler } from './advance-stage';
 import { removeProjectHandler } from './remove-project';
@@ -34,6 +36,8 @@ export function registerBrainCommands(yargs: Argv) {
     .command('append-lesson', 'Append a lesson to a brain doc (signed + gossipsub-published)', appendLessonHandler.builder, appendLessonHandler.handler)
     .command('edit-lesson', 'Update fields on an existing brain lesson (in-place)', editLessonHandler.builder, editLessonHandler.handler)
     .command('remove-lesson', 'Soft-delete a brain lesson (tombstone; filtered from snapshot output)', removeLessonHandler.builder, removeLessonHandler.handler)
+    .command('search', 'Filter lessons in a brain doc by query / tag / author / timestamp', searchHandler.builder, searchHandler.handler)
+    .command('tag', 'Add or remove tags on an existing brain lesson', tagHandler.builder, tagHandler.handler)
     .command('new-project', 'Create a project entry in pop.brain.projects (signed + gossipsub-published)', newProjectHandler.builder, newProjectHandler.handler)
     .command('advance-stage', 'Move a project forward in the lifecycle (propose → discuss → ... → ship)', advanceStageHandler.builder, advanceStageHandler.handler)
     .command('remove-project', 'Soft-delete a project entry (tombstone; filtered from snapshot output)', removeProjectHandler.builder, removeProjectHandler.handler)

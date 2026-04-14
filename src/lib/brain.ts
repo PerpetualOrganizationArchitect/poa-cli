@@ -626,10 +626,39 @@ export async function openBrainDoc<T = any>(docId: string): Promise<{ doc: any; 
 export async function applyBrainChange<T = any>(
   docId: string,
   changeFn: (doc: T) => void,
+  options?: { allowInvalidShape?: boolean },
 ): Promise<{ headCid: string; doc: any; author: string }> {
   const { doc: oldDoc } = await openBrainDoc<T>(docId);
   const Automerge = await getAutomerge();
   const newDoc = Automerge.change(oldDoc, changeFn);
+
+  // Task #346 (HB#168): write-time schema validation.
+  // Validate pre-change and post-change. Only reject regressions —
+  // valid → invalid transitions. If the doc was already invalid before
+  // this change, the bad state was inherited (historical, pre-enforcement
+  // write), and this write is allowed through so existing docs remain
+  // usable. This preserves the task constraint "existing 30 lessons
+  // must not be retroactively rejected."
+  if (!options?.allowInvalidShape) {
+    const { validateBrainDocShape } = await import('./brain-schemas');
+    const preResult = validateBrainDocShape(docId, oldDoc);
+    const postResult = validateBrainDocShape(docId, newDoc);
+    if (preResult.ok && !postResult.ok) {
+      throw new Error(
+        `Brain write rejected: schema validation failed for ${docId}\n` +
+          postResult.errors.map((e) => `  - ${e}`).join('\n') +
+          `\n\nPre-change doc was valid; this change introduces invalid shape(s). ` +
+          `Fix the CLI call OR pass --allow-invalid-shape to bypass (strongly discouraged).`,
+      );
+    }
+    // If post is still invalid but pre was also invalid, log a warning
+    // and allow through. If pre invalid and post valid, the write is a
+    // partial fix — also allow.
+    if (!preResult.ok && !postResult.ok) {
+      // Silent — inherited bad state, not this write's fault.
+    }
+  }
+
   const automergeBytes: Uint8Array = Automerge.save(newDoc);
 
   // Step 4: wrap the snapshot in a signed envelope before persisting.

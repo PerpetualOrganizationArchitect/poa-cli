@@ -34,6 +34,7 @@ interface AppendArgs {
   bodyFile?: string;
   author?: string;
   id?: string;
+  allowInvalidShape?: boolean;
 }
 
 /**
@@ -76,6 +77,12 @@ export const appendLessonHandler = {
       .option('id', {
         describe: 'Override the auto-generated lesson id',
         type: 'string',
+      })
+      .option('allow-invalid-shape', {
+        describe:
+          'Bypass write-time schema validation (Task #346). Use only when you deliberately need a non-canonical shape.',
+        type: 'boolean',
+        default: false,
       })
       .check((argv) => {
         if (!argv.body && !argv['body-file']) {
@@ -142,6 +149,7 @@ export const appendLessonHandler = {
         body,
         author: authorLabel,
         timestamp: now,
+        allowInvalidShape: argv.allowInvalidShape,
       });
 
       if (output.isJsonMode()) {

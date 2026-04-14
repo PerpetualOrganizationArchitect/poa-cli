@@ -72,6 +72,8 @@ export interface AppendLessonOp {
   body: string;
   author: string;
   timestamp: number;
+  /** Task #346: bypass write-time schema validation. Default false (strict). */
+  allowInvalidShape?: boolean;
 }
 
 export interface EditLessonOp {
@@ -85,6 +87,8 @@ export interface EditLessonOp {
   };
   /** Bump the lesson's timestamp to now(), even when no fields change. */
   touch: boolean;
+  /** Task #346: bypass write-time schema validation. Default false (strict). */
+  allowInvalidShape?: boolean;
 }
 
 export interface RemoveLessonOp {
@@ -94,6 +98,8 @@ export interface RemoveLessonOp {
   removedBy: string;
   removedAt: number;
   removedReason?: string;
+  /** Task #346: bypass write-time schema validation. Default false (strict). */
+  allowInvalidShape?: boolean;
 }
 
 export interface NewProjectOp {
@@ -185,6 +191,18 @@ export interface RemoveRetroOp {
   removedReason?: string;
 }
 
+// --- Tags (task #347) -------------------------------------------------
+
+export interface TagLessonOp {
+  type: 'tagLesson';
+  docId: string;
+  lessonId: string;
+  addTags: string[];
+  removeTags: string[];
+  /** Task #346: bypass write-time schema validation. Default false (strict). */
+  allowInvalidShape?: boolean;
+}
+
 export type BrainOp =
   | AppendLessonOp
   | EditLessonOp
@@ -195,7 +213,8 @@ export type BrainOp =
   | StartRetroOp
   | RespondToRetroOp
   | UpdateChangeStatusOp
-  | RemoveRetroOp;
+  | RemoveRetroOp
+  | TagLessonOp;
 
 export interface DispatchResult {
   headCid: string;
@@ -228,51 +247,63 @@ export async function dispatchOp(op: BrainOp): Promise<DispatchResult> {
 
   switch (op.type) {
     case 'appendLesson': {
-      applied = await applyBrainChange(op.docId, (doc: any) => {
-        if (!Array.isArray(doc.lessons)) doc.lessons = [];
-        doc.lessons.push({
-          id: op.id,
-          title: op.title,
-          author: op.author,
-          body: op.body,
-          timestamp: op.timestamp,
-        });
-      });
+      applied = await applyBrainChange(
+        op.docId,
+        (doc: any) => {
+          if (!Array.isArray(doc.lessons)) doc.lessons = [];
+          doc.lessons.push({
+            id: op.id,
+            title: op.title,
+            author: op.author,
+            body: op.body,
+            timestamp: op.timestamp,
+          });
+        },
+        { allowInvalidShape: op.allowInvalidShape },
+      );
       break;
     }
 
     case 'editLesson': {
-      applied = await applyBrainChange(op.docId, (doc: any) => {
-        if (!Array.isArray(doc.lessons)) {
-          throw new Error(`no lessons list in doc ${op.docId}`);
-        }
-        const lesson = doc.lessons.find((l: any) => l && l.id === op.lessonId);
-        if (!lesson) {
-          throw new Error(`lesson ${op.lessonId} not found in ${op.docId}`);
-        }
-        if (op.fields.title !== undefined) lesson.title = op.fields.title;
-        if (op.fields.body !== undefined) lesson.body = op.fields.body;
-        if (op.fields.author !== undefined) lesson.author = op.fields.author;
-        if (op.touch) lesson.timestamp = Math.floor(Date.now() / 1000);
-      });
+      applied = await applyBrainChange(
+        op.docId,
+        (doc: any) => {
+          if (!Array.isArray(doc.lessons)) {
+            throw new Error(`no lessons list in doc ${op.docId}`);
+          }
+          const lesson = doc.lessons.find((l: any) => l && l.id === op.lessonId);
+          if (!lesson) {
+            throw new Error(`lesson ${op.lessonId} not found in ${op.docId}`);
+          }
+          if (op.fields.title !== undefined) lesson.title = op.fields.title;
+          if (op.fields.body !== undefined) lesson.body = op.fields.body;
+          if (op.fields.author !== undefined) lesson.author = op.fields.author;
+          if (op.touch) lesson.timestamp = Math.floor(Date.now() / 1000);
+        },
+        { allowInvalidShape: op.allowInvalidShape },
+      );
       break;
     }
 
     case 'removeLesson': {
-      applied = await applyBrainChange(op.docId, (doc: any) => {
-        if (!Array.isArray(doc.lessons)) {
-          throw new Error(`no lessons list in doc ${op.docId}`);
-        }
-        const lesson = doc.lessons.find((l: any) => l && l.id === op.lessonId);
-        if (!lesson) {
-          throw new Error(`lesson ${op.lessonId} not found in ${op.docId}`);
-        }
-        // Soft-delete tombstone — see brain-projections.ts filter logic.
-        lesson.removed = true;
-        lesson.removedAt = op.removedAt;
-        lesson.removedBy = op.removedBy;
-        if (op.removedReason) lesson.removedReason = op.removedReason;
-      });
+      applied = await applyBrainChange(
+        op.docId,
+        (doc: any) => {
+          if (!Array.isArray(doc.lessons)) {
+            throw new Error(`no lessons list in doc ${op.docId}`);
+          }
+          const lesson = doc.lessons.find((l: any) => l && l.id === op.lessonId);
+          if (!lesson) {
+            throw new Error(`lesson ${op.lessonId} not found in ${op.docId}`);
+          }
+          // Soft-delete tombstone — see brain-projections.ts filter logic.
+          lesson.removed = true;
+          lesson.removedAt = op.removedAt;
+          lesson.removedBy = op.removedBy;
+          if (op.removedReason) lesson.removedReason = op.removedReason;
+        },
+        { allowInvalidShape: op.allowInvalidShape },
+      );
       break;
     }
 
@@ -485,6 +516,31 @@ export async function dispatchOp(op: BrainOp): Promise<DispatchResult> {
         retro.removedBy = op.removedBy;
         if (op.removedReason) retro.removedReason = op.removedReason;
       });
+      break;
+    }
+
+    case 'tagLesson': {
+      applied = await applyBrainChange(
+        op.docId,
+        (doc: any) => {
+          if (!Array.isArray(doc.lessons)) {
+            throw new Error(`no lessons list in doc ${op.docId}`);
+          }
+          const lesson = doc.lessons.find((l: any) => l && l.id === op.lessonId);
+          if (!lesson) {
+            throw new Error(`lesson ${op.lessonId} not found in ${op.docId}`);
+          }
+          if (!Array.isArray(lesson.tags)) lesson.tags = [];
+          for (const t of op.addTags) {
+            if (!lesson.tags.includes(t)) lesson.tags.push(t);
+          }
+          for (const t of op.removeTags) {
+            const idx = lesson.tags.indexOf(t);
+            if (idx >= 0) lesson.tags.splice(idx, 1);
+          }
+        },
+        { allowInvalidShape: op.allowInvalidShape },
+      );
       break;
     }
 

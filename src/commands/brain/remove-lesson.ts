@@ -30,6 +30,7 @@ interface RemoveArgs {
   doc: string;
   lessonId: string;
   reason?: string;
+  allowInvalidShape?: boolean;
 }
 
 export const removeLessonHandler = {
@@ -48,6 +49,11 @@ export const removeLessonHandler = {
       .option('reason', {
         describe: 'Optional human-readable reason recorded on the tombstone',
         type: 'string',
+      })
+      .option('allow-invalid-shape', {
+        describe: 'Bypass write-time schema validation (Task #346).',
+        type: 'boolean',
+        default: false,
       }),
 
   handler: async (argv: ArgumentsCamelCase<RemoveArgs>) => {
@@ -110,6 +116,7 @@ export const removeLessonHandler = {
         removedBy: removerAddress,
         removedAt: now,
         removedReason: argv.reason,
+        allowInvalidShape: argv.allowInvalidShape,
       });
 
       if (output.isJsonMode()) {

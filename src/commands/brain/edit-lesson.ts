@@ -27,6 +27,7 @@ interface EditArgs {
   bodyFile?: string;
   author?: string;
   touch?: boolean;
+  allowInvalidShape?: boolean;
 }
 
 export const editLessonHandler = {
@@ -48,6 +49,11 @@ export const editLessonHandler = {
       .option('author', { describe: 'Override the author label', type: 'string' })
       .option('touch', {
         describe: 'Bump the lesson.timestamp to now on edit (default: preserve original timestamp)',
+        type: 'boolean',
+        default: false,
+      })
+      .option('allow-invalid-shape', {
+        describe: 'Bypass write-time schema validation (Task #346).',
         type: 'boolean',
         default: false,
       })
@@ -142,6 +148,7 @@ export const editLessonHandler = {
         lessonId: argv.lessonId,
         fields,
         touch: argv.touch === true,
+        allowInvalidShape: argv.allowInvalidShape,
       });
 
       if (output.isJsonMode()) {
