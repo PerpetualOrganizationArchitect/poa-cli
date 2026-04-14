@@ -222,6 +222,99 @@ function validateRetrosDoc(doc: any, errors: string[]): void {
   }
 }
 
+// --- pop.brain.brainstorms (task #354 phase a, HB#207) -------------
+//
+// Brainstorms are a forward-looking cross-agent ideation surface:
+// { id, title, prompt, author, status, ideas[], window, removed? }.
+// Distinct from pop.brain.retros (reactive session retrospectives)
+// and pop.brain.projects (lifecycle state machine) — this doc is
+// where new questions get posted, ideas get debated + voted, and
+// top-ranked ideas get promoted to pop.brain.projects at the propose
+// stage. See docs/brain-layer-setup.md and the #354 task description
+// for the full lifecycle.
+const VALID_BRAINSTORM_STATUSES = ['open', 'voting', 'closed', 'promoted'] as const;
+type BrainstormStatus = typeof VALID_BRAINSTORM_STATUSES[number];
+const VALID_BRAINSTORM_STATUS_SET: ReadonlySet<BrainstormStatus> = new Set(VALID_BRAINSTORM_STATUSES);
+
+const VALID_VOTE_STANCES = ['support', 'explore', 'oppose'] as const;
+type IdeaVoteStance = typeof VALID_VOTE_STANCES[number];
+const VALID_VOTE_STANCE_SET: ReadonlySet<IdeaVoteStance> = new Set(VALID_VOTE_STANCES);
+
+function validateIdea(idea: any, brainstormId: string, ideaIndex: number, errors: string[]): void {
+  if (idea == null || typeof idea !== 'object') {
+    errors.push(`brainstorms[${brainstormId}].ideas[${ideaIndex}]: not an object`);
+    return;
+  }
+  if (typeof idea.id !== 'string' || idea.id.length === 0) {
+    errors.push(`brainstorms[${brainstormId}].ideas[${ideaIndex}]: missing required id`);
+  }
+  if (typeof idea.message !== 'string' || idea.message.length === 0) {
+    errors.push(`brainstorms[${brainstormId}].ideas[${ideaIndex}]: missing required message`);
+  }
+  if (idea.author != null && typeof idea.author !== 'string') {
+    errors.push(`brainstorms[${brainstormId}].ideas[${ideaIndex}]: author must be a string when present`);
+  }
+  if (idea.votes != null) {
+    if (typeof idea.votes !== 'object' || Array.isArray(idea.votes)) {
+      errors.push(`brainstorms[${brainstormId}].ideas[${ideaIndex}]: votes must be an object keyed by agent address`);
+    } else {
+      for (const [addr, stance] of Object.entries(idea.votes)) {
+        if (typeof stance !== 'string' || !VALID_VOTE_STANCE_SET.has(stance as IdeaVoteStance)) {
+          errors.push(
+            `brainstorms[${brainstormId}].ideas[${ideaIndex}].votes[${addr}]: stance must be one of ${[...VALID_VOTE_STANCES].join('|')}, got ${JSON.stringify(stance)}`,
+          );
+        }
+      }
+    }
+  }
+  if (idea.priority != null && !['high', 'medium', 'low'].includes(idea.priority)) {
+    errors.push(`brainstorms[${brainstormId}].ideas[${ideaIndex}]: priority must be high|medium|low when present`);
+  }
+}
+
+function validateBrainstorm(b: any, index: number, errors: string[]): void {
+  if (b == null || typeof b !== 'object') {
+    errors.push(`brainstorms[${index}]: not an object`);
+    return;
+  }
+  const bid = b.id ?? `<index ${index}>`;
+  if (typeof b.id !== 'string' || b.id.length === 0) {
+    errors.push(`brainstorms[${index}]: missing required id`);
+  }
+  if (typeof b.title !== 'string' || b.title.length === 0) {
+    errors.push(`brainstorms[${bid}]: missing required title`);
+  }
+  if (typeof b.status !== 'string' || !VALID_BRAINSTORM_STATUS_SET.has(b.status as BrainstormStatus)) {
+    errors.push(
+      `brainstorms[${bid}]: status must be one of ${[...VALID_BRAINSTORM_STATUSES].join('|')}, got ${JSON.stringify(b.status)}`,
+    );
+  }
+  if (b.ideas != null) {
+    if (!Array.isArray(b.ideas)) {
+      errors.push(`brainstorms[${bid}]: ideas must be an array`);
+    } else {
+      b.ideas.forEach((idea: any, i: number) => validateIdea(idea, bid, i, errors));
+    }
+  }
+  if (b.promotedToProjectIds != null && !Array.isArray(b.promotedToProjectIds)) {
+    errors.push(`brainstorms[${bid}]: promotedToProjectIds must be an array`);
+  }
+}
+
+function validateBrainstormsDoc(doc: any, errors: string[]): void {
+  if (doc == null || typeof doc !== 'object') {
+    errors.push('pop.brain.brainstorms: doc is not an object');
+    return;
+  }
+  if (doc.brainstorms != null) {
+    if (!Array.isArray(doc.brainstorms)) {
+      errors.push('pop.brain.brainstorms: brainstorms must be an array');
+    } else {
+      doc.brainstorms.forEach((b: any, i: number) => validateBrainstorm(b, i, errors));
+    }
+  }
+}
+
 /**
  * Dispatch entry point. Returns { ok, errors, warnings }. Unknown doc ids
  * are permitted (schema evolution) with a warning, not an error.
@@ -240,6 +333,9 @@ export function validateBrainDocShape(docId: string, doc: any): ValidationResult
       break;
     case 'pop.brain.retros':
       validateRetrosDoc(doc, errors);
+      break;
+    case 'pop.brain.brainstorms':
+      validateBrainstormsDoc(doc, errors);
       break;
     default:
       warnings.push(
