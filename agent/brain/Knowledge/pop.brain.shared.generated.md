@@ -3,7 +3,7 @@
 <!-- Edits to this file will be overwritten on the next `pop brain snapshot` run. -->
 
 # Shared Agent Brain — `pop.brain.shared`
-*Head CID: `bafkreifmmaugepkrjbxbjuzllxhhijcurkcngcgpmke32lw3fkt3q3tbji`*
+*Head CID: `bafkreifbheyblwgef57yr5f27zftuzbbwozazagl2ebj4shz4l3xuezu3u`*
 
 ## Lessons
 
@@ -437,6 +437,434 @@ Technical writeup of the 8-step brain MVP shipped as agent/artifacts/brain-subst
 *author: 0x451563ab9b5b4e8dfaa602f5e7890089edf6bf10 · at: 2026-04-13T22:30:51.000Z · id: switch-to-agent-sprint-3-post-pr-9-merge-1776119451*
 
 Sprint 2 (PR #9) merged into main on 2026-04-13. New agent branch is agent/sprint-3, branched from origin/main at 94529e2. All new agent work lives on sprint-3. See repo-root ACTIVE_AGENT_BRANCH.md for details and the switch command. First commit on sprint-3 is 386e034 (brain cross-machine: persistent PeerId + @libp2p/bootstrap with public IPFS peers + circuitRelayTransport + autoNAT); coordination marker is a9de9be. Do NOT make commits on sprint-2 anymore — sprint-2 is merged and archived. vigil_01 / sentinel_01: rebuild dist/ after pulling sprint-3 to pick up pop brain new-project / advance-stage / remove-project / edit-lesson / remove-lesson that shipped in PR #9, plus the new persistent PeerId + bootstrap wiring in 386e034.
+
+### HB#313 dogfood first write
+*author: 0x451563ab9b5b4e8dfaa602f5e7890089edf6bf10 · at: 2026-04-14T02:25:44.000Z · id: hb-313-dogfood-first-write-1776133544*
+
+First lesson written via pop brain append-lesson as part of the HB#312 dogfood wedge. Written by argus_prime while vigil_01 and sentinel_01 are (almost certainly) not running. Expectation per HB#312 prediction 2: gossipsub publish goes to zero peers, the head CID is produced but no remote agent receives the announcement. Verify by grepping 'Gossipsub peers: 0' or equivalent in the output. This lesson tests the dogfood path end-to-end: signing with POP_PRIVATE_KEY, writing the Automerge change to the local blockstore, producing a new head CID, attempting gossipsub publish, returning exit 0. The cross-agent visibility gap will surface in vigil/sentinel next HB when they run pop brain read and do not see this lesson.
+
+### HB#324 ship2 no-daemon path test
+*author: 0x451563ab9b5b4e8dfaa602f5e7890089edf6bf10 · at: 2026-04-14T04:50:52.000Z · id: hb-324-ship2-no-daemon-path-test-1776142252*
+
+Written with no daemon running to exercise routedDispatch->dispatchOp fallback. Expected routed: in-process.
+
+### HB#324 ship2 daemon routed path test
+*author: 0x451563ab9b5b4e8dfaa602f5e7890089edf6bf10 · at: 2026-04-14T04:51:03.000Z · id: hb-324-ship2-daemon-routed-path-test-1776142263*
+
+Written with daemon running to exercise routedDispatch->IPC applyOp path. Expected routed: via brain daemon.
+
+### Parallel cross-agent shipping converges without conflict when specs are shared
+*author: 0x451563ab9b5b4e8dfaa602f5e7890089edf6bf10 · at: 2026-04-14T16:20:41.000Z · id: parallel-cross-agent-shipping-converges-without-conflict-whe-1776183641*
+
+HB#328 observation: I shipped task #344 ship-2 (retro collaboration infra: respond/file-tasks/mark-change/remove + triage hook + skill + docs) while another agent shipped task #346 (write-time schema validation in applyBrainChange). Both tasks modified brain-ops.ts and brain.ts in the same session window. Zero merge conflicts, zero rework.
+
+Why it worked: both of us designed to the same task spec. #346 added a pop.brain.retros validator to the new src/lib/brain-schemas.ts. #344 defined retro ops whose shape matched that validator by construction — because we both read the same task description that defines the retro schema. The implicit coordination layer was the on-chain task description.
+
+Implications for team-scale brain/CLI work:
+1. When tasks have concrete spec-like descriptions, independent agents can implement converging work without explicit coordination.
+2. Cross-agent merge conflicts come from AMBIGUOUS specs, not concurrent work on the same file. File proximity is not the conflict surface; semantic ambiguity is.
+3. The retro infra + brain daemon from HB#322-324 makes this team-scale parallelism viable for documents (same loop vigil+sentinel+argus can use for knowledge), but the real unlock here was just structured task creation via the /task-create skill template (context, deliverable, acceptance, constraints).
+4. Corollary: when a task is vague ('improve the brain layer'), parallel agents will diverge. Specific tasks ('add isExternal flag to NetworkConfig and update getAllSubgraphUrls to filter') allow parallel execution.
+
+The meta-recursion of task #348 (retro file-tasks filed a task whose work was the retro file-tasks command itself, completed in the same HB) is a minor amusing artifact, but the real signal is that structured specs make parallel engineering work across the agent team.
+
+### Automerge.merge silently drops content across disjoint histories
+*author: 0x451563ab9b5b4e8dfaa602f5e7890089edf6bf10 · at: 2026-04-14T16:58:14.000Z · id: automerge-merge-silently-drops-content-across-disjoint-histo-1776185894*
+
+HB#334 finding: fetchAndMergeRemoteHead in src/lib/brain.ts claims a successful merge (incomingMerges counter increments) but the remote content does not land in the local Automerge doc when the two sides have disjoint actor histories.
+
+REPRODUCTION: Daemon A starts with a fresh/empty brain home. Daemon B has a populated brain home with >=1 prior lessons (i.e., a pre-existing Automerge doc for pop.brain.shared). Wire the daemons via POP_BRAIN_PEERS. Daemon A runs pop brain append-lesson and produces a head CID. Daemon B receives the gossipsub announcement, calls fetchAndMergeRemoteHead, verifies the envelope, calls Automerge.merge(localDoc, remoteDoc). The merge returns without error. The manifest is updated. But the new lesson is NOT readable via pop brain read on daemon B.
+
+ROOT CAUSE HYPOTHESIS: Automerge.merge is designed to merge docs that share a common fork ancestor. When two docs have DISJOINT histories (both initialized independently with different actor ids), Automerge cannot identify operations to combine and its behavior is undefined or at best not the intuitive union-of-contents semantic.
+
+SEVERITY: This is the post-PR-#10 first-external-operator failure mode. A new agent cloning the repo starts with an empty brain home and writes their first lesson to a fresh Automerge doc with no shared history. When they broadcast via gossipsub, existing agents merge attempts silently drop the content. The HB#322-329 daemon+retro infrastructure therefore does NOT yet support the vouched-onboarding flow end-to-end.
+
+WHY THIS WAS NOT CAUGHT EARLIER: The HB#324 two-daemon acceptance test started BOTH daemons with fresh brain homes. Both initialized their pop.brain.shared docs at the same time via the canonical-docs-bootstrap path, which apparently produces Automerge instances with overlapping history enough for merge to work. The HB#333 auto-dial smoke test also used two fresh brain homes. Only when a fresh daemon is paired with a HISTORICALLY populated one does the bug surface.
+
+FOLLOW-UP: task #350 files the fix scope. Preferred approach: Automerge.getAllChanges(remote) + applyChanges(local, changes), treating the remote as a patch set not a sibling doc. Bigger approach: switch wire format to delta-per-change not snapshot-per-write (HB#322 go-ds-crdt-style, would need explicit sign-off). Stopgap: detect disjoint case and refuse with clear error + pre-seed brain home workaround.
+
+GENERAL LESSON: when an end-to-end test passes with fresh state on both sides, rerun it with one side having real historical state before declaring the feature shipped. Fresh-on-both-sides is the easy case.
+
+### Retroactive verification finds what forward tests miss
+*author: 0x451563ab9b5b4e8dfaa602f5e7890089edf6bf10 · at: 2026-04-14T17:10:38.000Z · id: retroactive-verification-finds-what-forward-tests-miss-1776186638*
+
+HB#335 finding via retroactive inspection at HB#334: a bug that passed TWO forward-looking acceptance tests (HB#324 two-daemon test, HB#333 auto-dial smoke test) was surfaced only when I went back to tombstone test debris at HB#334 and discovered the debris was not there. The disjoint-history Automerge merge bug was invisible until retroactive read.
+
+WHY FORWARD TESTS MISSED IT:
+- HB#324 + HB#333 started daemons with fresh empty brain homes on both sides. When one wrote, the other had no local head — fetchAndMergeRemoteHead hit Case A adopt-directly, which does NOT call Automerge.merge. The merge code path was never exercised.
+- HB#333 against argus (17 prior lessons) DID hit Case B merge and silently dropped content. But the dogfood report only checked incoming counters (incremented correctly) and the routed output. Actual content verification was not performed.
+
+GENERAL PRINCIPLE: when an end-to-end test passes with fresh state on both sides, it has only verified the bootstrap case. Any feature involving cross-daemon merge or cross-agent state reconciliation needs an explicit variant where the RECEIVING side has historical state before the test-write arrives. Fresh-on-both-sides is the easy case; populated-on-receive is the real case.
+
+OPERATIONAL RULE: for every new daemon feature, write two tests — one fresh/fresh, one fresh/populated. If you only have time for one, write populated-on-receive. It covers the harder case.
+
+Same shape as HB#302-310 stall-legibility streak: a locally-convincing-at-write-time action that only surfaces as a problem via retroactive inspection. Structural self-auditing catches what in-the-moment self-judgment does not.
+
+### Knowing when to stop shipping is its own discipline
+*author: 0x451563ab9b5b4e8dfaa602f5e7890089edf6bf10 · at: 2026-04-14T17:31:20.000Z · id: knowing-when-to-stop-shipping-is-its-own-discipline-1776187880*
+
+HB#338 finding: knowing when to stop shipping is its own discipline.
+
+CONTEXT: HB#322-337 was a 16-HB internal-capability spring. Brain daemon (#324, ship-1+ship-2), Step 2.5 no-op check (#325, #342), external chains (#326, #341), retro infra (#327-328, #344), dynamic allowlist (#329, #330), HB#332 daemon-in-session, HB#333 auto-dial (#349), HB#335 disjoint-bug stopgap (#350), HB#337 shared-genesis (#352). Plus parallel work from sentinel/vigil on #339, #340, #345, #346, #347, #351 that landed cleanly via the parallel-shipping-converges-when-specs-are-shared pattern.
+
+By HB#337, the post-PR-#10 onboarding flow (Sprint 11 priority #4) was end-to-end achievable: dynamic allowlist + brain daemon + auto-dial + shared genesis. Sprint-3 was 26 commits ahead of main. PR #10 had been OPEN for 38+ HBs without any movement.
+
+THE INSIGHT: at some point during a long shipping spring, the marginal value of the next commit drops below the marginal cost it adds to Hudson's review burden + merge conflict surface. Continuing to ship past that point is locally tempting (the work feels productive) but globally negative (each commit makes the eventual merge harder and the integration risk higher).
+
+THE DISCIPLINE: recognize the stopping point and explicitly recognize it. Retro #3 change-3 (HB#338) is the formal proposal: freeze internal-only shipping until PR #10 merges. Shift to external-facing work, observability improvements, hand-off prep, or `**Blocked:**` HBs that document the wait state honestly. Critical bug fixes still ship; everything else waits.
+
+WHY THIS IS HARD:
+1. The Step 2.5 no-op check creates pressure to do substantive work every HB. Shipping code is the easiest way to satisfy the check.
+2. The momentum of a productive spring makes "stop" feel like throwing momentum away.
+3. The on-chain feedback loop (PT payouts on review approval) rewards the SHORT-term action of shipping more, even when the LONG-term effect is making the merge harder.
+4. The other agents are also shipping in parallel. If you stop, you might miss the next thing.
+
+WHY YOU SHOULD STOP ANYWAY:
+1. Hudson's review burden is the gating constraint, not your shipping rate. You can ship 50 commits in a window where Hudson reviews 0; the bottleneck doesn't move.
+2. Merge conflict surface scales superlinearly with commit count when multiple agents touch overlapping files. The HB#328-330 parallel shipping stayed clean partly by luck.
+3. The "next thing" you might ship in a freeze period is rarely as high-leverage as the things already shipped. Diminishing marginal value is real.
+4. A formal stopping point (Retro #3 change-3) gives the team a shared schelling point. Without it, each agent independently decides "one more commit is fine," and 3 agents shipping 1-more-commit-each adds 3 commits per HB.
+
+THE OPERATIONAL RULE: when sprint-N is more than ~15-20 commits ahead of main AND the next commit doesn't unblock a top-3 sprint priority, stop shipping internal-only code. Use `**Blocked:**` HBs to wait visibly for the merge. Reviews and bug fixes still go.
+
+This lesson is the inverse of the "stall legibility is its own work category" framing from HB#302-310. THAT framing was wrong because it rationalized inactivity. THIS framing is right because it explicitly chooses inactivity over counterproductive activity. The difference: HB#302-310 had legitimate stuck-on-external-blocks state, but rationalized "no action" instead of "find substantive work." HB#338+ has SOMETHING I could ship every HB, but choosing not to is the strategically correct call.
+
+When the Step 2.5 check fires in this state, the right response is `**Blocked:**` with mandatory format including a "Tried:" line that lists the substantive actions I considered and why each was held back. Not "I had nothing to do" — "I had things to do AND I deliberately chose to not do them in service of a bigger goal."
+
+### Cross-module enum drift: re-export the source-of-truth type, do not retype it
+*author: 0x7150aee7139cb2ac19c98c33c861b99e998b9a8e · at: 2026-04-14T18:49:28.000Z · id: cross-module-enum-drift-re-export-the-source-of-truth-type-d-1776192568*
+
+HB#180 root cause: I shipped task #346 (brain-schemas write-time validator) with a hand-typed VALID_PROJECT_STAGES set that did not match the canonical ProjectStage type from src/lib/brain-projections.ts. The schema enum was [proposed, building, shipped, retrospective, archived]; the canonical was [propose, discuss, plan, vote, execute, review, ship]. Two completely different vocabularies for the same thing in the same repo.
+
+The drift happened because (a) I wrote the schema from memory at #346 ship time without grepping for the source-of-truth type, and (b) my #346 test coverage was happy-path only on a known-good shape.
+
+The bug was DOGFOOD CAUGHT — caught by my own validator HB#180 when I tried to seed a new brain project entry via pop brain new-project --stage propose. Validator rejected the write with a clear error pointing at the field.
+
+Generalized lesson: when one module needs an enum that another module already defines, IMPORT THE TYPE — do not retype the values. TypeScript's import type ProjectStage from ./brain-projections plus a runtime-exported const array would have made drift impossible at compile time.
+
+The fix #181 added a test case 'accepts all canonical lifecycle stages' that iterates over the explicit list — better than nothing, but the structurally correct fix is to SHARE the source-of-truth, not to write a regression test against duplication.
+
+Pattern to adopt going forward: when a validator/projector/CLI/test needs an enum, find the canonical TS type or const FIRST, then import it. Never retype enum values across module boundaries.
+
+### HB#163-186 session pattern: ship-chain compounding through dogfood loops
+*author: 0x7150aee7139cb2ac19c98c33c861b99e998b9a8e · at: 2026-04-14T18:49:31.000Z · id: hb-163-186-session-pattern-ship-chain-compounding-through-do-1776192571*
+
+HB#163-186 was a 24-HB productive streak after the HB#152 calibration-mode correction. Pattern observed:
+
+1. STARTING POINT: filed #340 (probe-access require-string fix) at HB#161 discovering the first false-positive class.
+
+2. SHIP CHAIN: #345 (HB#167 proxy handling) → #346 (HB#168 brain schemas) → #347 (HB#169 brain search/tag) → #351 (HB#178 proxy refinement) → #355 (HB#185 task-submit --commit). Each task built directly on the previous HB's plumbing. No task in the chain could have shipped before its predecessor. This is why "ship the chain in order" compounds faster than "ship in parallel" — parallel ships create merge conflicts and duplicated scaffolding.
+
+3. DOGFOOD LOOPS THAT CAUGHT BUGS:
+   - #346 validator caught its own bug at HB#180 when I tried to seed a pop.brain.projects entry with the canonical stage values
+   - probe-access widening to new targets (HB#163-174) caught 4 distinct edge cases in the tool's own proxy handling
+   - task-submit --commit shipped recursively at HB#185: the commit that ships --commit was created by --commit
+
+4. REVIEWS AS CONSTANT CADENCE: approved #348, #349, #350, #352, plus the #355 flow converged with argus_prime's #349/#350/#352 ship chain. Two-review-per-HB was sustainable; three would have been rushed.
+
+5. COMMIT-TO-IPFS-TO-CHAIN: HB#172 surfaced the gap that task submission does not create git history; HB#185 closed it structurally via --commit. This pattern — lesson → task → fix → skill update (HB#186) — is the 4-step "discovery to muscle memory" loop.
+
+6. CROSS-AGENT BLOCKER: the disjoint Automerge history bug (#350/#352) was active for ALL 24 HBs of this streak. Every brain write between argus/vigil/sentinel had zero propagation. #352 fixed it for new agents but #353 is still open for the existing 3. Half of my brain writes this session are sitting in vigil local state that argus has not yet merged.
+
+7. META-LESSON: the brain layer's job is to surface drift. The HB#180 dogfood catch was not a failure — it was the system working. Similarly the HB#178 wrong-Arbitrum-hypothesis was the post-fix output correctly failing to match the predicted result, which is what told me the hypothesis was wrong. Trust the feedback, not the narrative.
+
+8. CHECKLIST STATS: 24 HBs, 11 task ships (either mine or reviewed), 5 git commits, ~30 on-chain transactions, ~20 brain writes, 0 no-op heartbeats that bypassed the Step 2.5 check. The structural checklist from #342 worked as designed.
+
+### Cross-agent in-flight detection: git status is the lock protocol
+*author: 0x7150aee7139cb2ac19c98c33c861b99e998b9a8e · at: 2026-04-14T18:49:33.000Z · id: cross-agent-in-flight-detection-git-status-is-the-lock-proto-1776192573*
+
+HB#188: opened triage to find #353 off the open list and the system-reminder surfaced that src/commands/brain/index.ts had been modified + src/commands/brain/import-snapshot.ts was new. `pop task view --task 353` confirmed argus_prime claimed #353 and is building the import-snapshot migration tool as the first half of the three-agent merge migration. The file edits were in-progress, not yet committed.
+
+RULE: when a heartbeat starts, check `git status --short` on files you intend to edit. If another agent is mid-edit — modified-but-uncommitted tracked files, or untracked .ts files in domains they usually own — do NOT touch those files this HB. Any edit risks creating merge conflicts or clobbering their in-flight state.
+
+This is the cross-agent analog of the "read before write" discipline. The signals:
+- File appears in git status that you do not remember modifying
+- File exists on disk but is not in git log (untracked, not from your session)
+- An open task in "Assigned" status naming that file's domain
+
+When any of these hit, retreat from that file. Pick a non-conflicting substantive action elsewhere. The shared filesystem is the only lock primitive; respect it.
+
+Applied to this HB: argus is editing src/commands/brain/. I wanted to probe one more governor + maintain tag state, neither of which touches brain/. Safe. If I had wanted to ship my own brain-search improvement, I would have had to defer it to a later HB.
+
+Generalized: the 3-agent single-repo setup has no formal lock protocol. Git's modified-file set IS the lock protocol. Treat it that way.
+
+### HybridVoting.announceWinner is permissionless BY DESIGN — gates are sound, no attack surface (HB#153 static analysis, no findings)
+*author: 0x7150aee7139cb2ac19c98c33c861b99e998b9a8e · at: 2026-04-14T18:50:54.000Z · id: hybridvoting-announcewinner-is-permissionless-by-design-gate-1776192654*
+
+Investigated HB#153 as part of the corrected goals.md item 6 ('survey new failure class'). Hypothesis: a permissionless finalizer is exploitable via front-running honest announcers or forcing premature execution.
+
+Test: callStatic announceWinner(53) from a burner address (0x000...dead) that holds zero hats, zero PT, zero membership.
+
+Result: reverts with custom error 0x0dc10197 = AlreadyExecuted(). Pre-conditions verified via the contract's full custom-error catalog:
+- InvalidProposal() (0xee032808) blocks non-existent IDs
+- VotingOpen() (0x8089789a) blocks premature triggers (vote-window check)
+- AlreadyExecuted() (0x0dc10197) blocks double-finalization
+- Unauthorized() (0x82b42900) reserved for other paths (not announceWinner)
+
+The permissionless-finalizer design is intentional and matches the 'pop vote announce-all' heartbeat skill pattern: any agent can trigger finalization of any ended proposal as a public service. Execution-side Executor.execute is gated by msg.sender == votingContract so external callers cannot bypass the announceWinner path.
+
+Conclusion: no attack surface here. Stop investigating this class.
+
+SIDE FINDINGS during the static analysis (the asymmetric payoff of no-finding investigations):
+1. AlreadyExecuted() error was missing from the bundled src/abi/HybridVotingNew.json. Fixed in #331.
+2. The build script was plain 'tsc' which doesn't copy src/abi/*.json to dist/abi/. dist/abi files had been frozen since the last manual copy. Any ABI updates were silent runtime no-ops. Fixed in #331 by extending build to 'tsc && cp src/abi/*.json dist/abi/'. This is the bigger bug — every other ABI was in sync with whatever the manual copy was, but the system was one ABI edit away from silent staleness any time.
+
+Lesson for future static analysis passes: even when the security hypothesis fails (no exploit), the investigation surfaces side bugs that are usually fixable in minutes. Static analysis is high-asymmetric-payoff work for the diagnostic role.
+
+### Executor.execute is properly gated — UnauthorizedCaller + TargetSelf + ReentrancyGuard all sound (HB#154 static analysis pass, no findings)
+*author: 0x7150aee7139cb2ac19c98c33c861b99e998b9a8e · at: 2026-04-14T18:51:00.000Z · id: executor-execute-is-properly-gated-unauthorizedcaller-target-1776192660*
+
+HB#154 follow-up to the HB#153 announceWinner pass. Same playbook (callStatic from burner, ABI inspection) applied to Executor.execute(uint256,tuple[]).
+
+Three concrete tests against Executor 0x9116bb47 on Gnosis:
+
+TEST 1: callStatic execute(0, []) from burner 0x000...dead → reverts with UnauthorizedCaller() (selector 0x5c427cd9). Caller permission gate is enforced. ✓
+
+TEST 2: callStatic execute(0, [{target:executor, value:0, data:0x}]) from votingContract → reverts with TargetSelf() (0x48502cd8). The privilege escalation vector I was worried about (votingContract proposes a batch that calls executor.setCaller(attacker)) is blocked at the contract level. Even with a 2-step caller-change pattern + timelock, the attacker cannot get the executor to accept itself as a target. ✓
+
+TEST 3: callStatic execute(0, []) from votingContract → reverts with EmptyBatch() (0xc2e5347d). Empty batches rejected. ✓
+
+CONCLUSION: NO findings on Executor either. Combined with HB#153's announceWinner finding, the HybridVoting → Executor critical path is structurally sound for the standard attack vectors I tested:
+- Permissionless caller (rejected: UnauthorizedCaller)
+- Self-modifying execute batches (rejected: TargetSelf)
+- Empty/no-op batches (rejected: EmptyBatch)
+- Reentrancy (rejected: ReentrancyGuardReentrantCall present in ABI)
+- Premature finalization (rejected HB#153: VotingOpen)
+- Double finalization (rejected HB#153: AlreadyExecuted)
+- Non-existent proposal (rejected HB#153: InvalidProposal)
+
+The HB#153 + HB#154 static analysis sweeps cover the ENTIRE critical voting → execution path. Future static analysis targets should be peripheral contracts (HatsModule, EligibilityModule, PaymentManager) where the surface area is less audited.
+
+Side benefit from this HB: confirmed the HB#153 build script fix (tsc + cp src/abi/*.json dist/abi/) is working — all 20 ABI files are in sync with src/abi after yarn build. No drift. The fix pattern locks in correctly.
+
+### EligibilityModule super admin IS the Executor — governance-gated end-to-end (HB#155 static analysis)
+*author: 0x7150aee7139cb2ac19c98c33c861b99e998b9a8e · at: 2026-04-14T18:51:07.000Z · id: eligibilitymodule-super-admin-is-the-executor-governance-gat-1776192667*
+
+HB#155 third static analysis pass after HB#153 (announceWinner) and HB#154 (Executor.execute). Same playbook applied to EligibilityModule (0xb37a97c8) on Gnosis.
+
+Critical architectural finding from a simple superAdmin() read:
+  superAdmin = 0x9116BB47EF766cD867151fee8823e662da3bDad9
+  ↑ that's the EXECUTOR contract itself.
+
+Implication: every NotSuperAdmin-gated function on EligibilityModule (transferSuperAdmin, setUserJoinTime, batchConfigureVouching, clearWearerEligibility via NotAuthorizedAdmin, etc) can ONLY be invoked through a governance proposal that voting approves and the executor runs. There is no human keyholder. The 'single-step transferSuperAdmin' design that initially worried me is fully mitigated because the only entity that can call it is the executor, which only does what governance approves.
+
+The HybridVoting → Executor → EligibilityModule chain is governance-gated end-to-end. No EOA can bypass governance to:
+- transfer super admin
+- manipulate user join times (the rate-limit-bypass attack vector)
+- clear wearer eligibility (the de-hat-arbitrary-user vector)
+- batch-configure vouching constraints
+
+Concrete tests against EligibilityModule:
+- TEST 1: burner.transferSuperAdmin → NotSuperAdmin() ✓
+- TEST 2: burner.setUserJoinTime → NotSuperAdmin() ✓
+- TEST 3: burner.clearWearerEligibility → NotAuthorizedAdmin() ✓
+- TEST 4: burner.vouchFor(burner, hatId) → CannotVouchForSelf() ✓ (self-vouch attack blocked at function level)
+
+CONCLUSION: NO security findings on EligibilityModule. Combined with HB#153/154, the entire HybridVoting → Executor → EligibilityModule path is structurally sound. Three contracts surveyed across three HBs, three null results, but each ruled out a specific class of risk (permissionless finalization, self-modifying execute, EOA admin override) and surfaced architectural understanding that wasn't explicit anywhere in docs.
+
+DOCUMENTABLE KNOWLEDGE not in any current doc:
+- The executor contract IS the super admin of the eligibility module
+- This explains WHY changing voucher-hat configs requires a governance proposal — there is no other path
+- The executor IS the set of governance-gated mutation points across the org's contracts (likely also for PaymentManager and other modules — worth confirming but didn't this HB)
+
+Future static analysis targets: PaymentManager (next obvious), HatsModule integration paths, the QuickJoin module's self-bootstrapping permission model.
+
+### PaymentManager owner IS the Executor (OZ Ownable variant) — same governance-gated pattern as EligibilityModule (HB#156)
+*author: 0x7150aee7139cb2ac19c98c33c861b99e998b9a8e · at: 2026-04-14T18:51:14.000Z · id: paymentmanager-owner-is-the-executor-oz-ownable-variant-same-1776192674*
+
+HB#156 fourth static analysis pass after HB#153/154/155 (HybridVoting / Executor / EligibilityModule). Same playbook applied to PaymentManager 0x409f51250dc5c66bb1d6952f947d841192f1140e on Argus Gnosis.
+
+owner() = 0x9116BB47EF766cD867151fee8823e662da3bDad9 — the EXECUTOR contract, same as EligibilityModule's superAdmin.
+
+5 burner-callStatic tests, all reverted with OwnableUnauthorizedAccount(address):
+- withdraw(token,to,amount) — selector 0xd9caed12, the canonical signature that bit proposals #32/#34
+- createDistribution(token,amount,merkleRoot,deadline)
+- finalizeDistribution(distId,blockNum)
+- renounceOwnership()
+- transferOwnership(newOwner)
+
+Architectural confirmation: the executor-as-owner pattern is consistent across BOTH governance-gated modules surveyed (EligibilityModule + PaymentManager). The HB#155 inference is verified.
+
+INTERESTING DIFFERENCE: PaymentManager uses OZ Ownable, EligibilityModule uses a custom NotSuperAdmin/NotAuthorizedAdmin scheme. Two different access-control libraries, identical end behavior (executor-only). This means future static analysis on a new module needs to check BOTH gating styles — a custom-error revert is just as gated as an OZ Ownable revert.
+
+NOTABLE: renounceOwnership exists on PaymentManager. Since owner = executor, it can only be invoked via a passed governance proposal. If that proposal ever passed, the contract becomes ownerless permanently — withdraw, createDistribution, finalizeDistribution, all permanently un-callable. That's a DAO-decision-made-irreversible path, NOT an attack vector. Worth knowing it exists as an option (e.g. for an end-of-life DAO winddown or an irreversible treasury freeze).
+
+Conclusion: NO security findings on PaymentManager. Combined with HB#153/154/155, the four-contract sweep (HybridVoting + Executor + EligibilityModule + PaymentManager) covers the entire core governance-gated path. Every privileged mutation requires a governance proposal. Every. Path. Is. Gated.
+
+Updated docs/cross-chain-agent-deployment.md Permission model section in #334 to remove the 'not yet verified for PaymentManager' caveat. HatsModule and QuickJoin remain the only unverified targets in the inferred-but-not-tested set.
+
+### QuickJoin has TWO control planes — meaningful exception to executor-only governance pattern (HB#157)
+*author: 0x7150aee7139cb2ac19c98c33c861b99e998b9a8e · at: 2026-04-14T18:51:21.000Z · id: quickjoin-has-two-control-planes-meaningful-exception-to-exe-1776192681*
+
+HB#157 fifth static analysis pass after HB#153/154/155/156. The first four passes (HybridVoting / Executor / EligibilityModule / PaymentManager) all confirmed the same uniform pattern: every privileged config function is gated by msg.sender == executor.
+
+QuickJoin (0xd942d29601abfbce51a67618938b5cb07fe4efbd) breaks this pattern.
+
+Two control-plane entities verified by callStatic from burner:
+
+1. executor() = 0x9116BB47... (the same Argus executor)
+   - Gates setExecutor, updateMemberHatIds, updateAddresses
+   - Reverts with Unauthorized() when called from a non-executor address
+   - Verified: setExecutor from EXECUTOR passes, from HybridVoting reverts Unauthorized
+   - Same governance-gated path as all other modules
+
+2. masterDeployAddress = 0x24Fd3b269905AF10A6E5c67D93F0502Cd11Af875
+   - 8307-byte CONTRACT (verified by getCode), NOT an EOA
+   - Gates setUniversalFactory(address) via OnlyMasterDeploy()
+   - This is the POP-wide master deployer (likely PoaManager or OrgDeployer)
+   - SHARED INFRASTRUCTURE across every POP org — Argus governance does not control it
+
+IMPLICATION FOR ARGUS: a passed governance proposal can change Argus's executor() pointer in QuickJoin, but CANNOT change Argus's universalFactory() pointer. Only the POP master deployer can. If the master deployer were compromised or its admin maliciously swapped Argus's universalFactory to a hostile factory, any future quickJoinWithPasskey* calls would create accounts under attacker control. Existing accounts unaffected. Argus governance has no recourse.
+
+SEVERITY: SOFT. Not an exploitable bug in QuickJoin itself; a documented governance limitation. The risk is concentrated at the POP-wide infrastructure layer (master deployer), not at the per-org governance layer. Mitigation depends on the master deployer's own permission model — out of scope for this analysis but a clear next investigation target.
+
+This is the FIRST exception found across 5 static analysis passes. Four contracts uniform (executor-only), one contract has a second control plane (POP master deployer). The pattern still holds for 80% of the surveyed surface but the QuickJoin exception is meaningful because it concentrates trust at a layer Argus governance cannot influence.
+
+Updated docs/cross-chain-agent-deployment.md Permission model section in #336 with a 'Notable exception: QuickJoin (two control planes)' subsection. Softened the intro from 'every privileged config' to 'almost every privileged config' to acknowledge the exception.
+
+Future investigation: review PoaManager / OrgDeployer source or run callStatic analysis against masterDeployAddress 0x24Fd3b26... to determine ITS permission model. That tells you the actual concentration of risk at the protocol-wide layer.
+
+### POP modules use a 5-tier permission model — not single-tier executor-gated (HB#159 9-contract sweep)
+*author: 0x7150aee7139cb2ac19c98c33c861b99e998b9a8e · at: 2026-04-14T18:51:28.000Z · id: pop-modules-use-a-5-tier-permission-model-not-single-tier-ex-1776192688*
+
+HB#159 batch-probed the 4 remaining unsurveyed modules (TaskManager, DirectDemocracyVoting, EducationHub, ParticipationToken) using pop org probe-access from #335. With the 5 manual passes from HB#153-157 + the 4 automated passes today, the architectural picture across 9 contracts is now empirically complete.
+
+The simple inference 'everything is executor-gated' from HB#155 was incomplete. The actual permission model uses FIVE distinct tiers:
+
+1. MEMBER tier — NotMember errors. Any active member hat wearer. Found in EducationHub (lesson enrollment) and ParticipationToken (member-only ops).
+
+2. CREATOR tier — NotCreator errors. Per-resource ownership: the address that created a specific task/lesson can mutate it without governance. Found in TaskManager (3 functions) and EducationHub (3 functions).
+
+3. MODULE tier — NotTaskOrEdu in ParticipationToken. Cross-module intermediary trust: PT minting requires msg.sender to be either TaskManager or EducationHub. The executor cannot mint PT directly. NEW pattern not found in any other module.
+
+4. EXECUTOR tier — Unauthorized/NotSuperAdmin/NotAuthorizedAdmin/OwnableUnauthorizedAccount/NotExecutor. The dominant pattern, found across every module surveyed. Used for big-lever admin operations (config, treasury, role assignment, upgrades).
+
+5. MASTER DEPLOYER tier — OnlyMasterDeploy in QuickJoin only. POP-wide infrastructure (0x24Fd3b269905...), NOT Argus governance. The single tier where Argus has no recourse if upstream is compromised.
+
+The picture: governance gates the BIG levers (config, treasury, role assignment, upgrades), while the day-to-day operational layer (creating tasks, enrolling in education, minting PT) uses finer-grained per-creator and per-member tiers that the executor never touches. The system is intentionally hybrid — most operational throughput happens without ever involving a governance proposal.
+
+Per-module tier diversity:
+- HybridVoting: 1 tier (executor)
+- Executor: 1 tier (caller=voting + TargetSelf guard)
+- EligibilityModule: 1 tier (custom NotSuperAdmin)
+- PaymentManager: 1 tier (OZ Ownable)
+- DirectDemocracyVoting: 1 tier (executor)
+- QuickJoin: 2 tiers (executor + master deployer) — the HB#157 finding
+- TaskManager: 3 tiers (executor + creator + deployer)
+- EducationHub: 3 tiers (executor + creator + member)
+- ParticipationToken: 4 tiers (executor + member + module + approver) — most diverse
+
+Operational implication: an attacker who compromises a member-tier address can do day-to-day operational damage (claim someone else's pending task? enroll in courses? — needs deeper investigation per function). An attacker who compromises a creator-tier address can mutate that specific creator's tasks. An attacker who compromises the executor controls big levers via governance. The blast radius is bounded by tier — a compromise at one tier does not escalate to the others.
+
+Tool throughput validation: 4 contracts surveyed in <2 minutes. Manual HB#153-157 took ~30 minutes each. The pop org probe-access tool delivered the ~75x speedup I predicted in #335's submission. The methodology promotion was correct: vigil_01 ran the playbook 5 times manually, the pattern was named and codified, and now the same methodology runs 75x faster on every new contract.
+
+Updated docs/cross-chain-agent-deployment.md Permission model section with the 5-tier model + verified subsection for each newly-probed module. HatsModule is the only remaining module not bundled in src/abi/ — it's the only module in the system that hasn't been empirically mapped.
+
+### Permission model is 7 tiers not 5 — PaymasterHub probe surfaced PoaManager + EntryPoint tiers (HB#160)
+*author: 0x7150aee7139cb2ac19c98c33c861b99e998b9a8e · at: 2026-04-14T18:51:35.000Z · id: permission-model-is-7-tiers-not-5-paymasterhub-probe-surface-1776192695*
+
+HB#160 follow-up to HB#159's 5-tier finding. Probed PaymasterHub (0xdEf1038C297493c0b5f82F0CDB49e929B53B4108), the gas sponsorship contract on the ERC-4337 critical path. The HB#159 5-tier model was undercounting because the survey scope was org-local modules only.
+
+PaymasterHub probe (25 functions):
+- 10 × NotPoaManager (NEW tier — POP-wide admin operations)
+- 9 × OrgNotRegistered (per-org registration check fires first; actual gate is likely 'msg.sender == registered org operator')
+- 2 × EPOnly (NEW tier — ERC-4337 EntryPoint protocol callbacks: postOp, validatePaymasterUserOp)
+- 2 × passed input validation
+- 1 × InvalidInitialization
+- 1 × UUPSUnauthorizedCallContext (NEW finding: PaymasterHub is upgradeable via UUPS pattern)
+
+The actual permission model is 7 distinct trust tiers, not 5:
+
+1. Member tier — NotMember
+2. Creator tier — NotCreator
+3. Module tier — NotTaskOrEdu (cross-module intermediary)
+4. Executor tier — Unauthorized/NotSuperAdmin/etc (Argus governance)
+5. PoaManager tier — NotPoaManager (POP-wide admin, NOT Argus governance)
+6. Master Deployer tier — OnlyMasterDeploy (POP-wide deployer, NOT Argus governance)
+7. EntryPoint tier — EPOnly (ERC-4337 protocol-standard)
+
+PoaManager is a SEPARATE trust authority from the master deployer — different gate name (NotPoaManager vs OnlyMasterDeploy), likely different contract. Both are POP-wide infrastructure that Argus governance does not control. Tiers 5 and 6 are independent trust assumptions inherited at deploy time.
+
+PaymasterHub is upgradeable via UUPS — the upgrade authority is whatever the UUPS proxy owner check returns. Future investigation: read the UUPS owner storage slot or call _authorizeUpgrade in a static context to identify it.
+
+The HB#159 5-tier model was the right shape for org-local modules but underestimated the system because PaymasterHub is shared infrastructure across every POP org. The architectural picture only becomes correct when the survey scope includes the shared layer.
+
+Lesson for future architectural surveys: organizational scope (per-org vs POP-wide vs protocol-standard) is itself a permission tier dimension. Probing only the per-org modules underestimates the trust complexity. The full picture requires probing each scope layer independently.
+
+Updated docs/cross-chain-agent-deployment.md from 5-tier to 7-tier model. PaymasterHub added to the verified list. HatsModule and masterDeployAddress remain unprobed (HatsModule not bundled, masterDeployAddress is a Diamond proxy that doesn't match the bundled ABIs cleanly — would need custom ABI extraction).
+
+### Curve BREAD/WXDAI arbitrage NOT viable at current pool state — Curve A=1000 keeps price near 1:1 despite 1.456:1 imbalance (HB#162 research)
+*author: 0x7150aee7139cb2ac19c98c33c861b99e998b9a8e · at: 2026-04-14T18:51:42.000Z · id: curve-bread-wxdai-arbitrage-not-viable-at-current-pool-state-1776192702*
+
+Hudson asked vigil_01 to research a Curve BREAD/WXDAI arbitrage idea: pool is heavy on BREAD, so WXDAI→BREAD should give >1 BREAD per WXDAI, then BREAD.burn() redeems 1:1 to xDAI for a profit loop. The hypothesis is correct in principle for a Uniswap-v2-style constant-product pool. EMPIRICALLY WRONG at the current pool state because Curve uses stableswap math with A=1000.
+
+Pool state at HB#162:
+- Pool: 0xf3D8F3dE71657D342db60dd714c8a2aE37Eac6B4 (Curve BREAD/WXDAI on Gnosis)
+- Balances: 14460 BREAD / 9930 WXDAI → ratio 1.456:1 (BREAD-heavy as expected)
+- Curve params: A=1000 (very high amplification), fee=0.04%
+- BREAD.burn(uint256) confirmed permissionless (callStatic from burner passes)
+- Argus treasury: 13.5 BREAD in executor + 7.0 BREAD in paymentManager = 20.5 BREAD total
+
+Empirical price measurements (get_dy at various sizes):
+
+WXDAI → BREAD (the buy side for the arb):
+  1 WXDAI → 0.999991 BREAD (spread -0.001%)
+  100 WXDAI → 0.999981 BREAD (spread -0.002%)
+  1000 WXDAI → 0.999898 BREAD (spread -0.010%)
+  10000 WXDAI → 0.998816 BREAD (spread -0.118%)
+
+BREAD → WXDAI (the sell side):
+  1 BREAD → 0.999195 WXDAI (spread -0.080%)
+  100 BREAD → 0.999185 WXDAI (spread -0.082%)
+  1000 BREAD → 0.999085 WXDAI (spread -0.092%)
+  10000 BREAD → 0.969175 WXDAI (spread -3.082%)
+
+KEY INSIGHT: the spread is NEGATIVE for all sizes in both directions. Larger trades make it worse, not better. Slippage compounds. Even the canonical loop on 1000 WXDAI principal nets -0.102 WXDAI (loss before gas).
+
+WHY the hypothesis fails: Curve stableswap with A=1000 keeps the price within 0.001% of 1:1 even at a 1.456:1 balance imbalance. The pool is imbalanced by BALANCE but not by PRICE — the curve is too flat near the equal point. The 0.04% pool fee then guarantees any trade is slightly net-negative until the imbalance is much larger.
+
+INTERESTING ASYMMETRY: BREAD->WXDAI is more expensive than WXDAI->BREAD even at small sizes (-0.08% vs -0.001%). That asymmetry IS evidence the pool is BREAD-heavy. But the asymmetry doesn't make the buy side profitable; it just makes the sell side worse.
+
+THRESHOLD FOR VIABILITY (rough estimate from stableswap math): pool ratio would need to drift to ~3-4x BREAD-heavy (e.g. 30K BREAD / 10K WXDAI) before the WXDAI->BREAD spread crosses 0% after fees. At A=1000 the curve doesn't bend hard until the imbalance is significant.
+
+RECOMMENDATION: do NOT execute the arbitrage today. SET A MONITOR. Build a tiny pop org curve-monitor command that reads the pool daily, calls get_dy(WXDAI->BREAD, 1000e18) as a probe, reports the spread, and alerts when it crosses +0.05% (covers fee + gas headroom). When it triggers, file a governance proposal that runs the loop with a properly-sized principal.
+
+The negative result IS the deliverable. It tells the team 'stop hand-checking the pool; wait for the math threshold.' Recorded so other agents (and future-me) don't re-run the same research without checking this lesson first.
+
+### probe-access require-string fix validated on Ethereum mainnet Uniswap Governor Bravo
+*author: 0x7150aee7139cb2ac19c98c33c861b99e998b9a8e · at: 2026-04-14T18:51:49.000Z · id: probe-access-require-string-fix-validated-on-ethereum-mainne-1776192709*
+
+HB#163 empirical validation of Task #340 (HB#162 fix) + external chains (HB#326). Probed Uniswap Governor Bravo at 0x408ED6354d4973f66138C91495F2f2FCbd8724C3 on Ethereum mainnet (chainId 1). 19 functions probed: 16 gated with admin-only require-strings cleanly extracted ('GovernorBravo:_acceptAdmin: pending admin only', '::_setPendingAdmin: admin only', '::_setVotingDelay: admin only', etc.), 3 passed (likely permissionless). Before #340, all 19 would have returned 'no clear gate' because the extraction only looked at err.reason/err.message. After #340's 7-path walk, raw revert strings surface correctly and classifyGate tags them as require-string admin gates. Paired with the networks.ts external-chains addition, a single command now suffices: 'pop org probe-access --address X --chain 1 --abi <path>'. No --rpc workaround, no JSON parse failures. Artifact saved at agent/scripts/probe-uniswap-gov-mainnet.json. The Sourcify-fetched Compound Governor Bravo ABI transfers cleanly to forks (Uniswap = Compound fork) — same selector set, same revert shape. This is the cross-axis correlation evidence Task #338 was after: the governance surface is a copy-paste across the Bravo family.
+
+### Governor Bravo fork divergence is detectable via probe-access in <30s
+*author: 0x7150aee7139cb2ac19c98c33c861b99e998b9a8e · at: 2026-04-14T18:51:56.000Z · id: governor-bravo-fork-divergence-is-detectable-via-probe-acces-1776192716*
+
+HB#164: probed Compound Governor Bravo (0xc0Da02939E1441F497fd74F78cE7Decb17B66529) and Uniswap Governor Bravo (0x408ED6354d4973f66138C91495F2f2FCbd8724C3) on Ethereum mainnet with the same Sourcify-fetched Compound ABI. Result: Compound = 19/19 gated, Uniswap = 13 gated + 5 passed + 1 unknown. The 5 Uniswap functions that return NO REVERT from a burner callStatic are _initiate, _setProposalGuardian, _setWhitelistAccountExpiration, _setWhitelistGuardian, castVoteWithReasonBySig. Possibilities: (a) Uniswap's fork stubbed those functions to no-ops, (b) different modifier pattern, (c) state already initialized such that no-args triggers a successful early-return path. Either way, the probe catches a real fork divergence in one command without reading source. Methodology: use Compound's ABI as the baseline (they're the upstream), run probe-access against the fork, diff the classifications. Passed-function differentials are the interesting signal. Future direction: build a  helper that auto-computes the divergence table. Artifacts: agent/scripts/probe-{compound,uniswap}-gov-mainnet.json.
+
+### probe-access false-positives when ABI and target mismatch
+*author: 0x7150aee7139cb2ac19c98c33c861b99e998b9a8e · at: 2026-04-14T18:52:03.000Z · id: probe-access-false-positives-when-abi-and-target-mismatch-1776192723*
+
+HB#166: ran probe-access against ENS DAO Governor with the Compound Governor Bravo ABI. Compound and Uniswap are in the Bravo fork family so the ABI transfers 1:1. ENS DAO is OpenZeppelin Governor — a DIFFERENT governance framework with different selectors. probe-access called each Bravo selector via burner callStatic; the ones that do not exist on ENS hit the contracts fallback/empty-return path; ethers reports no revert; probe-access classified them as passed (likely permissionless). 14 of 19 rows were false positives. Only castVote/castVoteBySig/castVoteWithReason actually collided with OZ Governor selectors and probed meaningfully. Fix filed as task #345: fetch provider.getCode once per run and scan for each selector before probing. Missing selector equals not-implemented, not passed. Lesson: when running probe-access against an unknown target, FIRST verify the contract is in the same family as the ABI (e.g. Compound Bravo, OpenZeppelin Governor, Snapshot X-Chain). A selector existence check in the tool itself will make that automatic. Until #345 lands, manual check: diff the target contracts verified source on etherscan against the ABI before trusting the probe output. Artifacts: agent/scripts/probe-{compound,uniswap,ens}-gov-mainnet.json.
+
+### Three-tier proxy detection for on-chain bytecode selector scanning
+*author: 0x7150aee7139cb2ac19c98c33c861b99e998b9a8e · at: 2026-04-14T18:52:10.000Z · id: three-tier-proxy-detection-for-on-chain-bytecode-selector-sc-1776192730*
+
+HB#167 (#345): added a selector-presence check to probe-access that fetches provider.getCode(address) once and scans for each function selector before probing. Naive implementation broke on Compound Governor Bravo because it is a legacy pre-EIP-1967 delegator proxy whose runtime code contains proxy dispatch, not implementation selectors. Regression: 19/19 gated became 19/19 not-implemented. Fix is three-tier: (1) if coverage greater than 10 percent trust the runtime code, (2) if less than 10 percent try reading EIP-1967 implementation slot 0x360894a13ba1a3210667c828492db98dcef42afd4e7f9f47de01b44f10e6fe2c and probe against the impl contract code, (3) if still less than 10 percent after that, assume legacy delegator or exotic dispatch and DISABLE the check entirely for that run with a clear warning that ABI-mismatch false positives are still possible in fallback mode. Strictly better than false-negatives: the fallback is equivalent to pre-fix behavior. Final classifications: ENS (OZ Governor, direct dispatch) 16 not-implemented caught cleanly, Compound + Uniswap (legacy delegator proxies) unchanged at 19 and 13+5+1 gated. Lesson generalizes beyond probe-access: any tool that scans runtime bytecode for selectors must handle the proxy case, and the right default is a graceful fallback not a hard failure.
+
+### Schema validation test - HB#168
+*author: 0x7150aee7139cb2ac19c98c33c861b99e998b9a8e · at: 2026-04-14T18:52:17.000Z · id: schema-validation-test-hb-168-1776192737*
+
+Testing write-time validation shipped in task #346. Canonical shape should succeed.
+
+### probe-access legacy-delegator fallback has an EIP-1967 blind spot
+*author: 0x7150aee7139cb2ac19c98c33c861b99e998b9a8e · at: 2026-04-14T18:52:24.000Z · id: probe-access-legacy-delegator-fallback-has-an-eip-1967-blind-1776192744*
+
+HB#174: probed Arbitrum Core Governor (0xf07DeD9dC292157749B6Fd268E37DF6EA38395B9) on chain 42161 with the Compound Governor Bravo ABI. The #345 three-tier proxy handling fired the legacy-delegator fallback ('selector-presence check disabled: less than 10 percent of ABI selectors found in runtime code') with a clear warning, but the output was then pre-fix false positives: 14 passed, 3 gated, 2 unknown — same shape ENS DAO had before the fix. The EDGE CASE: Arbitrum Core Governor IS an EIP-1967 proxy, but its implementation contract is not a Governor Bravo fork — it is OpenZeppelin GovernorUpgradeable. So the fallback chain fired: (1) runtime code coverage less than 10 percent, (2) EIP-1967 slot read succeeded OR failed (need verbose logging to know which), (3) impl code coverage also less than 10 percent, (4) disabled the selector check and probed everything → false positives. The CORRECT classification when tier 2 succeeds but tier 3 still shows less than 10 percent is ABI MISMATCH (classify all as not-implemented), NOT legacy delegator (probe everything). Refinement path: split the fallback branches — if EIP-1967 slot returned a nonzero impl address AND impl code is empty 0x or still less than 10 percent match, that is a definitive wrong-ABI signal (there is no further indirection to unwind). Only when getStorageAt itself failed OR returned zero should we fall through to 'legacy delegator or exotic dispatch.' Small fix, narrow scope, worth a follow-up task. Artifact: agent/scripts/probe-arbitrum-core-gov.json.
+
+### Correction: HB#174 Arbitrum proxy hypothesis was wrong (verified HB#178)
+*author: 0x7150aee7139cb2ac19c98c33c861b99e998b9a8e · at: 2026-04-14T18:52:31.000Z · id: correction-hb-174-arbitrum-proxy-hypothesis-was-wrong-verifi-1776192751*
+
+HB#174 lesson 'probe-access legacy-delegator fallback has an EIP-1967 blind spot' claimed Arbitrum Core Governor (0xf07DeD9dC292157749B6Fd268E37DF6EA38395B9) is an EIP-1967 proxy whose impl points to a non-Bravo OpenZeppelin GovernorUpgradeable. HB#178 verified directly via provider.getStorageAt against the canonical EIP-1967 implementation slot 0x360894a13ba1a3210667c828492db98dcef42afd4e7f9f47de01b44f10e6fe2c — the slot is GENUINELY ZERO. Arbitrum Core Governor is NOT EIP-1967. It uses a different proxy scheme (likely Beacon, Transparent with custom slots, or no proxy at all — its 5188-char runtime code is small enough to be a non-proxy direct dispatch). So the HB#174 lesson's diagnosis of WHY the false positives occurred was incorrect. The OBSERVATION (probe-access produces 14 false positives on Arbitrum Core Governor with the Compound ABI) is still real, but the CAUSE is 'Arbitrum uses an unidentified proxy scheme + the legacy-delegator fallback correctly disables the check' not 'EIP-1967 resolved-but-mismatch'. Task #351 still shipped (HB#178 commit) and improves the branching for the EIP-1967 case PLUS the warning text now explicitly says 'no EIP-1967 impl resolved' — so future debuggers don't waste time chasing a phantom EIP-1967 cause like I did. Lesson generalizes: when a task spec is built on a hypothesis (HB#174 → #351), VERIFY THE HYPOTHESIS EMPIRICALLY before shipping the fix. The verification is one provider.getStorageAt call away. I went 4 HBs (174-178) before checking, and only checked because the post-fix output didn't match the predicted result. Cheaper to verify upfront. The HB#174 lesson should be edited to add this correction reference, OR a new task should be filed to extend probe-access with multi-slot proxy detection (Beacon, Transparent, ERC-1822 / UUPS) — that's the actual feature gap for handling Arbitrum-class targets.
 
 ## Removed lessons
 
