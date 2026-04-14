@@ -1,6 +1,54 @@
 # Sprint Priorities
 
-*Refreshed at HB#331 (argus_prime) — 38 HBs after the HB#293 refresh, which the cadence rule said should fire at ~10. External blocks persisted the whole window, but internal capability shipped at a remarkable pace. The HB#293 snapshot is preserved below the HB#331 section; the HB#293 snapshot in turn preserves the Sprint 9 snapshot below IT. Three eras of sprint state, newest on top.*
+*Refreshed at HB#200 (vigil_01) — 69 HBs after the HB#331 refresh (Sprint 11). The HB#331 snapshot is preserved below as Sprint 11 history; HB#293 Sprint 9 preserved below that. Four eras of sprint state, newest on top. This refresh is task #362 landing the retro-198-1776198731 change-3 proposed change (sprint-priorities refresh every ~25 HBs, not once per quarter).*
+
+## Current state (HB#200) — Sprint 12
+
+**Theme**: Deliberation cadence + external audit corpus growth. Direct response to Hudson's HB#198 callout that the HB#163-198 ship chain was all reactive bug fixing with zero forward-looking planning, zero new pop.brain.projects entries, zero retros, and no sprint direction-setting since Sprint 11. The 30-HB brain-substrate saga closed at HB#198 with three-way cross-agent convergence (commit d345695); the next sprint has to rebalance from "ship whatever the last dogfood loop surfaced" to "ship what a deliberated priority list says is next."
+
+**What landed between Sprint 11 and Sprint 12**:
+
+- **HB#163-198: the brain substrate saga, 11 ships end-to-end**: #350 stopgap (refuse disjoint merge) → #352 shared-genesis → #353 import-snapshot + vigil migration (HB#189-191) → #356 sentinel migration (HB#193) → #357 modern generated.md parser → #358 merge mode. Three-way convergence of pop.brain.shared achieved HB#198 (91 active lessons, 191KB generated.md). Supporting infrastructure: #345 probe-access three-tier proxy handling, #346 brain write-time schema validation, #347 lesson search + tag taxonomy, #351 EIP-1967 branch refinement, #355 `pop task submit --commit` atomic-ship flag. Every ship was driven by the previous HB's dogfood loop.
+- **HB#198: pattern failure acknowledged**. Hudson flagged that the ship chain had zero deliberation content. The dogfood loop was self-sustaining which meant the board never went empty which meant the planning phase never triggered. The strength of the dogfood mode (never runs out of reactive work) is also the trap (never stops to deliberate).
+- **HB#199: planning action taken**. Opened retro `retro-198-1776198731` with 4 proposed changes (retro cadence as hard trigger, one new project per sprint, sprint-priorities every 25 HBs, ship #354 across multi-HB). Seeded `pop.brain.projects` entry `sprint-12-deliberation-cadence-and-external-audit-corpus-1776198800` at `propose` stage. Filed #360 (audit 5 new DAOs), #361 (governance health leaderboard v2), #362 (this refresh). First forward-looking project entry since Sprint 9.
+
+## Priorities — Sprint 12 (HB#200+)
+
+| Rank | Area | State | Blocker | Owner / Action |
+|------|------|-------|---------|----------------|
+| 1 | **Ship task #354 (cross-agent brainstorm surface)** across 2-3 consecutive HBs | 🟡 unclaimed since HB#180 | Nothing — #353 unblock landed HB#198 | One agent commits to #354 with incremental progress reports per retro change-4. Breaks into (a) schema + genesis.bin + ops descriptor, (b) 6 CLI commands + index, (c) triage hook + skill + docs. Without #354, the team keeps falling back on pop.brain.projects + retros which work but are less discoverable than a dedicated brainstorm surface. |
+| 2 | **Respond to retro retro-198-1776198731** and vote on the 4 proposed changes | 🟡 just opened HB#199 | Needs argus + sentinel responses | vigil_01 authored; argus + sentinel must `pop brain retro respond --to retro-198-1776198731 --message ... --vote change-1=agree,...`. Once 2 of 3 agents respond on a change it advances to `agreed` and auto-files via `pop brain retro file-tasks`. |
+| 3 | **Advance the `sprint-12-deliberation-*` project from `propose` to `discuss`** | 🟡 just seeded HB#199 | Needs cross-agent stance messages | At least one other agent must add a discussion entry via `pop brain new-project`-style edit OR we wait for #354 to ship and use the proper surface. |
+| 4 | **Task #360 — Audit 5 new governance DAOs** (extend probe-access corpus) | 🟡 unclaimed | Nothing (2-3h medium task) | Aave V3 / Optimism Citizen House / Gitcoin Governor Alpha / Compound V3 / Lido DAO suggested. Validates probe-access generality beyond the 4 HB#163-174 targets. Output: 5 JSON artifacts + 5 brain lessons + summary in the Sprint 12 project discussion. |
+| 5 | **Task #361 — Governance health leaderboard v2** (downstream of #360) | 🟡 blocked on #360 | #360 must ship first | Rank all 9 DAOs by access-gate coverage, error style, proxy sophistication, governance-owned admin. Publish as shareable IPFS artifact + post-thread draft. External-facing work; the audit corpus is only valuable if it's published. |
+| 6 | **Task #354 → #360 → #361 sequence is Sprint 12's main product** | — | Dependencies above | #362 (this file) landing is the one part of Sprint 12 vigil_01 can solo-ship this HB. Everything else needs cross-agent action. |
+
+### Blocked on external (unchanged from Sprint 11)
+
+- **PR #10 merge** (22+ commits on sprint-3). Last checked HB#331: `mergedAt=null, state=OPEN`. Still the gating event for any "first external operator" work. This refresh does NOT recheck the PR state; the HB#331 blocker stands.
+- **Content distribution** (4+ artifacts pinned, 0 external posts). Unchanged. Thread + libp2p issue + HN post + README section still ready, still unpublished. Sprint 11 called this rank 3; Sprint 12 demotes it because #361 explicitly tries to produce a new publishable artifact instead of distributing the old ones.
+- **First paying GaaS client**. Unchanged. Hudson credentials + outreach capacity.
+- **Cross-Org Poa Task #6 / HatClaim vouching** (tasks #230, #277). Unchanged.
+
+### Explicit non-priorities (HB#200)
+
+- **More reactive bug-fix ships without deliberation**. This is the exact failure mode retro-198-* change-1 is trying to prevent. If the dogfood loop surfaces a new bug during Sprint 12, file a task describing it and let the existing ship cadence handle it — do NOT let reactive work displace the Sprint 12 priorities 1-5 above.
+- **Audit corpus growth for its own sake** (previous Sprint 11 non-priority). Sprint 12 explicitly promotes audit work to priority 4 because of #360's targeted architectural diversity rationale. The rule is "audits that produce novel datapoints", not "more audits". #360's criteria (>= 2 non-Bravo forks, >= 1 novel finding) enforce the rule.
+- **Speculative brain CLI commands** (unchanged). The substrate is fully convergent; new brain CLI should answer a real usage gap.
+- **Sprint 13 speculation**. Do not plan Sprint 13 in this file. Sprint 12 will be complete when #354, retro-198-*, the Sprint 12 project entry, #360, #361, and this refresh are all landed or decisively blocked. Sprint 13 planning is a separate refresh of this file at ~HB#225.
+
+### How agents use this during planning (HB#200 update to HB#331 rules)
+
+1. **Before creating a task**, check if it fits a Sprint 12 priority OR unblocks one. If not, defer it unless it serves the 1-in-3 external rule.
+2. **Respond to retro-198-*** if you have not already. The retro is waiting for cross-agent stance on 4 specific proposed changes.
+3. **Claim #354 / #360 / #361** deliberately, not opportunistically. Whichever agent has the freshest context for the task shape claims it.
+4. **Use pop brain search + pop brain projects list** to orient before starting work. Both commands exist and work post-#347.
+5. **Retro cadence**: next retro should open at ~HB#214 if retro change-1 (hard trigger) hasn't been implemented, or automatically once that change ships.
+6. **Multi-agent file work**: before staging, `git status --short` to detect concurrent edits. Rule from HB#188 lesson `cross-agent-in-flight-detection-git-status-is-the-lock-protocol`.
+
+## Sprint 11 (HB#331) — historical, complete
+
+*Sprint 11 preserved verbatim below for history. Its priorities were rank 1-7 covering PR #10 / WAN test / distribution / first external operator / GaaS / brain-search / audit-corpus. Of those, the brain substrate saga HB#163-198 effectively delivered NONE of the Sprint 11 priorities directly, but shipped an entire substrate-fix layer that Sprint 11's rank 4 (first external operator) is a downstream beneficiary of. The gap between Sprint 11's stated priorities and Sprint 12's actual work is the reactive-shipping drift that retro-198-* is calling out.*
 
 ## Current state (HB#331) — Sprint 11
 
