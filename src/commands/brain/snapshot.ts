@@ -16,7 +16,7 @@
 
 import type { Argv, ArgumentsCamelCase } from 'yargs';
 import { join } from 'path';
-import { writeFileSync, mkdirSync, existsSync } from 'fs';
+import { writeFileSync, mkdirSync, existsSync, readFileSync } from 'fs';
 import { readBrainDoc, stopBrainNode } from '../../lib/brain';
 import { projectForDoc } from '../../lib/brain-projections';
 import * as output from '../../lib/output';
@@ -24,6 +24,24 @@ import * as output from '../../lib/output';
 interface SnapshotArgs {
   doc: string;
   outputPath?: string;
+  force?: boolean;
+}
+
+/**
+ * Count top-level H3 headers in a generated brain markdown projection.
+ * Both pop.brain.shared (lessons) and pop.brain.projects (projects)
+ * use `### ` as the per-item header, so this doubles as a "content
+ * item count" for regression detection.
+ */
+function countH3Items(md: string): number {
+  const matches = md.match(/^### /gm);
+  return matches ? matches.length : 0;
+}
+
+/** Parse the "*Head CID: `...`*" line from a generated projection file. */
+function parseExistingHeadCid(md: string): string | null {
+  const m = /^\*Head CID: `([^`]+)`\*/m.exec(md);
+  return m?.[1] ?? null;
 }
 
 export const snapshotHandler = {
@@ -37,6 +55,12 @@ export const snapshotHandler = {
       .option('output-path', {
         describe: 'Explicit output path (default: agent/brain/Knowledge/<doc>.generated.md)',
         type: 'string',
+      })
+      .option('force', {
+        describe:
+          'Overwrite the existing generated.md even if it would regress (fewer lessons/projects than the file currently on disk). Use only when you know local state is authoritative.',
+        type: 'boolean',
+        default: false,
       }),
 
   handler: async (argv: ArgumentsCamelCase<SnapshotArgs>) => {
@@ -68,6 +92,45 @@ export const snapshotHandler = {
         join(process.cwd(), 'agent', 'brain', 'Knowledge', `${docId}.generated.md`);
       const outDir = outPath.substring(0, outPath.lastIndexOf('/'));
       if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true });
+
+      // Regression guard (task #328): if the existing generated.md has
+      // MORE content items (H3 headers) than our local projection, the
+      // local state is probably behind the peer-merged team state and
+      // writing would silently regress the committed file. Refuse with
+      // a clear error unless --force. The heartbeat skill calls
+      // `pop brain snapshot ... || true` so exit-1 here lets the HB
+      // continue without committing the regressed file.
+      if (existsSync(outPath) && !argv.force) {
+        const existingContent = readFileSync(outPath, 'utf8');
+        const existingCount = countH3Items(existingContent);
+        const newCount = countH3Items(markdown);
+        if (newCount < existingCount) {
+          const existingCid = parseExistingHeadCid(existingContent);
+          const msg =
+            `pop brain snapshot would regress ${outPath}: ` +
+            `existing file has ${existingCount} items (head ${existingCid ?? '?'}), ` +
+            `local doc projects to ${newCount} items (head ${headCid ?? '?'}). ` +
+            `This usually means the local state lacks peer-merged content. ` +
+            `Run \`pop brain subscribe --doc ${docId}\` first to sync, ` +
+            `or pass \`--force\` to overwrite anyway.`;
+          if (output.isJsonMode()) {
+            output.json({
+              status: 'refused',
+              reason: 'regression',
+              docId,
+              path: outPath,
+              existingCount,
+              newCount,
+              existingHead: existingCid,
+              localHead: headCid,
+            });
+          } else {
+            console.error(msg);
+          }
+          process.exitCode = 1;
+          return;
+        }
+      }
 
       writeFileSync(outPath, markdown);
 
