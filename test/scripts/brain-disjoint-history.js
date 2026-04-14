@@ -1,35 +1,38 @@
 #!/usr/bin/env node
 /**
- * Disjoint-history merge refusal test (task #350, HB#335).
+ * Shared-genesis cross-agent propagation test (tasks #350 + #352).
  *
- * Regression test for the HB#333 bug: fetchAndMergeRemoteHead silently
- * dropped remote content when two daemons' pop.brain.shared docs had
- * disjoint Automerge histories (both initialized independently via
- * Automerge.from()). The fix ships a disjoint-history detector that
- * refuses the merge with action=reject rather than silently updating
- * the manifest + losing content.
- *
- * This test reproduces the disjoint case and asserts the refuse path
- * fires.
+ * History:
+ *   1. HB#333 dogfood discovered that fetchAndMergeRemoteHead silently
+ *      dropped remote content across disjoint Automerge histories.
+ *   2. HB#335 shipped task #350 stopgap: detect disjoint + refuse with
+ *      a clear error rather than silently losing data. At that point
+ *      this test asserted the REFUSE behavior.
+ *   3. HB#337 shipped task #352 real fix: canonical genesis.bin files
+ *      in agent/brain/Knowledge/ that every agent loads on first write,
+ *      ensuring all docs share a common root so the disjoint case is
+ *      UNREACHABLE. This test now asserts the POSITIVE behavior:
+ *      content propagates cleanly from A to B.
  *
  * Scenario:
- *   1. Populate daemon A's brain home with a single lesson (its first
- *      write initializes a fresh Automerge doc for pop.brain.shared).
+ *   1. Populate daemon A's brain home with a single lesson (first write
+ *      loads from pop.brain.shared.genesis.bin → shared root).
  *   2. Populate daemon B's brain home with its own single lesson (ALSO
- *      a fresh Automerge doc — disjoint from A's).
- *   3. Start both daemons, wire them with POP_BRAIN_PEERS.
- *   4. Write a SECOND lesson on A. A's daemon publishes the new head
- *      to gossipsub; B's daemon receives and attempts to merge.
- *   5. Assert B's doc is UNCHANGED (still has only its own lesson),
- *      AND daemon B's log shows an "action=reject" with the
- *      "disjoint Automerge histories" reason string.
+ *      loads from the same genesis bytes → SAME root as A).
+ *   3. Start both daemons, wire via POP_BRAIN_PEERS.
+ *   4. Write a SECOND lesson on A. A's daemon publishes to gossipsub;
+ *      B's daemon receives and merges (successfully, because both sides
+ *      share the genesis root).
+ *   5. Assert B's doc contains ALL THREE lessons:
+ *      - B's own pre-seed
+ *      - A's pre-seed (propagated when B caught up)
+ *      - A's second lesson (propagated from this run)
+ *      AND daemon B's log shows an "action=merge" line.
  *
- * Before the fix (HB#333 state): B's merge silently succeeded,
- * B's manifest updated, but B's doc still had only B's lesson (content
- * was dropped).
- *
- * After the fix (this ship): B's merge is rejected, B's manifest is
- * unchanged, the log line is explicit about why.
+ * This is the Sprint 11 priority #4 unblock for "first operator
+ * outside the 3-agent core": a fresh agent cloning the repo now
+ * shares a root with existing agents, so their first cross-agent
+ * merge just works.
  */
 
 const { spawn, spawnSync } = require('child_process');
@@ -158,33 +161,46 @@ async function main() {
     await sleep(4000);
 
     // Step 5: assertions.
-    // (a) B's doc should still have exactly 1 lesson (B's own seed)
+    // After task #352, both A and B loaded from the same shared genesis
+    // bytes on their first write, so their Automerge histories share
+    // a common root. B's doc should now contain:
+    //   - B's own pre-seed lesson
+    //   - A's pre-seed lesson (propagated via the first merge)
+    //   - A's second lesson (the one written during this test run)
     const readB = cliSync({ POP_BRAIN_HOME: HOME_B }, ['brain', 'read', '--doc', 'pop.brain.shared']);
     if (readB.status !== 0) throw new Error(`B read failed: ${readB.stderr}`);
     const jsonMatch = /\{[\s\S]*\}/.exec(readB.stdout);
     const bDoc = JSON.parse(jsonMatch[0]);
     const bLessons = (bDoc.lessons || []).filter(l => !l.removed);
-    log('assert', `B has ${bLessons.length} lesson(s) after merge attempt`);
+    log('assert', `B has ${bLessons.length} lesson(s) after merge`);
 
-    if (bLessons.length !== 1) {
+    const titles = bLessons.map(l => l.title || '').filter(Boolean);
+    const hasBSeed = titles.some(t => t.includes('B seed'));
+    const hasASeed = titles.some(t => t.includes('A seed'));
+    const hasASecond = titles.some(t => t.includes('A second'));
+
+    if (bLessons.length !== 3) {
       failed = true;
-      log('FAIL', `expected B to have exactly 1 lesson (its own seed), got ${bLessons.length}`);
+      log('FAIL', `expected B to have exactly 3 lessons after shared-genesis merge, got ${bLessons.length}`);
       log('FAIL', `  lesson ids: ${bLessons.map(l => l.id).join(', ')}`);
-    } else if (!bLessons[0].title?.includes('B seed')) {
+    } else if (!hasBSeed || !hasASeed || !hasASecond) {
       failed = true;
-      log('FAIL', `expected B's single lesson to be its own seed, got title: "${bLessons[0].title}"`);
+      log('FAIL', `expected B to have B's seed + A's seed + A's second lesson`);
+      log('FAIL', `  titles: ${titles.join(' | ')}`);
+      log('FAIL', `  hasBSeed=${hasBSeed} hasASeed=${hasASeed} hasASecond=${hasASecond}`);
     } else {
-      log('PASS', 'B preserved its own single lesson, refused the disjoint merge');
+      log('PASS', 'B has all 3 lessons: its own seed + A\'s seed + A\'s second lesson');
+      log('PASS', '  shared-genesis bootstrap lets disjoint-looking writes merge cleanly');
     }
 
-    // (b) Check B's daemon log for the refuse line.
+    // (b) Check B's daemon log for the successful merge line.
     const logB = cliSync({ POP_BRAIN_HOME: HOME_B }, ['brain', 'daemon', 'logs', '--tail', '40']);
     const logText = logB.stdout;
-    if (logText.includes('action=reject') && logText.includes('disjoint')) {
-      log('PASS', 'B daemon log contains the disjoint-history reject line');
+    if (logText.includes('action=merge')) {
+      log('PASS', 'B daemon log contains action=merge (post-#352: shared-genesis enables real merge)');
     } else {
       failed = true;
-      log('FAIL', 'B daemon log does NOT contain action=reject + disjoint — guard may not have fired');
+      log('FAIL', 'B daemon log does NOT contain action=merge — merge path may not have fired');
       log('FAIL', `log tail:\n${logText}`);
     }
   } catch (err) {

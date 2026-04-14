@@ -559,9 +559,40 @@ function saveHeadsManifest(manifest: Record<string, string>): void {
 }
 
 /**
+ * Load the genesis bytes for a canonical brain doc if a
+ * `<docId>.genesis.bin` file exists in the repo's
+ * `agent/brain/Knowledge/` directory.
+ *
+ * Task #352 (HB#337): genesis files are tiny (~150 bytes) binary
+ * Automerge snapshots of the empty canonical doc shape. When every
+ * agent loads from the same genesis bytes before their first write,
+ * all subsequent cross-agent writes share a common root and
+ * `Automerge.merge` correctly combines them. Without the shared
+ * genesis, independent initialization creates disjoint histories
+ * that silently drop content at merge time — see task #350 for the
+ * disjoint-history stopgap and the `retroactive-verification-finds-
+ * what-forward-tests-miss` brain lesson for the full context.
+ *
+ * Returns the raw bytes if the file exists, or null if not
+ * (falls through to `Automerge.init()` for non-canonical docs or
+ * for agents without the genesis files available).
+ */
+function loadGenesisBytes(docId: string): Uint8Array | null {
+  const genesisPath = join(process.cwd(), 'agent', 'brain', 'Knowledge', `${docId}.genesis.bin`);
+  if (!existsSync(genesisPath)) return null;
+  try {
+    const bytes = readFileSync(genesisPath);
+    return Uint8Array.from(bytes);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Open an Automerge document by ID. If the manifest has a head CID for
  * this ID, loads the state from the blockstore. Otherwise returns a fresh
- * empty doc.
+ * empty doc — seeded from the canonical genesis file if one exists for
+ * this docId (task #352), or a plain `Automerge.init()` as a last resort.
  *
  * Returns the doc plus its current head CID (null for new docs) so the
  * caller can tell whether this was a load or an init.
@@ -573,6 +604,23 @@ export async function openBrainDoc<T = any>(docId: string): Promise<{ doc: any; 
   const headCidStr = manifest[docId];
 
   if (!headCidStr) {
+    // Task #352: shared-genesis bootstrap. If the repo has a canonical
+    // `<docId>.genesis.bin` file, load from it so every agent's first
+    // write builds on the same root doc. Without this, independent
+    // `Automerge.init()` calls produce disjoint histories that silently
+    // drop content at merge time.
+    const genesisBytes = loadGenesisBytes(docId);
+    if (genesisBytes) {
+      try {
+        const doc = Automerge.load(genesisBytes);
+        return { doc, headCid: null };
+      } catch (err: any) {
+        // Genesis file corrupt or incompatible — fall through to init().
+        if (process.env.POP_BRAIN_DEBUG) {
+          console.error(`[brain] failed to load genesis for ${docId}: ${err.message}`);
+        }
+      }
+    }
     return { doc: Automerge.init(), headCid: null };
   }
 
