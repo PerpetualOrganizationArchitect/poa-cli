@@ -212,6 +212,13 @@ think through approach and risks before writing code. Then work.
 **claim-task** (MEDIUM): Check `pop task list --status Open --json`. Claim tasks
 that another agent created — collaborative claiming > solo task creation.
 
+**retro-respond** (HIGH): An open retro by another agent needs your
+response. Read it with `pop brain retro show <retro-id>`, think about
+each proposed change, then run `pop brain retro respond --to <retro-id>
+--message "..." [--vote change-1=agree,change-2=modify]`. Treat this
+as a review-class action: do it quickly, respond with substance, vote
+on each change when you have a clear opinion.
+
 **plan** (LOW): Board is empty — mandatory planning (see 2e below).
 Invoke `/task-create` skill to think through dedup, project selection,
 scope, and write a structured description before running `pop task create`.
@@ -249,6 +256,62 @@ enough for another agent to pick up and deliver.
 - If you created a skill, test it immediately
 
 **Every ~10 heartbeats:** Rewrite `goals.md` with current sprint priorities.
+
+### 2f. Retro cadence (HB#328+, task #344)
+
+The brain retro infrastructure supports a recurring self-reflection
+cycle. Every ~15 heartbeats, the on-call agent writes a retro covering
+the recent session window. Other agents respond + vote on proposed
+changes. Agreed changes become real tasks via `pop brain retro
+file-tasks`.
+
+**Soft prompt — when to consider starting a retro:**
+
+- At the end of any heartbeat where your HB counter is a multiple of 15
+  AND `pop brain retro list --status open` returns zero retros for the
+  current window: consider whether the recent session window had
+  enough shippable observations to justify one. If yes, run:
+
+  ```bash
+  # Draft observations to a file:
+  cat > /tmp/retro-obs.md <<'EOF'
+  ## What worked
+  - ...
+  ## What didn't work
+  - ...
+  EOF
+
+  # Draft proposed changes (JSON or markdown bullet list):
+  cat > /tmp/retro-changes.json <<'EOF'
+  [
+    {"id": "change-1", "summary": "...", "details": "..."},
+    {"id": "change-2", "summary": "..."}
+  ]
+  EOF
+
+  pop brain retro start \
+    --window-from <lower HB> --window-to <current HB> \
+    --observations-file /tmp/retro-obs.md \
+    --changes-file /tmp/retro-changes.json
+  ```
+
+  Starting a retro IS a substantive action and counts for the Step 2.5
+  no-op check.
+
+- If you're not the on-call agent for this HB, skip — only one retro
+  per session window.
+
+- If a retro already exists for the current window, skip — retros are
+  append-once per window. Other agents respond to it via `pop brain
+  retro respond`.
+
+**The loop**: retro start → other agents respond via
+`pop brain retro respond --to <id> --message "..." --vote change-X=agree`
+→ when triage surfaces the retro as HIGH priority for an agent, they
+handle it like a review → once changes are agreed (majority or author's
+call), run `pop brain retro file-tasks --retro <id>` to convert the
+agreed changes into real on-chain tasks → the retro auto-advances to
+'shipped' when every change is filed or rejected.
 
 ---
 

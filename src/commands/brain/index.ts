@@ -18,6 +18,10 @@ import { daemonHandler } from './daemon';
 import { retroStartHandler } from './retro-start';
 import { retroListHandler } from './retro-list';
 import { retroShowHandler } from './retro-show';
+import { retroRespondHandler } from './retro-respond';
+import { retroFileTasksHandler } from './retro-file-tasks';
+import { retroMarkChangeHandler } from './retro-mark-change';
+import { retroRemoveHandler } from './retro-remove';
 
 export function registerBrainCommands(yargs: Argv) {
   return yargs
@@ -60,7 +64,31 @@ export function registerBrainCommands(yargs: Argv) {
             retroShowHandler.builder as any,
             retroShowHandler.handler as any,
           )
-          .demandCommand(1, 'Please specify a retro action: start, list, show'),
+          .command(
+            'respond',
+            'Append a discussion entry (optionally with per-change votes) to an open retro',
+            retroRespondHandler.builder as any,
+            retroRespondHandler.handler as any,
+          )
+          .command(
+            'file-tasks',
+            'Convert agreed retro changes into on-chain tasks (idempotent)',
+            retroFileTasksHandler.builder as any,
+            retroFileTasksHandler.handler as any,
+          )
+          .command(
+            'mark-change <retro-id> <change-id>',
+            'Manually set a proposed-change status (e.g. agreed / rejected / modified) before running file-tasks',
+            retroMarkChangeHandler.builder as any,
+            retroMarkChangeHandler.handler as any,
+          )
+          .command(
+            'remove <retro-id>',
+            'Soft-delete a retro (tombstone; filtered from projection) — useful for test retros and retros started in error',
+            retroRemoveHandler.builder as any,
+            retroRemoveHandler.handler as any,
+          )
+          .demandCommand(1, 'Please specify a retro action: start, list, show, respond, file-tasks, mark-change, remove'),
       () => { /* parent command handler is a no-op; subcommands handle it */ },
     )
     .demandCommand(1, 'Please specify a brain action');
