@@ -736,6 +736,278 @@ export function projectRetros(doc: RetrosBrainDoc, headCid: string | null = null
 }
 
 // ---------------------------------------------------------------------------
+// pop.brain.brainstorms projection (task #354 phase c follow-up, vigil HB#211)
+// ---------------------------------------------------------------------------
+//
+// Cross-agent ideation surface. See src/lib/brain-schemas.ts
+// validateBrainstormsDoc for the canonical shape.
+
+export interface BrainstormIdea {
+  id: string;
+  author?: string;
+  message: string;
+  timestamp?: number;
+  votes?: Record<string, 'support' | 'explore' | 'oppose'>;
+  priority?: 'high' | 'medium' | 'low';
+  promotedAt?: number;
+  promotedBy?: string;
+  promotedProjectId?: string;
+  [k: string]: any;
+}
+
+export interface BrainstormDiscussionEntry {
+  author?: string;
+  message?: string;
+  timestamp?: number;
+  [k: string]: any;
+}
+
+export interface Brainstorm {
+  id: string;
+  title: string;
+  prompt?: string;
+  author?: string;
+  openedAt?: number;
+  status: 'open' | 'voting' | 'closed' | 'promoted';
+  window?: { from?: number; to?: number };
+  ideas?: BrainstormIdea[];
+  discussion?: BrainstormDiscussionEntry[];
+  promotedToProjectIds?: string[];
+  removed?: boolean;
+  removedAt?: number;
+  removedBy?: string;
+  removedReason?: string;
+  closedAt?: number;
+  closedBy?: string;
+  closedReason?: string;
+  [k: string]: any;
+}
+
+export interface BrainstormsBrainDoc {
+  brainstorms?: Brainstorm[];
+  [k: string]: any;
+}
+
+const BRAINSTORM_STATUS_EMOJI: Record<string, string> = {
+  open: '💭',
+  voting: '🗳️',
+  promoted: '🎯',
+  closed: '✅',
+};
+
+const VOTE_STANCE_EMOJI: Record<string, string> = {
+  support: '✅',
+  explore: '🤔',
+  oppose: '❌',
+};
+
+function renderIdea(idea: BrainstormIdea, index: number): string {
+  const parts: string[] = [];
+  const header = idea.id ? `### Idea: ${idea.id}` : `### Idea ${index + 1}`;
+  parts.push(header);
+
+  const meta: string[] = [];
+  if (idea.author) meta.push(`author: ${idea.author}`);
+  const iso = formatTimestamp(idea.timestamp);
+  if (iso) meta.push(`at: ${iso}`);
+  if (idea.priority) meta.push(`priority: ${idea.priority}`);
+  if (meta.length > 0) parts.push(`*${meta.join(' · ')}*`);
+
+  if (idea.message) {
+    parts.push('');
+    parts.push(idea.message);
+  }
+
+  // Vote tally
+  const votes = idea.votes && typeof idea.votes === 'object' ? idea.votes : {};
+  const voteEntries = Object.entries(votes);
+  if (voteEntries.length > 0) {
+    parts.push('');
+    parts.push('**Votes**:');
+    const tally: Record<string, number> = { support: 0, explore: 0, oppose: 0 };
+    for (const [addr, stance] of voteEntries) {
+      const emoji = VOTE_STANCE_EMOJI[stance] ?? '•';
+      parts.push(`- ${emoji} \`${addr}\` — ${stance}`);
+      if (tally[stance] != null) tally[stance]++;
+    }
+    parts.push(`- **Tally**: ${tally.support} support · ${tally.explore} explore · ${tally.oppose} oppose`);
+  }
+
+  // Promotion marker
+  if (idea.promotedProjectId) {
+    parts.push('');
+    const promotedMeta: string[] = [`**Promoted to project**: \`${idea.promotedProjectId}\``];
+    if (idea.promotedBy) promotedMeta.push(`by ${idea.promotedBy}`);
+    const pIso = formatTimestamp(idea.promotedAt);
+    if (pIso) promotedMeta.push(`at ${pIso}`);
+    parts.push(promotedMeta.join(' · '));
+  }
+
+  return parts.join('\n');
+}
+
+function renderBrainstormDiscussionEntry(entry: BrainstormDiscussionEntry): string {
+  const bits: string[] = [];
+  if (entry.author) bits.push(`**${entry.author}**`);
+  const iso = formatTimestamp(entry.timestamp);
+  if (iso) bits.push(`*${iso}*`);
+  const header = bits.join(' · ');
+  const lines: string[] = [];
+  lines.push(`- ${header}`);
+  if (entry.message) {
+    const indented = entry.message.split('\n').map((l) => `  ${l}`).join('\n');
+    lines.push(indented);
+  }
+  return lines.join('\n');
+}
+
+function renderBrainstorm(b: Brainstorm): string {
+  const parts: string[] = [];
+  const emoji = BRAINSTORM_STATUS_EMOJI[b.status] ?? '•';
+  parts.push(`## ${emoji} ${b.title || b.id}`);
+  parts.push('');
+
+  const meta: string[] = [];
+  meta.push(`**Status**: ${b.status}`);
+  if (b.author) meta.push(`**Author**: ${b.author}`);
+  const iso = formatTimestamp(b.openedAt);
+  if (iso) meta.push(`**Opened**: ${iso}`);
+  if (b.window) {
+    const from = b.window.from != null ? `#${b.window.from}` : '?';
+    const to = b.window.to != null ? `#${b.window.to}` : '?';
+    meta.push(`**Window**: ${from}..${to}`);
+  }
+  if (b.id) meta.push(`**ID**: \`${b.id}\``);
+  parts.push(meta.join(' · '));
+  parts.push('');
+
+  if (b.prompt) {
+    parts.push('**Prompt**:');
+    parts.push('');
+    parts.push(b.prompt);
+    parts.push('');
+  }
+
+  // Ideas
+  const ideas = Array.isArray(b.ideas) ? b.ideas : [];
+  if (ideas.length > 0) {
+    parts.push('### Ideas');
+    parts.push('');
+    ideas.forEach((idea, i) => {
+      parts.push(renderIdea(idea, i));
+      parts.push('');
+    });
+  } else {
+    parts.push('*(no ideas posted yet)*');
+    parts.push('');
+  }
+
+  // Discussion
+  const discussion = Array.isArray(b.discussion) ? b.discussion : [];
+  if (discussion.length > 0) {
+    parts.push('### Discussion');
+    parts.push('');
+    for (const entry of discussion) parts.push(renderBrainstormDiscussionEntry(entry));
+    parts.push('');
+  }
+
+  // Close / promotion state
+  if (b.status === 'closed' && b.closedReason) {
+    parts.push(`**Closed reason**: ${b.closedReason}`);
+    parts.push('');
+  }
+  if (Array.isArray(b.promotedToProjectIds) && b.promotedToProjectIds.length > 0) {
+    parts.push('**Promoted projects**:');
+    for (const pid of b.promotedToProjectIds) parts.push(`- \`${pid}\``);
+    parts.push('');
+  }
+
+  return parts.join('\n');
+}
+
+export function projectBrainstorms(doc: BrainstormsBrainDoc, headCid: string | null = null): string {
+  const parts: string[] = [];
+  parts.push(GENERATED_BANNER);
+  parts.push('# Cross-Agent Brainstorms — `pop.brain.brainstorms`');
+  if (headCid) parts.push(`*Head CID: \`${headCid}\`*`);
+  parts.push('');
+
+  const allBrainstorms = Array.isArray(doc.brainstorms) ? doc.brainstorms : [];
+  const live = allBrainstorms.filter((b) => b?.removed !== true);
+  const tombstoned = allBrainstorms.filter((b) => b?.removed === true);
+
+  if (live.length === 0 && tombstoned.length === 0) {
+    parts.push('*(no brainstorms yet — open one with `pop brain brainstorm-start --title ... --prompt ...`)*');
+    parts.push('');
+  } else if (live.length === 0) {
+    parts.push('*(no live brainstorms — all entries tombstoned)*');
+    parts.push('');
+  } else {
+    // Summary table — active states ordered before closed/promoted
+    const statusOrder: Record<string, number> = { voting: 0, open: 1, promoted: 2, closed: 3 };
+    const sorted = [...live].sort((a, b) => {
+      const aRank = statusOrder[a.status] ?? 99;
+      const bRank = statusOrder[b.status] ?? 99;
+      if (aRank !== bRank) return aRank - bRank;
+      return (b.openedAt ?? 0) - (a.openedAt ?? 0);
+    });
+
+    parts.push('## Summary');
+    parts.push('');
+    parts.push('| Status | ID | Title | Author | Ideas | Votes |');
+    parts.push('|---|---|---|---|---|---|');
+    for (const b of sorted) {
+      const id = (b.id ?? '(no id)').replace(/\|/g, '\\|');
+      const title = (b.title ?? '(no title)').replace(/\|/g, '\\|');
+      const author = (b.author ?? '?').slice(0, 10);
+      const ideaCount = Array.isArray(b.ideas) ? b.ideas.length : 0;
+      const voteCount = (b.ideas || []).reduce((sum: number, idea: any) => {
+        const v = idea?.votes;
+        return sum + (v && typeof v === 'object' ? Object.keys(v).length : 0);
+      }, 0);
+      const statusEmoji = BRAINSTORM_STATUS_EMOJI[b.status] ?? '•';
+      parts.push(`| ${statusEmoji} ${b.status} | \`${id}\` | ${title} | ${author} | ${ideaCount} | ${voteCount} |`);
+    }
+    parts.push('');
+
+    parts.push('## Brainstorms');
+    parts.push('');
+    for (const b of sorted) {
+      parts.push(renderBrainstorm(b));
+      parts.push('---');
+      parts.push('');
+    }
+  }
+
+  if (tombstoned.length > 0) {
+    parts.push('## Removed brainstorms');
+    parts.push('');
+    parts.push(`*(${tombstoned.length} brainstorm${tombstoned.length === 1 ? '' : 's'} tombstoned)*`);
+    parts.push('');
+    for (const b of tombstoned.slice(-5)) {
+      parts.push(`- \`${b.id ?? '(no id)'}\`${b.removedReason ? ` — ${b.removedReason}` : ''}`);
+    }
+    parts.push('');
+  }
+
+  // Unknown top-level fields — dump as JSON
+  const known = new Set(['brainstorms']);
+  const unknownKeys = Object.keys(doc).filter((k) => !known.has(k));
+  if (unknownKeys.length > 0) {
+    parts.push('## Other fields');
+    parts.push('');
+    parts.push('```json');
+    const subset: Record<string, any> = {};
+    for (const k of unknownKeys) subset[k] = (doc as any)[k];
+    parts.push(JSON.stringify(subset, null, 2));
+    parts.push('```');
+    parts.push('');
+  }
+
+  return parts.join('\n').replace(/\n+$/, '\n');
+}
+
+// ---------------------------------------------------------------------------
 // Dispatch registry — pick the right projector by docId
 // ---------------------------------------------------------------------------
 //
@@ -753,6 +1025,10 @@ const PROJECTOR_REGISTRY: Array<{ match: (docId: string) => boolean; fn: BrainPr
   {
     match: (id) => id === 'pop.brain.retros' || id.startsWith('pop.brain.retros.'),
     fn: projectRetros as BrainProjectorFn,
+  },
+  {
+    match: (id) => id === 'pop.brain.brainstorms' || id.startsWith('pop.brain.brainstorms.'),
+    fn: projectBrainstorms as BrainProjectorFn,
   },
 ];
 
