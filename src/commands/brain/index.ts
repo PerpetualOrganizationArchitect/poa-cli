@@ -14,6 +14,7 @@ import { removeProjectHandler } from './remove-project';
 import { allowlistHandler } from './allowlist';
 import { migrateProjectsHandler } from './migrate-projects';
 import { doctorHandler } from './doctor';
+import { daemonHandler } from './daemon';
 
 export function registerBrainCommands(yargs: Argv) {
   return yargs
@@ -32,5 +33,6 @@ export function registerBrainCommands(yargs: Argv) {
     .command('allowlist <action>', 'Manage the brain allowlist (list/add/remove)', allowlistHandler.builder, allowlistHandler.handler)
     .command('migrate-projects', 'Import projects.md into a pop.brain.projects doc (sprint-3 follow-up to step 8)', migrateProjectsHandler.builder, migrateProjectsHandler.handler)
     .command('doctor', 'Health check for brain layer setup (env, keys, libp2p init, allowlist, manifest)', doctorHandler.builder, doctorHandler.handler)
+    .command('daemon <action>', 'Manage the persistent brain daemon (start/stop/status/logs) — keeps libp2p alive so gossipsub announcements actually propagate', daemonHandler.builder as any, daemonHandler.handler as any)
     .demandCommand(1, 'Please specify a brain action');
 }
