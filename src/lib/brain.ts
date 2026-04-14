@@ -748,6 +748,106 @@ export async function applyBrainChange<T = any>(
 }
 
 /**
+ * Import a raw Automerge snapshot as the new local head for a brain doc.
+ *
+ * Task #353 (HB#348): the post-HB#352 follow-up for migrating the 3 existing
+ * Argus agents off their pre-genesis disjoint Automerge state. The HB#341
+ * export step pinned argus's current state for all 3 canonical docs to IPFS
+ * (Qm...). This function is the receive side: load those bytes into vigil_01
+ * or sentinel_01's brain home as the new shared head so their subsequent
+ * writes build on argus's root instead of their own disjoint root.
+ *
+ * ## Semantics
+ *
+ * - Load the bytes via `Automerge.load()` to validate structural integrity.
+ *   Throws if the bytes are corrupt or not an Automerge snapshot.
+ * - Run the standard write-time schema validator (#346) unless
+ *   `opts.allowInvalidShape` is set.
+ * - Sign a new envelope via `signBrainChange` — the importing agent becomes
+ *   the envelope author for the new head, even though the Automerge content
+ *   is preserved from the source.
+ * - Write the envelope as a new IPLD block, update the manifest, publish the
+ *   head CID via gossipsub (same as applyBrainChange's persist+publish flow).
+ *
+ * ## Safety
+ *
+ * This function REPLACES the local head. If the local brain home already
+ * has content for this docId, that state becomes orphaned (the old envelope
+ * stays in the blockstore, but the manifest no longer points at it). Callers
+ * must decide whether to preserve local-only content before calling:
+ *
+ *   1. `pop brain read --doc <id> --json` to snapshot local state
+ *   2. `pop brain import-snapshot --doc <id> --file <canonical-bytes>`
+ *   3. Replay local-only lessons via `pop brain append-lesson` calls on the
+ *      new shared baseline
+ *
+ * The CLI wrapper (`pop brain import-snapshot`) enforces a `--force` flag
+ * requirement when a local head exists, so there are no accidental replaces.
+ */
+export async function importBrainDoc(
+  docId: string,
+  automergeBytes: Uint8Array,
+  opts?: { allowInvalidShape?: boolean },
+): Promise<{ headCid: string; doc: any; author: string }> {
+  // Ensure helia is initialized (same as applyBrainChange — this is a
+  // write path that needs the libp2p publish hook).
+  await initBrainNode();
+  const Automerge = await getAutomerge();
+
+  // Validate by loading. Throws if bytes are corrupt or not a valid
+  // Automerge snapshot.
+  const doc = Automerge.load(automergeBytes);
+
+  // Schema validation (same pipeline as applyBrainChange post-#346).
+  if (!opts?.allowInvalidShape) {
+    const { validateBrainDocShape } = await import('./brain-schemas');
+    const result = validateBrainDocShape(docId, doc);
+    if (!result.ok) {
+      throw new Error(
+        `Imported snapshot fails schema validation for ${docId}:\n` +
+        result.errors.map((e: string) => `  - ${e}`).join('\n') +
+        `\n\nPass --allow-invalid-shape to bypass (strongly discouraged).`,
+      );
+    }
+  }
+
+  // Sign a NEW envelope with the imported bytes. The envelope author is
+  // the importing agent (from POP_PRIVATE_KEY), not the source agent.
+  // That's correct: the importer is vouching for the import, and the
+  // Automerge content carries the history of whoever wrote it.
+  const envelope = await signBrainChange(automergeBytes);
+  const envelopeBytes = new TextEncoder().encode(JSON.stringify(envelope));
+
+  // Persist + publish — same flow as applyBrainChange.
+  const { CID } = await esmImport<any>('multiformats/cid');
+  const { sha256 } = await esmImport<any>('multiformats/hashes/sha2');
+  const { FsBlockstore } = await esmImport<any>('blockstore-fs');
+  const hash = await sha256.digest(envelopeBytes);
+  const cid = CID.createV1(0x55, hash);
+  const bs = new FsBlockstore(join(getBrainHome(), 'helia-blocks'));
+  await bs.open();
+  try {
+    await bs.put(cid, envelopeBytes);
+  } finally {
+    await bs.close();
+  }
+  const manifest = loadHeadsManifest();
+  manifest[docId] = cid.toString();
+  saveHeadsManifest(manifest);
+
+  // Publish the new head via gossipsub. Best-effort — local write has
+  // already persisted, and missed announcements recover at next peer
+  // reconnect via the usual rebroadcast loop.
+  try {
+    await publishBrainHead(docId, cid.toString(), envelope.author);
+  } catch {
+    // publishBrainHead already swallows errors; belt-and-suspenders.
+  }
+
+  return { headCid: cid.toString(), doc, author: envelope.author };
+}
+
+/**
  * List all known brain doc IDs + their current head CIDs.
  * Reads the manifest file directly — doesn't require Helia to be running.
  */

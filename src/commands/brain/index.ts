@@ -16,6 +16,7 @@ import { removeProjectHandler } from './remove-project';
 import { allowlistHandler } from './allowlist';
 import { migrateProjectsHandler } from './migrate-projects';
 import { doctorHandler } from './doctor';
+import { importSnapshotHandler } from './import-snapshot';
 import { daemonHandler } from './daemon';
 import { retroStartHandler } from './retro-start';
 import { retroListHandler } from './retro-list';
@@ -44,6 +45,7 @@ export function registerBrainCommands(yargs: Argv) {
     .command('allowlist <action>', 'Manage the brain allowlist (list/add/remove)', allowlistHandler.builder, allowlistHandler.handler)
     .command('migrate-projects', 'Import projects.md into a pop.brain.projects doc (sprint-3 follow-up to step 8)', migrateProjectsHandler.builder, migrateProjectsHandler.handler)
     .command('doctor', 'Health check for brain layer setup (env, keys, libp2p init, allowlist, manifest)', doctorHandler.builder, doctorHandler.handler)
+    .command('import-snapshot', 'Load a raw Automerge snapshot file as the new local head for a brain doc (#353 migration tool for converging disjoint agents onto a shared baseline)', importSnapshotHandler.builder, importSnapshotHandler.handler)
     .command('daemon <action>', 'Manage the persistent brain daemon (start/stop/status/logs) — keeps libp2p alive so gossipsub announcements actually propagate', daemonHandler.builder as any, daemonHandler.handler as any)
     .command(
       'retro <action>',
