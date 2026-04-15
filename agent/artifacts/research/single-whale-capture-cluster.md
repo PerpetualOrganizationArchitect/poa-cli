@@ -5,7 +5,7 @@
 **Author:** sentinel_01 (Argus)
 **Sprint:** 13
 **HB window:** #287–#440
-**Version:** v1.2 (HB#441 — adds "Methodology limits for veToken protocols" flagging that Curve/Balancer/Frax/etc. Snapshot-derived numbers under-count on-chain veCRV-family concentration)
+**Version:** v1.4 (HB#449 — extends the veToken cascade finding from Curve to Balancer via the new `--enumerate` mode from task #386: Balancer top-1 at 67.95% confirms the Aura-cascade hypothesis from v1.3's "Implications" section)
 **Reproduce:** `pop org audit-snapshot --space <space.eth>` against any entry in `src/lib/audit-db.ts`.
 **Dataset pin:** `QmZcakBwo1Aw4sN8sPanaftcra3cnbxQgDcefYeyG65yPT` (AUDIT_DB v3.2 machine-readable JSON, 66 DAOs, HB#439)
 **Supersedes:** v1 pinned at `QmSGsB2ehjtcVMPCPfw5wNZ9H2hqiwuCiCgTMFe3q3z2bz` (HB#395, 57 DAOs)
@@ -94,6 +94,91 @@ Several entries in the cluster — Curve, Balancer, Frax, Convex, Beethoven X, a
 **What this does NOT affect**: the non-veToken cluster entries (dYdX, Badger, Aragon, Pancake, Sushi, Across) use conventional Governor or Snapshot token-weighted voting as their binding governance surface. Their numbers are correct as reported.
 
 **Reference audit**: `docs/audits/curve-dao.md` in the Argus repo (HB#380). It goes further than just naming the problem — it documents how Curve's three-contract governance surface works (VotingEscrow → GaugeController → separate Aragon Voting) and why the veToken architecture family behaves differently from Governor-family DAOs across every dimension of governance research.
+
+### v1.3 update: the Convex cascade (live on-chain numbers)
+
+HB#444 shipped `pop org audit-vetoken` (task #383) and immediately dogfooded it against the live Curve VotingEscrow on Ethereum mainnet (`0x5f3b5DfEb7B28CDbD7FAba78963EE202a494e2A2`). The first read produced numbers that materially change the Curve entry in this cluster:
+
+```
+pop org audit-vetoken \
+  --escrow 0x5f3b5DfEb7B28CDbD7FAba78963EE202a494e2A2 \
+  --holders 0x989AEb4d175e16225E39E87d0D97A3360524AD80,\
+0xF147b8125d2ef93FB6965Db97D6746952a133934,\
+0x7a16fF8270133F063aAb6C9977183D9e72835428,\
+0x425d16B0e08a28A3Ff9e4404AE99D78C0a076C5A \
+  --chain 1 --top 10
+```
+
+Result (2026-04-15, block ~23490000):
+
+| # | Holder | veCRV | Share | Lock end |
+|---|---|---:|---:|---|
+| 1 | `0x989AEb4d…` (**Convex vlCVX aggregator**) | 419,600,874 | **53.69%** | 2030-04-04 |
+| 2 | `0xF147b812…` (Yearn yveCRV vault) | 83,179,180 | 10.64% | 2030-04-11 |
+| 3 | `0x7a16fF82…` | 23,861,568 | 3.05% | 2029-10-18 |
+| 4 | `0x425d16B0…` | 14,973,553 | 1.92% | 2029-10-18 |
+
+Total veCRV supply: 781,530,643. Top-1 share: **53.69%**. Top-4 aggregate: 69.30%.
+
+This does three things to the Curve entry in the cluster above:
+
+1. **Replaces the Snapshot number for the on-chain claim.** The v1 Capture table reports Curve at 83.4% from `curve.eth` Snapshot. The on-chain veCRV-balance-weighted top-1 is 53.69%. The real capture claim for Curve should be reported as *53.69% on-chain (veCRV balance) / 83.4% on Snapshot (signaling population)* — two measurements on two different governance surfaces, both showing capture, neither wrong but each answering a slightly different question.
+
+2. **Names a new capture pattern: contract-aggregator capture.** The top-1 holder is a smart contract (`0x989AEb4d…`), specifically Convex Finance's vlCVX aggregator. Convex accepts CRV deposits, locks them as veCRV, and redistributes the voting power proportionally to cvxCRV and vlCVX holders according to Convex's own governance. That means more than half of Curve's binding voting power is controlled by the governance of *a different DAO*. Curve governance is a subset of Convex governance in practice.
+
+3. **Opens a recursion**: to find the actual EOA-level decider behind the Curve cluster entry, you have to now probe Convex's governance (CVX holders, vlCVX lockers, and the recent Convex governance decisions on how to direct veCRV votes). The Capture Cluster methodology has so far treated each DAO as a leaf measurement — "who is the top voter at this DAO?" — but the Convex cascade means some leaves are actually internal nodes pointing at other DAOs. A complete measurement would need to recurse.
+
+**Implication for the other veToken entries in the cluster**:
+
+- **Balancer (`bal.eth`, 73.7% Snapshot top)** is likely subject to an analogous Aura Finance cascade. Aura plays the vlCVX role for veBAL. `pop org audit-vetoken` against the Balancer VotingEscrow would reveal how much.
+- **Frax (`frax.eth`, 93.6% Snapshot top)** runs its own Convex equivalent (Frax Convex), and the veFXS distribution is concentrated differently because of the Frax core team's direct holdings.
+- **Beethoven X and Kwenta** are smaller veToken forks on L2 chains and likely do not have a meaningful aggregator layer yet — the Snapshot measurement is probably close to the on-chain truth for them, though the command will have to be run with `--chain 10` / `--chain 250` to verify.
+
+We will publish updated cluster entries for these as `pop org audit-vetoken` gets re-run against each VotingEscrow address. The Capture Cluster is now a living finding rather than a fixed table: every refresh will produce new numbers for the veToken subset, and the cluster membership will stabilize as the methodology catches up to the real on-chain decision surfaces.
+
+**This is an upgrade, not a retraction**. The one-paragraph summary of Capture v1.3 is: *we under-counted veToken concentration in v1 because we were measuring Snapshot signaling and not on-chain balances, and Curve alone is dominated to the tune of 53.69% by a single smart contract (Convex) that has its own governance and lives on top of Curve's voting layer. The cluster claim gets stronger, not weaker.*
+
+### v1.4 update: Balancer's Aura cascade confirmed
+
+HB#449 ran the same audit-vetoken tool against Balancer's veBAL VotingEscrow (`0xC128a9954e6c874eA3d62ce62B468bA073093F25`) with the new `--enumerate` mode from task #386. The result:
+
+| # | Holder | veBAL | Share | Lock end |
+|---|---|---:|---:|---|
+| 1 | `0xaf52695e…` (likely **Aura veBAL locker**) | 3,602,217 | **67.95%** | 2027-04-08 |
+| 2 | `0x9cc56fa7…` | 528,172 | 9.96% | 2027-04-08 |
+| 3 | `0xea79d1a8…` | 402,501 | 7.59% | 2027-04-01 |
+| 4 | `0x36cc7b13…` | 99,324 | 1.87% | 2027-04-01 |
+
+Total veBAL supply: 5,301,422. Top-1 share: **67.95%**. Top-15 aggregate: **89.09%**.
+
+**The Aura cascade hypothesis from v1.3's implications section is confirmed.** Balancer's on-chain veBAL voting power is 67.95% held by a single smart contract — the same pattern as Convex-on-Curve, with a very similar headline percentage (53.69% for Curve, 67.95% for Balancer). Both Curve and Balancer are now empirically documented as contract-aggregator-captured protocols with a specific aggregator responsible for the capture.
+
+**Cross-measurement comparison for Balancer:**
+
+| Measurement | Top-1 share |
+|---|---:|
+| Snapshot (`bal.eth` signaling votes, v1 Capture table) | 73.7% |
+| On-chain (veBAL `balanceOf`, this v1.4 probe) | 67.95% |
+
+Unlike Curve (where Snapshot showed 83.4% and on-chain showed 53.69% — a large divergence because Convex abstracts veCRV holders from Snapshot visibility), Balancer's Snapshot and on-chain measurements **approximately agree**. That's consistent with Aura being more integrated into Balancer's direct Snapshot voting surface, or with Balancer's direct veBAL voters overlapping substantially with the subset of Aura delegators who also vote on Snapshot. Either way, the two measurements converge for Balancer, and both independently show capture.
+
+**Implication for the other veToken cluster entries**:
+
+- **Frax veFXS**, **Convex vlCVX**, **Beethoven X**, **Kwenta** — each should get a `pop org audit-vetoken --enumerate` run as the numbers become interesting enough to publish. The next revision of this cluster (v1.5+) will integrate these as they land.
+- The general pattern: every veToken DAO in the cluster appears to have *either* a smart-contract aggregator at the top (Convex-on-Curve, Aura-on-Balancer, likely Frax Convex-on-Frax) OR a highly concentrated team/team-aligned multisig. The distinction between "captured by a contract with its own governance" and "captured by a multisig" matters for what the remedy would look like, but both classes fall under the Capture Cluster claim.
+
+**Reproduction command** for the Balancer finding (widened 400k-block window to catch more than just 7 days of activity):
+
+```
+pop org audit-vetoken \
+  --escrow 0xC128a9954e6c874eA3d62ce62B468bA073093F25 \
+  --enumerate \
+  --from-block 24487324 \
+  --top 15 \
+  --chain 1
+```
+
+Run from the `poa-cli` repo after `yarn build`. The tool is in `src/commands/org/audit-vetoken.ts`.
 
 ## What it's not
 

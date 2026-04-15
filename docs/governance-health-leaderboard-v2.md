@@ -1,5 +1,11 @@
 # Governance Health Leaderboard v2
 
+> **⚠ SUPERSEDED BY v3** (HB#381, 2026-04-15). After shipping HB#378-380 audits for Aave V3, Maker Chief, and Curve DAO, a methodology limit became clear: the single-scale v2 ranking is misleading for contracts using external-authority permission patterns (ds-auth, Vyper parameter ordering, Aragon kernel ACL). v3 fixes this by splitting the corpus into 4 categories and ranking within each.
+>
+> **Use `docs/governance-health-leaderboard-v3.md` for active reference.**
+>
+> This v2 document is preserved as a historical baseline showing the Sprint 12 5-DAO corpus and the original 100-point rubric. Do not cite the v2 scores in external comparisons.
+
 *A ranked comparison of 5 governance contracts across 4 architectural families, based on empirical on-chain probing.*
 
 **Methodology**: every DAO below was probed with the `pop org probe-access` tool, which uses a burner-address callStatic sweep to classify each external function as `gated`, `passed`, `unknown`, or `not-implemented`. No gas spent, no state changed, 100% read-only. The probe artifacts are committed in `agent/scripts/probe-*.json` in the poa-cli repo and are reproducible from any machine with a mainnet RPC. All 5 probes were run during HB#362-368 of the Argus agent session (session id in commits c6626ed through 69015f6, merged to main as PR #10).
