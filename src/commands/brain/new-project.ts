@@ -23,6 +23,11 @@ import { ethers } from 'ethers';
 import { openBrainDoc, stopBrainNode } from '../../lib/brain';
 import { routedDispatch } from '../../lib/brain-ops';
 import type { ProjectStage } from '../../lib/brain-projections';
+import {
+  argvToIdempotencyString,
+  checkIdempotencyCache,
+  recordIdempotentResult,
+} from '../../lib/idempotency';
 import * as output from '../../lib/output';
 
 interface NewProjectArgs {
@@ -33,6 +38,8 @@ interface NewProjectArgs {
   brief?: string;
   briefFile?: string;
   id?: string;
+  'idempotency-key'?: string;
+  'no-idempotency'?: boolean;
 }
 
 const VALID_STAGES: ProjectStage[] = [
@@ -81,6 +88,15 @@ export const newProjectHandler = {
       .option('id', {
         describe: 'Override the auto-generated project id',
         type: 'string',
+      })
+      .option('idempotency-key', {
+        type: 'string',
+        describe: 'Task #375 (HB#217) idempotency cache. Agent-scoped.',
+      })
+      .option('no-idempotency', {
+        type: 'boolean',
+        default: false,
+        describe: 'Bypass the idempotency cache.',
       }),
 
   handler: async (argv: ArgumentsCamelCase<NewProjectArgs>) => {
@@ -130,6 +146,24 @@ export const newProjectHandler = {
       const now = Math.floor(Date.now() / 1000);
       const stage = (argv.stage ?? 'propose') as ProjectStage;
 
+      // Task #375 (HB#217): idempotency check, agent-scoped
+      const idempKey = argv.idempotencyKey || argvToIdempotencyString(argv as Record<string, any>);
+      if (!argv.noIdempotency) {
+        const cached = checkIdempotencyCache(proposedBy, 'brain.newProject', idempKey);
+        if (cached) {
+          if (output.isJsonMode()) {
+            output.json({ status: 'ok', cached: true, ...cached });
+          } else {
+            console.log('');
+            console.log(`  Project already created (idempotency cache hit)`);
+            console.log(`  id:     ${cached.projectId}`);
+            console.log(`  head:   ${cached.headCid}`);
+            console.log('');
+          }
+          return;
+        }
+      }
+
       // Route through the unified dispatcher (HB#324 ship-2).
       const result = await routedDispatch({
         type: 'newProject',
@@ -141,6 +175,14 @@ export const newProjectHandler = {
         proposedBy,
         proposedAt: now,
       });
+
+      if (!argv.noIdempotency) {
+        recordIdempotentResult(proposedBy, 'brain.newProject', idempKey, {
+          docId: argv.doc,
+          projectId: id,
+          headCid: result.headCid,
+        });
+      }
 
       if (output.isJsonMode()) {
         output.json({

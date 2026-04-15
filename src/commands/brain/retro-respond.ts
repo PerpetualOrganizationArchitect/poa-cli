@@ -27,6 +27,11 @@ import { ethers } from 'ethers';
 import { stopBrainNode } from '../../lib/brain';
 import { routedDispatch } from '../../lib/brain-ops';
 import type { RetroVote } from '../../lib/brain-projections';
+import {
+  argvToIdempotencyString,
+  checkIdempotencyCache,
+  recordIdempotentResult,
+} from '../../lib/idempotency';
 import * as output from '../../lib/output';
 
 interface RetroRespondArgs {
@@ -37,6 +42,8 @@ interface RetroRespondArgs {
   vote?: string;
   author?: string;
   hb?: number;
+  'idempotency-key'?: string;
+  'no-idempotency'?: boolean;
 }
 
 const VALID_VOTES: RetroVote[] = ['agree', 'modify', 'reject'];
@@ -103,6 +110,8 @@ export const retroRespondHandler = {
         describe: 'Heartbeat number at response time (optional metadata)',
         type: 'number',
       })
+      .option('idempotency-key', { type: 'string', describe: 'Task #375 (HB#217) idempotency cache.' })
+      .option('no-idempotency', { type: 'boolean', default: false, describe: 'Bypass the idempotency cache.' })
       .check((argv) => {
         if (!argv.message && !argv['message-file']) {
           throw new Error('Must supply --message or --message-file');
@@ -161,6 +170,17 @@ export const retroRespondHandler = {
 
       const now = Math.floor(Date.now() / 1000);
 
+      // Task #375 idempotency check, agent-scoped
+      const idempKey = (argv as any).idempotencyKey || argvToIdempotencyString(argv as Record<string, any>);
+      if (!(argv as any).noIdempotency) {
+        const cached = checkIdempotencyCache(authorLabel, 'brain.retroRespond', idempKey);
+        if (cached) {
+          if (output.isJsonMode()) output.json({ status: 'ok', cached: true, ...cached });
+          else console.log(`  Retro response already recorded (idempotency cache hit). head: ${cached.headCid}`);
+          return;
+        }
+      }
+
       const result = await routedDispatch({
         type: 'respondToRetro',
         docId: argv.doc,
@@ -171,6 +191,14 @@ export const retroRespondHandler = {
         votePerChange,
         timestamp: now,
       });
+
+      if (!(argv as any).noIdempotency) {
+        recordIdempotentResult(authorLabel, 'brain.retroRespond', idempKey, {
+          docId: argv.doc,
+          retroId: argv.to,
+          headCid: result.headCid,
+        });
+      }
 
       if (output.isJsonMode()) {
         output.json({
