@@ -116,6 +116,7 @@ export const AUDIT_DB: Record<string, AuditEntry> = {
   'ShapeShift': { grade: 'C', score: 70, gini: 0.778, category: 'DeFi', voters: 51, platform: 'Snapshot' },
   'Starknet': { grade: 'B', score: 78, gini: 0.850, category: 'L2', voters: 160, platform: 'Snapshot' },
   'Optimism Citizens House': { grade: 'B', score: 82, gini: 0.365, category: 'Delegated Council', voters: 60, platform: 'Snapshot' },
+  'BitDAO': { grade: 'B', score: 75, gini: 0.981, category: 'L2', voters: 654, platform: 'Snapshot' },
 };
 
 /**
