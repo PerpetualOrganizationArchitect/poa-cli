@@ -1,6 +1,6 @@
 # Argus Operator State
 
-**Last updated:** HB#446 by sentinel_01 (2026-04-15, refresh of HB#414 version)
+**Last updated:** HB#480 by sentinel_01 (2026-04-15, refresh of HB#446 version)
 **Audience:** Hudson — single-page TL;DR of where Argus is and the highest-leverage things you can do this week.
 **Refresh cadence:** sentinel_01 keeps this current as part of regular heartbeats. If it's > 30 HBs old it's stale, ping the agents.
 
@@ -8,11 +8,21 @@
 
 ## State in 5 lines
 
-- **3 agents** (argus_prime, vigil_01, sentinel_01), all healthy, gas-sponsored, brain doctor green. Bot identity fix shipped PR #11 — all agents correctly attributed to ClawDAOBot via `~/.pop-agent/bot-identity.sh`.
-- **PT supply:** ~4827. Mostly flat since HB#417 because sentinel's 3 submitted tasks (#377 post-thread skill, #378 subgraph-lag mitigation, #383 audit-vetoken) + argus's #380 Curve audit are all stuck in cross-review queue due to a real subgraph-indexer lag (which #378 itself fixes once it's reviewed). When the next cross-review wave hits, supply jumps ~60+ PT.
-- **Treasury:** ~3 xDAI + ~24 BREAD + 1.6 sDAI yield + 277 GRT for subgraph
-- **Revenue this session:** still **$0** — the single unchanged number across the whole session
-- **Brain state:** ~58 lessons in `pop.brain.shared`, fully tagged. 3 retros across 3 agents at various states. Dataset committed: AUDIT_DB v3.2 at **66 DAOs** machine-readable (QmZcakBwo1Aw4sN8sPanaftcra3cnbxQgDcefYeyG65yPT), Capture Cluster v1.3 at **17289 bytes** with live on-chain Convex-cascade finding (QmYKJ3jYiGy6AFfRCc7sc6H5q7vrEay9DpB9wWktYTLPFN). **PR #10 merged HB#417, freeze lifted.** PR #17 merged HB#435 (sentinel distribution pack + idempotency Tier 2). PR #18 merged HB#442-ish (MakerDAO Chief + AUDIT_DB v3.1 + post-thread skill).
+- **3 agents** all healthy. Bot identity via `~/.pop-agent/bot-identity.sh`. PRs merged through #23 (CI workflow).
+- **PT supply 4827**, flat since HB#417 because the submitted tasks haven't been cross-reviewed (subgraph indexer lag that task #378 was meant to expose).
+- **Treasury:** ~3 xDAI + ~24 BREAD + 1.6 sDAI yield + 277 GRT. **Revenue this session: still $0.**
+- **Brain state:** 60+ lessons tagged, 72-DAO AUDIT_DB (v3.3 pin `QmQ7fFfSyGKVaHVtqMcxNMPFRwP94gQtEQ69WFadTKoaPK`), Capture Cluster **v1.5** with verified Convex/Aura cascade labels (`Qmab6XtDBdYsjYo6Xus6EwYyZEU9kn9vwooGM41BgY2BAa`). **Argus self-audit v1.1 published HB#479 — first internal audit of the 3-agent org, pin `QmYsbSse6L9rXC2B3b69B4DzuvHEZvYxmXN8X2nuBqY3nw`.**
+- **🔴 HB#472 redirect from you (Hudson)**: "what is auditing all these DAOs actually doing — bring it up to the other agents." Acted on immediately. Pivoted away from audit-DB padding toward POP-native work. Brainstorm opened `audit-db-growth-has-saturated-where-should-sentinel-s-resear-1776287603` with 6 redirection candidates ranked (a-f); still waiting on argus/vigil to respond. Executing option (b) POP-native audit in the interim, which has produced 5 brain lessons + 1 published self-audit document in 7 HBs.
+
+## The Argus self-audit, in 5 numbers
+
+The HB#477 / v1.1 HB#479 self-audit document is the headline research output of the last ~8 HBs. Key numbers:
+
+1. **PT Gini: 0.122** — **lowest in the 72-DAO dataset**. Every external DAO is more concentrated than Argus-internal. This is the strongest empirical win we have for the POP substrate thesis.
+2. **sentinel_01 top holder: 40.1%** — just below the single-whale boundary cluster. Same BendDAO inversion pattern I flagged at HB#439 (low Gini hides single-holder concentration). Self-critique, correctable: I've been claiming higher-PT tasks on average (14.5 PT/task vs argus 13.2 vs vigil 12.2).
+3. **Review work is asymmetric**: argus_prime does 51% of approvals, vigil_01 does 18.7% — but **vigil_01 does 60% of rejections** despite only 18.7% of approvals. Role specialization: argus = volume-reviewer, sentinel = volume-claimer, vigil = quality-filter. The HB#476 "vigil is under-engaged" framing was wrong; retracted at HB#478.
+4. **sentinel_01 has zero rejection history** (0 of 5 rejection events across 359 tasks). Either rubber-stamping or upstream-filtering task selection. Cannot distinguish without examining individual reviews. Honest self-critique.
+5. **16 "self-reviews" were a false alarm** — all argus_prime bootstrap-phase tasks #0-#16 before sentinel/vigil existed. Cleared HB#474.
 
 ## The 3 things blocking on you specifically
 
