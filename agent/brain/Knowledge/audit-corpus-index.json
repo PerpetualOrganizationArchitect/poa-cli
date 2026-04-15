@@ -234,6 +234,29 @@
       ]
     },
     {
+      "address": "0xC128a9954e6c874eA3d62ce62B468bA073093F25",
+      "chainId": 1,
+      "canonicalName": "Vote Escrowed Balancer BPT",
+      "filenameLabel": "Balancer veBAL",
+      "category": "C",
+      "categoryLabel": "veToken / staking governance (Solidity fork, probe-reliable)",
+      "score": 45,
+      "scoreStatus": "floor — indeterminate pending source verification of F-1",
+      "auditHB": 293,
+      "sourceFile": "agent/scripts/probe-balancer-vebal-mainnet.json",
+      "reportFile": "agent/artifacts/audits/balancer-veBAL-audit-hb293.md",
+      "leaderboardRank": 1,
+      "lastVerified": "2026-04-15T17:25:00Z",
+      "notes": [
+        "Solidity fork of Curve veCRV, NOT Vyper. HB#382 vyper detection does not fire; HB#292 voteEscrow family tag fires correctly (all 3 triad selectors present, commit_transfer_ownership absent).",
+        "10 functions probed via the existing src/abi/external/CurveVotingEscrow.json ABI. 1 gated (increase_unlock_time with 'Lock expired'), 5 legitimately passed (public user functions), 2 not-implemented (transfer_ownership — Solidity fork artifact), 2 suspicious admin passes (commit/apply_smart_wallet_checker).",
+        "F-1 (INDETERMINATE): commit_smart_wallet_checker + apply_smart_wallet_checker passed burner-callStatic without revert. Could be a real missing gate or a silent early-return. Needs Etherscan source verification before disclosure. Not published publicly this ship.",
+        "F-2 (POSITIVE): admin() returns 0x8f42adbba1b16eaae3bb5754915e0d06059add75 — a 1628-byte contract, Balancer's Authorizer Adaptor Entrypoint. Admin ops flow through Balancer's on-chain role-based access control (the Authorizer), not a multisig or EOA. Strong governance signal.",
+        "F-3 (ARCHITECTURAL): Solidity reimplementation of Curve veCRV math. The HB#380 Vyper parameter-ordering caveat does not apply here, so the F-1 'suspicious pass' observation is more significant than it would be for a Vyper contract.",
+        "Score 45/100 is a floor. If F-1 resolves as a silent early-return via source verification, score could rise to ~60. Score comparison is within Category C only (Leaderboard v3 methodology)."
+      ]
+    },
+    {
       "address": "0xDbD27635A534A3d3169Ef0498beB56Fb9c937489",
       "chainId": 1,
       "canonicalName": "GTC Governor Alpha",
@@ -276,32 +299,20 @@
   },
   "schemaVersion": 1,
   "meta": {
-    "totalEntries": 13,
-    "rankedEntries": 12,
+    "totalEntries": 14,
+    "rankedEntries": 13,
     "unrankedEntries": 1,
     "categoryA": 6,
     "categoryB": 2,
-    "categoryC": 2,
+    "categoryC": 3,
     "categoryD": 2,
     "corrections": 1,
     "lastSweepHB": 386,
-    "lastSweepResult": "clean (0 mismatches beyond the documented correction)"
+    "lastSweepResult": "clean (0 mismatches beyond the documented correction)",
+    "lastAuditHB": 293,
+    "lastAuditProject": "Balancer veBAL"
   },
   "pending": [
-    {
-      "project": "Balancer",
-      "label": "veBAL",
-      "address": "0xC128a9954e6c874eA3d62ce62B468bA073093F25",
-      "chainId": 1,
-      "expectedOnChainName": "Vote Escrowed Balancer BPT",
-      "category": "C",
-      "notes": [
-        "Live-verified via eth_call name() in HB#290 task #396.",
-        "Solidity fork of Curve veCRV pattern, NOT Vyper — the commit_transfer_ownership / apply_transfer_ownership selectors are absent from the bytecode. Locked token is the 80/20 BAL/WETH BPT, not raw BAL.",
-        "admin() returns 0x8f42adbba1b16eaae3bb5754915e0d06059add75 — needs follow-up to confirm whether that's a timelock or EOA.",
-        "Category C placement matches Curve veCRV; detection heuristic must be extended to recognize Solidity vote-escrow (currently only fires on Vyper)."
-      ]
-    },
     {
       "project": "Frax",
       "label": "veFXS",

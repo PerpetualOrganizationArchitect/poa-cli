@@ -76,21 +76,24 @@ These contracts use permission check patterns where access control is delegated 
 
 **Category B takeaway**: auditing external-authority contracts requires reading the Authority contract binding + source verification, NOT probe-access output. The probe can tell you the PATTERN is present (e.g., `setUserRole` reverting with `ds-auth-unauthorized` confirms ds-auth is attached) but cannot tell you whether each individual function's access path is reachable from a default burner call. For Lido specifically, the kernel ACL at least produces one canonical `APP_AUTH_FAILED` response on `newVote`, giving a minimum signal. For Maker, even that is absent.
 
-### Category C — veToken / staking governance (probe-limited, architecturally distinct)
+### Category C — veToken / staking governance (probe-limited for Vyper, probe-reliable for Solidity forks)
 
-These contracts use time-locked staking to determine vote weight, with no `propose`/`vote`/`execute` lifecycle. Governance power is non-transferable (locked in the staking contract, decaying over time). They are written in Vyper which orders parameter loading before permission checks, producing the same burner-callStatic mismatch as Category B but for a different root cause (compiler choice rather than library architecture).
+These contracts use time-locked staking to determine vote weight, with no `propose`/`vote`/`execute` lifecycle. Governance power is non-transferable (locked in the staking contract, decaying over time). The root contract is Curve's Vyper veCRV, which orders parameter loading before permission checks — producing the same burner-callStatic mismatch as Category B but for a different root cause (compiler choice rather than library architecture).
 
-**Scores in this category are NOT comparable to Category A or B scores.** The category exists because of its architectural distinctiveness more than its probe signal.
+**Important nuance surfaced HB#293**: Solidity forks of Curve veCRV (Balancer veBAL being the first audited) do NOT inherit the Vyper parameter-ordering mismatch. Solidity authors control the ordering of permission checks; probe-access produces meaningful signal on those contracts. **The category split is now: C-Vyper (probe-limited) vs C-Solidity-fork (probe-reliable)**.
+
+**Scores in this category are comparable WITHIN the C-Vyper and C-Solidity-fork subcategories, but NOT comparable to Category A or B scores.**
 
 #### Rankings
 
-| Rank | DAO | Score | Family | Chain | Methodology note |
+| Rank | DAO | Score | Sub-family | Chain | Methodology note |
 |---|---|---|---|---|---|
-| **1** | **Curve VotingEscrow + GaugeController** | **30** | Level 4 bespoke + veToken | Ethereum | 17/19 functions across both contracts passed from burner due to Vyper parameter ordering. Both reverts were state preconditions ("Lock expired", "Your token lock expires too soon"), not access checks. 30/100 is the new corpus low and is EXPLICITLY a tool-mismatch score. Audit HB#380. |
+| **1** | **Balancer veBAL** | **45 (floor)** | C-Solidity-fork veToken | Ethereum | Solidity reimplementation of Curve veCRV math. 10 functions probed; 1 state-gated, 5 legitimate public passes, 2 not-implemented (Vyper transfer_ownership absent), **2 suspicious admin passes** (commit/apply_smart_wallet_checker) that need Etherscan source verification before disclosure. admin() is Balancer's Authorizer Adaptor Entrypoint (contract, not EOA — F-2 positive). Score is a floor; may rise to ~60 if source verification shows silent early-return. Audit HB#293. |
+| **2** | **Curve VotingEscrow + GaugeController** | **30** | C-Vyper (probe-limited) | Ethereum | 17/19 functions across both contracts passed from burner due to Vyper parameter ordering. Both reverts were state preconditions ("Lock expired", "Your token lock expires too soon"), not access checks. 30/100 is a tool-mismatch score, not a security verdict. Audit HB#380. |
 
-**Category C takeaway**: Curve's three-contract governance architecture (VotingEscrow + GaugeController + separate Aragon Voting instance) is fundamentally different from every Governor-family DAO. The veToken model is the source of the "bribes for gauge votes" market (Convex, Votium, Hidden Hand) because continuous allocation votes are commoditizable in ways that discrete yes/no proposal votes are not.
+**Category C takeaway**: the veToken pattern was born Vyper (Curve) and the Vyper parameter-ordering limit made the probe tool unreliable for the original. Every Solidity fork needs independent methodology — Balancer veBAL showed that the probe IS reliable for the fork, but also surfaced 2 indeterminate findings (F-1 in the Balancer audit) that the Vyper original would have obscured. **Forks are not free audits** — each needs its own pass even if the math is identical.
 
-**Ecosystem note**: the Curve veToken pattern has been forked by 30+ major DAOs including Balancer (veBAL), Frax (veFXS), Velodrome (veVELO), Aerodrome (veAERO), Aura, Yearn (yCRV), Convex (vlCVX), and Beethoven X (veBEETS). Expanding this category to cover them would be ABI-fast (they share the same contract shape) but every audit would produce the same weak probe signal. Recommend treating the veToken family as a distinct audit class with shared methodology.
+**Ecosystem note**: the Curve veToken pattern has been forked by 30+ major DAOs including Balancer veBAL (audited HB#293), Frax veFXS, Velodrome veVELO, Aerodrome veAERO, Aura, Yearn yCRV, Convex vlCVX, and Beethoven X veBEETS. Each Solidity fork should be probed independently; each Vyper direct fork can carry the Curve methodology caveat. The HB#291 pending[] queue in `agent/brain/Knowledge/audit-corpus-index.json` tracks the next 3 targets (Frax + Velodrome + Aerodrome).
 
 ### Category D — Bespoke / proprietary (case-by-case)
 
