@@ -47,6 +47,74 @@ interface ProbeAccessArgs {
   chain?: number;
   rpc?: string;
   skipCodeCheck?: boolean;
+  expectedName?: string;
+}
+
+/**
+ * HB#385 task #390 — pre-probe identity check.
+ *
+ * HB#384 discovered that the HB#362 "Gitcoin Governor Bravo" audit was
+ * actually probing Uniswap Governor Bravo — same address, wrong label.
+ * The prevention rule documented in `docs/audits/corrections-hb384.md`
+ * is "verify contract name() before probing." This helper makes that
+ * check a first-class part of every probe run.
+ *
+ * Returns:
+ *   - contractName: the string returned by the target's `name()` accessor,
+ *     or null if the contract doesn't expose one / the call reverts
+ *   - nameCheck: when expectedName is supplied, a { expected, actual, match }
+ *     record. match is case-insensitive substring — "Compound" matches
+ *     "Compound Governor Bravo", "Uniswap" does not.
+ *
+ * Never throws. name() reverts are silently tolerated — plenty of
+ * contracts don't expose name() and the check is best-effort.
+ */
+/**
+ * Pure helper for the substring name-match logic. Exported for unit testing
+ * without needing to mock an RPC provider.
+ */
+export function matchContractName(actual: string | null, expected: string): boolean {
+  if (actual === null) return false;
+  return actual.toLowerCase().includes(expected.toLowerCase());
+}
+
+export async function fetchContractNameAndCheck(
+  provider: ethers.providers.JsonRpcProvider,
+  address: string,
+  expectedName: string | undefined,
+): Promise<{
+  contractName: string | null;
+  nameCheck: { expected: string; actual: string | null; match: boolean } | null;
+}> {
+  let contractName: string | null = null;
+  try {
+    // Minimal name() ABI — same shape that ERC20 / Governor / many contracts use
+    const nameIface = new ethers.utils.Interface([
+      'function name() view returns (string)',
+    ]);
+    const data = nameIface.encodeFunctionData('name', []);
+    const raw = await provider.call({ to: address, data });
+    if (raw && raw !== '0x') {
+      const decoded = nameIface.decodeFunctionResult('name', raw);
+      const result = decoded[0];
+      if (typeof result === 'string' && result.trim() !== '') {
+        contractName = result;
+      }
+    }
+  } catch {
+    // name() doesn't exist, revert, or decode failed — all fine, leave null
+  }
+
+  let nameCheck: { expected: string; actual: string | null; match: boolean } | null = null;
+  if (expectedName) {
+    nameCheck = {
+      expected: expectedName,
+      actual: contractName,
+      match: matchContractName(contractName, expectedName),
+    };
+  }
+
+  return { contractName, nameCheck };
 }
 
 interface ProbeResult {
@@ -330,6 +398,11 @@ export const probeAccessHandler = {
         describe:
           'Skip the on-chain selector existence check. Use when probing behind a proxy (EIP-1967) where the runtime code does not contain the implementation selectors, or when you know the ABI matches the target.',
       })
+      .option('expected-name', {
+        type: 'string',
+        describe:
+          "HB#385 (task #390): expected substring in the contract's name() return value. Case-insensitive substring match — 'Compound' matches 'Compound Governor Bravo'. When set, the tool calls name() on the target before probing and warns (non-fatal) if the result doesn't match. Prevents the HB#384 class of error where an audit labeled 'Gitcoin Governor Bravo' was actually probing Uniswap's contract. The name() call always runs even without this flag — result is recorded as contractName in JSON output.",
+      })
       .epilogue(
         'Limitations:\n' +
         '  - Functions that revert with require(string) instead of custom errors fall through to raw messages.\n' +
@@ -357,6 +430,28 @@ export const probeAccessHandler = {
     if (!ethers.utils.isAddress(argv.address)) {
       output.error(`Invalid contract address: ${argv.address}`);
       process.exit(1);
+    }
+
+    // HB#385 task #390: pre-probe identity check. Always call name() on the
+    // target, log it, and compare against --expected-name if supplied. See
+    // `fetchContractNameAndCheck` docstring for the full rationale.
+    const identity = await fetchContractNameAndCheck(
+      provider,
+      argv.address,
+      argv.expectedName,
+    );
+    if (identity.nameCheck && !identity.nameCheck.match && !output.isJsonMode()) {
+      console.log('');
+      console.log(
+        `  ⚠ NAME CHECK MISMATCH: expected "${identity.nameCheck.expected}", ` +
+        `got "${identity.nameCheck.actual ?? '(no name() accessor)'}". ` +
+        `This is the HB#384-class error: verify the target address before ` +
+        `trusting the probe output.`,
+      );
+      console.log('');
+    } else if (identity.contractName && !output.isJsonMode()) {
+      console.log('');
+      console.log(`  Contract name: ${identity.contractName}`);
     }
 
     let abi: any[];
@@ -684,6 +779,14 @@ export const probeAccessHandler = {
         address: argv.address,
         chainId: networkConfig.chainId,
         burnerAddress: burner,
+        // HB#385 task #390: contract identity. contractName is always
+        // populated when the target exposes a name() accessor; null
+        // otherwise. nameCheck is only populated when --expected-name
+        // was supplied. Together these let downstream consumers audit
+        // the corpus for mislabeled artifacts without re-running the
+        // probe.
+        contractName: identity.contractName,
+        nameCheck: identity.nameCheck,
         functionsProbed: results.length,
         // HB#382 task #384: surface the probe-reliability heuristic in
         // machine-readable output so downstream consumers (leaderboards,

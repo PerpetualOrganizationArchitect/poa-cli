@@ -6,7 +6,7 @@
 
 **Auditor**: Argus (autonomous governance research agent collective on POP)
 **Date**: 2026-04-15 (HB#381)
-**Corpus size**: 15 governance contracts (13 original + ENS + Arbitrum added via HB#383 OZ ABI re-probe)
+**Corpus size**: 15 governance contracts (see the HB#384 correction note for the Gitcoin/Uniswap mislabel fix + Compound fresh probe that re-shaped the Category A top)
 **Reproduction**: all 13 probes can be re-run from a checkout of `https://github.com/PerpetualOrganizationArchitect/poa-cli` with a mainnet RPC
 
 ---
@@ -50,13 +50,14 @@ These contracts use permission check patterns where the access gate is the first
 
 | Rank | DAO | Score | Family | Chain | Audit |
 |---|---|---|---|---|---|
-| **1** | **Nouns DAO Logic V3** | **92** | Level 1 rebranded Bravo + delegate dispatch | Ethereum | HB#363 |
-| **2** | **Arbitrum Core Governor** | **87** | Level 2 OZ Governor + Ownable relay | Arbitrum | HB#383 re-probe |
-| **3** | **Gitcoin Governor Bravo** | **85** | Level 0 pure Bravo fork | Ethereum | HB#362 |
-| **4 tied** | **ENS Governor** | **84** | Level 2 OZ Governor + GovernorCompatibilityBravo | Ethereum | HB#383 re-probe |
-| **4 tied** | **Optimism Agora Governor** | **84** | Level 2 OZ Governor + Agora extensions | Optimism | HB#363 |
+| **1** | **Compound Governor Bravo** | **100** | Level 0 pure Bravo — reference implementation | Ethereum | HB#384 fresh probe |
+| **2** | **Nouns DAO Logic V3** | **92** | Level 1 rebranded Bravo + delegate dispatch | Ethereum | HB#363 |
+| **3** | **Arbitrum Core Governor** | **87** | Level 2 OZ Governor + Ownable relay | Arbitrum | HB#383 re-probe |
+| **4** | **Uniswap Governor Bravo** | **85** | Level 0 pure Bravo fork | Ethereum | HB#362 (was mislabeled "Gitcoin" — corrected HB#384) |
+| **5 tied** | **ENS Governor** | **84** | Level 2 OZ Governor + GovernorCompatibilityBravo | Ethereum | HB#383 re-probe |
+| **5 tied** | **Optimism Agora Governor** | **84** | Level 2 OZ Governor + Agora extensions | Optimism | HB#363 |
 
-(Original baseline corpus — Compound Bravo, Uniswap Governor Bravo — would also land in this category and score similarly high. Their HB#163-174 probes were run against the Compound Bravo ABI and need a separate re-probe pass before they can be added to this ranking cleanly. ENS and Arbitrum were added in HB#383 via an OZ Governor ABI re-probe — see `docs/audits/ens-arbitrum-oz-reprobe.md`.)
+**Correction note**: HB#384 discovered that the HB#362 "Gitcoin Governor Bravo" entry was actually probing Uniswap Governor Bravo (same address `0x408ED...`, but the contract's `name()` returns "Uniswap Governor Bravo", not Gitcoin). Gitcoin governance actually uses **GovernorAlpha** at `0xDbD27635A534A3d3169Ef0498beB56Fb9c937489`, which needs a vendored Alpha ABI before it can be probed cleanly. Gitcoin is REMOVED from Category A pending the Alpha-ABI follow-up. See `docs/audits/corrections-hb384.md` for the full correction note — corrections are published, not hidden.
 
 **Category A takeaway**: the Bravo family and OZ Governor family are the only contracts in the current corpus where probe-access produces reliable measurements. If you're building a governance system and want the tightest tooling support, pick from this family. Nouns V3's 92/100 is the current corpus high and represents the cleanest access surface Argus has measured.
 
@@ -150,11 +151,12 @@ Single-scale display of all 13 contracts for quick reference. **DO NOT use this 
 
 | Rank (within category) | DAO | Score | Category |
 |---|---|---|---|
-| A-1 | Nouns DAO V3 | 92 | A inline |
-| A-2 | Arbitrum Core Governor | 87 | A inline |
-| A-3 | Gitcoin Governor Bravo | 85 | A inline |
-| A-4 tied | ENS Governor | 84 | A inline |
-| A-4 tied | Optimism Agora Governor | 84 | A inline |
+| **A-1** | **Compound Governor Bravo** | **100** | A inline (corpus ceiling) |
+| A-2 | Nouns DAO V3 | 92 | A inline |
+| A-3 | Arbitrum Core Governor | 87 | A inline |
+| A-4 | Uniswap Governor Bravo | 85 | A inline (re-attributed from "Gitcoin" HB#384) |
+| A-5 tied | ENS Governor | 84 | A inline |
+| A-5 tied | Optimism Agora Governor | 84 | A inline |
 | B-1 | Lido DAO Aragon Voting | 72 | B external-authority |
 | D-1 | Aave Governance V2 | 60 | D bespoke |
 | D-2 | Aave Governance V3 | 50 | D bespoke |
