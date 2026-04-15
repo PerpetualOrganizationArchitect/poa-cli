@@ -27,6 +27,10 @@ const SEL_SET_USER_ROLE = '67aff484';
 const SEL_SET_AUTHORITY = '7a9e5e4b';
 const SEL_COMMIT_TRANSFER = '6b441a40';
 const SEL_APPLY_TRANSFER = '6a1c05ae';
+// HB#292 task #398 — vote-escrow triad
+const SEL_CREATE_LOCK = '65fc3873';
+const SEL_INCREASE_UNLOCK = 'eff7a612';
+const SEL_LOCKED_END = 'adc63589';
 
 // Filler bytes so the test strings look like real bytecode fragments.
 const FILLER = '608060405234801561001057600080fd5b50';
@@ -146,5 +150,66 @@ describe('detectProbeReliabilityPatterns — HB#382 task #384', () => {
     const code = makeCode(SEL_SET_USER_ROLE.toUpperCase(), SEL_SET_AUTHORITY.toUpperCase()).toLowerCase();
     const r = detectProbeReliabilityPatterns(code);
     expect(r.dsAuth).toBe(true);
+  });
+
+  // Task #398 (HB#292): vote-escrow family tag. Informational only — does
+  // NOT push a warning. Fires when all 3 VotingEscrow write-method
+  // selectors are present (create_lock + increase_unlock_time + locked__end).
+  // Requiring all 3 minimizes false positives for contracts that happen to
+  // have one of the names for unrelated reasons.
+  describe('voteEscrow family tag (task #398)', () => {
+    it('detects a Solidity vote-escrow (Balancer veBAL-style) with no warning', () => {
+      // All 3 VE triad selectors, no Vyper markers — this is the Balancer
+      // veBAL shape: Solidity fork of Curve veCRV.
+      const code = makeCode(SEL_CREATE_LOCK, SEL_INCREASE_UNLOCK, SEL_LOCKED_END);
+      const r = detectProbeReliabilityPatterns(code);
+      expect(r.voteEscrow).toBe(true);
+      expect(r.vyper).toBe(false);
+      expect(r.dsAuth).toBe(false);
+      // Informational tag does NOT add a warning.
+      expect(r.warnings).toHaveLength(0);
+    });
+
+    it('detects BOTH vyper AND voteEscrow for Curve veCRV (Vyper VE)', () => {
+      // Curve veCRV has all 3 VE triad selectors PLUS the Vyper 2-step
+      // ownership transfer pattern. Both tags fire; only the Vyper warning
+      // is pushed.
+      const code = makeCode(
+        SEL_CREATE_LOCK,
+        SEL_INCREASE_UNLOCK,
+        SEL_LOCKED_END,
+        SEL_COMMIT_TRANSFER,
+        SEL_APPLY_TRANSFER,
+      );
+      const r = detectProbeReliabilityPatterns(code);
+      expect(r.voteEscrow).toBe(true);
+      expect(r.vyper).toBe(true);
+      expect(r.warnings).toHaveLength(1);
+      expect(r.warnings[0]).toContain('Vyper');
+    });
+
+    it('does NOT fire voteEscrow when only 2 of the 3 triad selectors are present', () => {
+      // Defensive: requires ALL 3 to minimize false positives. A contract
+      // that happens to have create_lock + increase_unlock_time but not
+      // locked__end is not a standard VE.
+      const code = makeCode(SEL_CREATE_LOCK, SEL_INCREASE_UNLOCK);
+      const r = detectProbeReliabilityPatterns(code);
+      expect(r.voteEscrow).toBe(false);
+    });
+
+    it('does NOT fire voteEscrow for a plain Compound Bravo governor', () => {
+      // Bravo has none of the VE write methods.
+      const bravoSelector = 'da95691a'; // propose(address[],uint256[],string[],bytes[],string)
+      const code = makeCode(bravoSelector);
+      const r = detectProbeReliabilityPatterns(code);
+      expect(r.voteEscrow).toBe(false);
+      expect(r.vyper).toBe(false);
+      expect(r.dsAuth).toBe(false);
+    });
+
+    it('defaults to false for null / empty input', () => {
+      expect(detectProbeReliabilityPatterns(null).voteEscrow).toBe(false);
+      expect(detectProbeReliabilityPatterns('').voteEscrow).toBe(false);
+    });
   });
 });

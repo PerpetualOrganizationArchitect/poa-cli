@@ -192,11 +192,12 @@ interface ProbeResult {
 export function detectProbeReliabilityPatterns(codeLower: string | null): {
   dsAuth: boolean;
   vyper: boolean;
+  voteEscrow: boolean;
   warnings: string[];
 } {
   const warnings: string[] = [];
   if (!codeLower) {
-    return { dsAuth: false, vyper: false, warnings };
+    return { dsAuth: false, vyper: false, voteEscrow: false, warnings };
   }
 
   // ds-auth: setUserRole(address,uint8,bool) + setAuthority(address)
@@ -230,7 +231,26 @@ export function detectProbeReliabilityPatterns(codeLower: string | null): {
     );
   }
 
-  return { dsAuth, vyper, warnings };
+  // Vote-escrow family tag (informational, NOT an unreliability flag).
+  // HB#292 task #398: detect Curve-style vote-escrow contracts (Curve veCRV,
+  // Balancer veBAL, Frax veFXS, and their forks) via the canonical triad of
+  // VotingEscrow write methods. Requires ALL 3 to minimize false positives:
+  //   - create_lock(uint256,uint256)  → 0x65fc3873
+  //   - increase_unlock_time(uint256) → 0xeff7a612
+  //   - locked__end(address)          → 0xadc63589
+  //
+  // Unlike dsAuth / vyper, this does NOT push to warnings. A Solidity fork
+  // of Curve veCRV (such as Balancer veBAL) can be probe-reliable because
+  // the author can write access checks before parameter validation. The
+  // tag exists so operators know "this is a vote-escrow contract" and can
+  // correlate admin() / locked token / balance-at-time semantics. When
+  // paired with `vyper: true`, the Vyper warning still applies.
+  const HAS_CREATE_LOCK = codeLower.includes('65fc3873');
+  const HAS_INCREASE_UNLOCK = codeLower.includes('eff7a612');
+  const HAS_LOCKED_END = codeLower.includes('adc63589');
+  const voteEscrow = HAS_CREATE_LOCK && HAS_INCREASE_UNLOCK && HAS_LOCKED_END;
+
+  return { dsAuth, vyper, voteEscrow, warnings };
 }
 
 /**
@@ -814,6 +834,7 @@ export const probeAccessHandler = {
         reliability: {
           dsAuth: reliability.dsAuth,
           vyper: reliability.vyper,
+          voteEscrow: reliability.voteEscrow,
           warnings: reliability.warnings,
         },
         results,
@@ -857,6 +878,18 @@ export const probeAccessHandler = {
         console.log('  • Vyper compiler signature detected — passed results on admin functions are probably tool artifacts');
       }
       console.log('  See the full warnings above and the HB#379/HB#380 audit reports in docs/audits/ for details.');
+    }
+    // HB#292 task #398: vote-escrow family tag. Informational only — no
+    // reliability warning. Surfaces whether the target belongs to the
+    // Curve-style VotingEscrow family so operators know to interpret
+    // admin() / locked token / veCRV-style write methods in context.
+    if (reliability.voteEscrow) {
+      console.log('');
+      console.log('ℹ Vote-escrow family detected (Curve veCRV-style VotingEscrow).');
+      console.log('  Canonical write methods present: create_lock, increase_unlock_time, locked__end.');
+      if (!reliability.vyper) {
+        console.log('  Implementation: Solidity fork (Vyper markers absent). Probe-access is likely reliable for this contract.');
+      }
     }
     console.log('');
   },
