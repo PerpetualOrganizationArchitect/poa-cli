@@ -75,6 +75,8 @@ interface AuditVetokenArgs {
   escrow: string;
   holders?: string;
   enumerate?: boolean;
+  'enumerate-transfers'?: boolean;
+  underlying?: string;
   'from-block'?: number;
   'to-block'?: number;
   chunk?: number;
@@ -130,6 +132,86 @@ async function enumerateDepositors(
   };
 }
 
+/**
+ * HB#456 task #389: enumerate candidate holders via the underlying ERC20's
+ * Transfer events filtered to (to == locker address).
+ *
+ * This path is CONTRACT-AGNOSTIC. The Deposit-event enumeration in
+ * enumerateDepositors() depends on the locker contract emitting a Deposit
+ * event with an indexed `provider` topic — the veCRV pattern. That works for
+ * Curve + Balancer + Frax because they're all veCRV-family forks, BUT it
+ * fails for:
+ *   - CvxLockerV2 (Convex vlCVX) which emits `Staked` events, not Deposit
+ *   - Dormant-holder protocols where the top holders deposited years ago
+ *     and don't show up in a recent Deposit-event window
+ *
+ * The Transfer-events fallback fixes both cases: every ERC20 token emits
+ * standard Transfer(from, to, amount) events, regardless of the locker's
+ * own event signatures, and historical transfers into the locker include
+ * every lock in history (within the block window scanned).
+ *
+ * We filter by topic[2] == padded locker address, collecting topic[1]
+ * (the `from` address) as a candidate historical depositor.
+ *
+ * Cost note: underlying tokens like CRV, BAL, FXS emit MANY more Transfer
+ * events than the locker's own Deposit events (every ordinary transfer
+ * between users + swap + LP action). So this path is more RPC-expensive
+ * per block than the Deposit-event path, and operators should use narrower
+ * windows when invoking it.
+ */
+async function enumerateHoldersViaUnderlyingTransfers(
+  underlyingAddr: string,
+  escrowAddr: string,
+  provider: ethers.providers.Provider,
+  fromBlock: number,
+  toBlock: number,
+  chunk: number,
+): Promise<{ holders: string[]; windowFrom: number; windowTo: number; chunksScanned: number }> {
+  const erc20Iface = new ethers.utils.Interface([
+    'event Transfer(address indexed from, address indexed to, uint256 value)',
+  ]);
+  const transferTopic = erc20Iface.getEventTopic('Transfer');
+  const paddedEscrowTopic = ethers.utils.hexZeroPad(escrowAddr.toLowerCase(), 32);
+
+  const seen = new Set<string>();
+  let chunksScanned = 0;
+
+  for (let start = fromBlock; start <= toBlock; start += chunk) {
+    const end = Math.min(start + chunk - 1, toBlock);
+    try {
+      const logs = await provider.getLogs({
+        address: underlyingAddr,
+        topics: [transferTopic, null, paddedEscrowTopic],
+        fromBlock: start,
+        toBlock: end,
+      });
+      chunksScanned++;
+      for (const log of logs) {
+        // topic[1] is the `from` address padded to bytes32. Slice the last
+        // 20 bytes and hexlify.
+        if (log.topics.length >= 3) {
+          const fromTopicHex = log.topics[1];
+          // Last 40 hex chars (20 bytes) = address
+          const fromAddr = '0x' + fromTopicHex.slice(-40);
+          if (ethers.utils.isAddress(fromAddr)) {
+            seen.add(fromAddr.toLowerCase());
+          }
+        }
+      }
+    } catch (err: any) {
+      // Same best-effort skip policy as the Deposit-event path
+      void err;
+    }
+  }
+
+  return {
+    holders: Array.from(seen),
+    windowFrom: fromBlock,
+    windowTo: toBlock,
+    chunksScanned,
+  };
+}
+
 interface HolderRow {
   address: string;
   veBalance: string;
@@ -161,6 +243,22 @@ export const auditVetokenHandler = {
         'Scan recent Deposit events to discover candidate holders. Defaults ' +
         'to the last 50,000 blocks (~7 days on Ethereum). Override with ' +
         '--from-block / --to-block / --chunk.',
+    })
+    .option('enumerate-transfers', {
+      type: 'boolean',
+      default: false,
+      describe:
+        'Task #389 (HB#456): contract-agnostic holder discovery via the ' +
+        'underlying ERC20\'s Transfer(from, to) events filtered to (to == ' +
+        'escrow). Catches dormant lockers and works for non-veCRV-family ' +
+        'contracts (CvxLockerV2, Convex, etc.). More RPC-expensive per ' +
+        'block than --enumerate, so use narrower --from-block windows.',
+    })
+    .option('underlying', {
+      type: 'string',
+      describe:
+        'Override the underlying ERC20 token address for --enumerate-transfers. ' +
+        'If omitted, reads VotingEscrow.token() to get it automatically.',
     })
     .option('from-block', {
       type: 'number',
@@ -218,10 +316,11 @@ export const auditVetokenHandler = {
         }
       }
 
-      if (!argv.enumerate && explicitHolders.length === 0) {
+      const anyEnumerate = argv.enumerate || argv['enumerate-transfers'];
+      if (!anyEnumerate && explicitHolders.length === 0) {
         spin.stop();
         output.error(
-          'Provide --holders <comma-list> OR pass --enumerate to auto-discover via Deposit events',
+          'Provide --holders <comma-list> OR pass --enumerate (Deposit events) OR --enumerate-transfers (underlying ERC20 Transfer events)',
         );
         process.exit(1);
         return;
@@ -233,9 +332,31 @@ export const auditVetokenHandler = {
 
       const ve = new ethers.Contract(escrow, VE_VIEW_ABI, provider);
 
-      // HB#448 task #386: enumerate candidate holders via Deposit-event scan
+      // Read metadata UP FRONT so --enumerate-transfers can use veTokenAddr
+      // as the default underlying token address. Older MVP read this later;
+      // hoisted to support the Transfer-events path at HB#456 task #389.
+      let veName = 'unknown';
+      let veSymbol = 'unknown';
+      let veTokenAddr = '0x0';
+      try {
+        [veName, veSymbol, veTokenAddr] = await Promise.all([
+          ve.name(),
+          ve.symbol(),
+          ve.token(),
+        ]);
+      } catch {
+        // Vyper public getters sometimes mis-ABI; don't fail the whole audit
+        // if metadata reads fail — just label unknown and continue.
+      }
+
+      // HB#448 task #386 + HB#456 task #389: enumerate candidate holders
       // BEFORE the balanceOf loop so the top-N ranking can include them.
-      let enumerationMeta: { windowFrom: number; windowTo: number; chunksScanned: number; enumerated: number } | null = null;
+      // Two modes:
+      //   - --enumerate          scan VotingEscrow's own Deposit events
+      //   - --enumerate-transfers  scan underlying ERC20 Transfer events
+      //                            filtered to (to == escrow). Contract-
+      //                            agnostic, catches dormant lockers.
+      let enumerationMeta: { windowFrom: number; windowTo: number; chunksScanned: number; enumerated: number; method: string } | null = null;
       let discoveredHolders: string[] = [];
       if (argv.enumerate) {
         const latestBlock = await provider.getBlockNumber();
@@ -251,13 +372,65 @@ export const auditVetokenHandler = {
         spin.start();
 
         const enumResult = await enumerateDepositors(ve, provider, fromBlock, toBlock, chunk);
-        discoveredHolders = enumResult.holders;
+        discoveredHolders = [...discoveredHolders, ...enumResult.holders];
         enumerationMeta = {
           windowFrom: enumResult.windowFrom,
           windowTo: enumResult.windowTo,
           chunksScanned: enumResult.chunksScanned,
-          enumerated: discoveredHolders.length,
+          enumerated: enumResult.holders.length,
+          method: 'deposit-events',
         };
+      }
+
+      if (argv['enumerate-transfers']) {
+        const latestBlock = await provider.getBlockNumber();
+        const toBlock = argv['to-block'] ?? latestBlock;
+        const fromBlock =
+          argv['from-block'] ?? Math.max(0, latestBlock - DEFAULT_ENUMERATE_LOOKBACK_BLOCKS);
+        const chunk = argv.chunk ?? DEFAULT_ENUMERATE_CHUNK_BLOCKS;
+
+        // Resolve underlying token address: explicit --underlying flag wins,
+        // else fall back to VotingEscrow.token() which we already read above.
+        let underlyingAddr = argv.underlying?.trim().toLowerCase() || veTokenAddr;
+        if (!underlyingAddr || underlyingAddr === '0x0' || underlyingAddr === '0x0000000000000000000000000000000000000000') {
+          spin.stop();
+          output.error(
+            '--enumerate-transfers requires --underlying <ERC20 address> when the escrow\'s token() getter returns 0x0. Pass the CVX/CRV/BAL/FXS address explicitly.',
+          );
+          process.exit(1);
+          return;
+        }
+
+        spin.stop();
+        output.info(
+          `  Enumerating underlying Transfer events to ${escrow} ${fromBlock}..${toBlock} (${chunk}-block chunks, underlying=${underlyingAddr})...`,
+        );
+        spin.start();
+
+        const enumResult = await enumerateHoldersViaUnderlyingTransfers(
+          underlyingAddr,
+          escrow,
+          provider,
+          fromBlock,
+          toBlock,
+          chunk,
+        );
+        discoveredHolders = [...discoveredHolders, ...enumResult.holders];
+        if (!enumerationMeta) {
+          enumerationMeta = {
+            windowFrom: enumResult.windowFrom,
+            windowTo: enumResult.windowTo,
+            chunksScanned: enumResult.chunksScanned,
+            enumerated: enumResult.holders.length,
+            method: 'underlying-transfers',
+          };
+        } else {
+          // Both --enumerate and --enumerate-transfers were passed. Record
+          // as union.
+          enumerationMeta.enumerated += enumResult.holders.length;
+          enumerationMeta.chunksScanned += enumResult.chunksScanned;
+          enumerationMeta.method = 'union(deposit-events,underlying-transfers)';
+        }
       }
 
       // Union the explicit list and the discovered list, deduping case-
@@ -273,21 +446,6 @@ export const auditVetokenHandler = {
         );
         process.exit(1);
         return;
-      }
-
-      // Read metadata first so we fail fast on wrong-shape contracts.
-      let veName = 'unknown';
-      let veSymbol = 'unknown';
-      let veTokenAddr = '0x0';
-      try {
-        [veName, veSymbol, veTokenAddr] = await Promise.all([
-          ve.name(),
-          ve.symbol(),
-          ve.token(),
-        ]);
-      } catch {
-        // Vyper public getters sometimes mis-ABI; don't fail the whole audit
-        // if metadata reads fail — just label unknown and continue.
       }
 
       const totalSupplyBn = await ve.totalSupply();
