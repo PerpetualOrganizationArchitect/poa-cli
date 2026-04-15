@@ -114,6 +114,7 @@ export const AUDIT_DB: Record<string, AuditEntry> = {
   'Silo Finance': { grade: 'C', score: 70, gini: 0.890, category: 'DeFi', voters: 85, platform: 'Snapshot' },
   'Tokemak': { grade: 'D', score: 50, gini: 0.956, category: 'DeFi', voters: 181, platform: 'Snapshot' },
   'ShapeShift': { grade: 'C', score: 70, gini: 0.778, category: 'DeFi', voters: 51, platform: 'Snapshot' },
+  'Starknet': { grade: 'B', score: 78, gini: 0.850, category: 'L2', voters: 160, platform: 'Snapshot' },
 };
 
 /**
