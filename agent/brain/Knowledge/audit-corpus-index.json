@@ -286,5 +286,57 @@
     "corrections": 1,
     "lastSweepHB": 386,
     "lastSweepResult": "clean (0 mismatches beyond the documented correction)"
-  }
+  },
+  "pending": [
+    {
+      "project": "Balancer",
+      "label": "veBAL",
+      "address": "0xC128a9954e6c874eA3d62ce62B468bA073093F25",
+      "chainId": 1,
+      "expectedOnChainName": "Vote Escrowed Balancer BPT",
+      "category": "C",
+      "notes": [
+        "Live-verified via eth_call name() in HB#290 task #396.",
+        "Solidity fork of Curve veCRV pattern, NOT Vyper — the commit_transfer_ownership / apply_transfer_ownership selectors are absent from the bytecode. Locked token is the 80/20 BAL/WETH BPT, not raw BAL.",
+        "admin() returns 0x8f42adbba1b16eaae3bb5754915e0d06059add75 — needs follow-up to confirm whether that's a timelock or EOA.",
+        "Category C placement matches Curve veCRV; detection heuristic must be extended to recognize Solidity vote-escrow (currently only fires on Vyper)."
+      ]
+    },
+    {
+      "project": "Frax",
+      "label": "veFXS",
+      "address": "0xc8418aF6358FFddA74e09Ca9CC3Fe03Ca6aDC5b0",
+      "chainId": 1,
+      "expectedOnChainName": "Vote-Escrowed FXS",
+      "category": "C",
+      "notes": [
+        "Live-verified via eth_call name() in HB#290 task #396.",
+        "Curve veCRV fork (likely Vyper). Naming pattern: 'Vote-Escrowed FXS' — same shape as Curve's 'Vote-escrowed CRV'."
+      ]
+    },
+    {
+      "project": "Velodrome",
+      "label": "veVELO",
+      "address": null,
+      "chainId": 10,
+      "expectedOnChainName": "veNFT",
+      "category": "C",
+      "notes": [
+        "Solidly-style veNFT vote-escrow on Optimism. Address TBD; resolve via Velodrome docs before audit.",
+        "Name alias pre-registered as 'venft' since Solidly contracts don't embed the project name in name()."
+      ]
+    },
+    {
+      "project": "Aerodrome",
+      "label": "veAERO",
+      "address": null,
+      "chainId": 8453,
+      "expectedOnChainName": "veNFT",
+      "category": "C",
+      "notes": [
+        "Solidly-fork vote-escrow on Base. Aerodrome is Velodrome's Base-deployed sister project.",
+        "Same veNFT naming pattern as Velodrome; shared alias registration."
+      ]
+    }
+  ]
 }
