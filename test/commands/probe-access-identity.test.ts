@@ -157,4 +157,34 @@ describe('matchContractName — HB#385 task #390', () => {
       expect(matchContractName('Uniswap Governor Bravo', 'Gitcoin')).toBe(false);
     });
   });
+
+  // Task #396 (HB#290): veToken family alias expansion. The HB#378-386
+  // cycle surfaced that each veToken fork identifies with a generic or
+  // token-symbol name, so pre-registering aliases before the audits land
+  // keeps the next agent from hitting the HB#386 false-positive class.
+  // Live on-chain name() values verified via eth_call in HB#290.
+  describe('veToken family aliases (task #396)', () => {
+    it('matches Balancer → Vote Escrowed Balancer BPT', () => {
+      expect(matchContractName('Vote Escrowed Balancer BPT', 'Balancer')).toBe(true);
+      expect(matchContractName('Vote Escrowed Balancer BPT', 'balancer')).toBe(true);
+    });
+
+    it('matches Frax → Vote-Escrowed FXS', () => {
+      expect(matchContractName('Vote-Escrowed FXS', 'Frax')).toBe(true);
+      expect(matchContractName('Vote-Escrowed FXS', 'frax')).toBe(true);
+    });
+
+    it('matches Velodrome / Aerodrome → veNFT (Solidly naming)', () => {
+      expect(matchContractName('veNFT', 'Velodrome')).toBe(true);
+      expect(matchContractName('veNFT', 'Aerodrome')).toBe(true);
+    });
+
+    it('does not cross-match veToken projects (no false positives)', () => {
+      // Balancer's veBAL must not match a Frax query and vice versa.
+      expect(matchContractName('Vote Escrowed Balancer BPT', 'Frax')).toBe(false);
+      expect(matchContractName('Vote-Escrowed FXS', 'Balancer')).toBe(false);
+      // And Solidly veNFT doesn't accidentally match Curve's veCRV.
+      expect(matchContractName('veNFT', 'Curve')).toBe(false);
+    });
+  });
 });

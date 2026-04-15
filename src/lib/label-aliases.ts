@@ -27,6 +27,24 @@ export const LABEL_ALIASES: Record<string, readonly string[]> = {
   // The label "curve votingescrow" → actual "Vote-escrowed CRV" is correct
   // but requires the CRV alias (Curve's token). HB#386 sweep.
   curve: ['crv', 'vote-escrowed'],
+  // Balancer's veBAL at 0xC128a9954e6c874eA3d62ce62B468bA073093F25 identifies
+  // as "Vote Escrowed Balancer BPT" on-chain (the locked token is the 80/20
+  // BAL/WETH BPT, not raw BAL). Verified via eth_call name() on ethereum
+  // mainnet in HB#290 task #396. Pre-registered to unblock the veToken
+  // family expansion queued in Sprint 14.
+  balancer: ['bal', 'bpt', 'vote escrowed balancer'],
+  // Frax's veFXS at 0xc8418aF6358FFddA74e09Ca9CC3Fe03Ca6aDC5b0 identifies as
+  // "Vote-Escrowed FXS" on-chain — same Curve-style naming but with FXS
+  // token ticker. Verified via eth_call name() on ethereum mainnet in
+  // HB#290 task #396.
+  frax: ['fxs', 'vote-escrowed fxs'],
+  // Velodrome and Aerodrome are Solidly-style veNFT systems (Velodrome on
+  // Optimism, Aerodrome on Base). Both identify their vote-escrow contract
+  // with the generic token name "veNFT" rather than the project name.
+  // Pre-registered based on the Solidly contract convention. Live
+  // verification happens when the audit actually probes them.
+  velodrome: ['velo', 'venft'],
+  aerodrome: ['aero', 'venft'],
 };
 
 /**

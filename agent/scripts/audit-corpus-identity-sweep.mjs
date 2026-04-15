@@ -77,6 +77,13 @@ const LABEL_ALIASES = {
   // The label "curve votingescrow" → actual "Vote-escrowed CRV" is correct
   // but requires the CRV alias (Curve's token). HB#386 sweep.
   curve: ['crv', 'vote-escrowed'],
+  // Balancer veBAL → "Vote Escrowed Balancer BPT" (HB#290 task #396).
+  balancer: ['bal', 'bpt', 'vote escrowed balancer'],
+  // Frax veFXS → "Vote-Escrowed FXS" (HB#290 task #396).
+  frax: ['fxs', 'vote-escrowed fxs'],
+  // Velodrome / Aerodrome Solidly-style veNFT (HB#290 task #396).
+  velodrome: ['velo', 'venft'],
+  aerodrome: ['aero', 'venft'],
 };
 
 /**

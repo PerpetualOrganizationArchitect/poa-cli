@@ -60,7 +60,7 @@ export const AUDIT_DB: Record<string, AuditEntry> = {
   'Olympus': { grade: 'B', score: 76, gini: 0.842, category: 'DeFi', voters: 32, platform: 'Snapshot' },
   'Convex': { grade: 'D', score: 58, gini: 0.951, category: 'DeFi', voters: 128, platform: 'Snapshot' },
   '1inch': { grade: 'D', score: 58, gini: 0.93, category: 'DeFi', voters: 63, platform: 'Snapshot' },
-  'Lido': { grade: 'C', score: 71, gini: 0.904, category: 'DeFi', voters: 102, platform: 'Snapshot' },
+  'Lido': { grade: 'C', score: 73, gini: 0.862, category: 'DeFi', voters: 102, platform: 'Snapshot' },
   'Sushi': { grade: 'D', score: 50, gini: 0.975, category: 'DeFi', voters: 121, platform: 'Snapshot' },
   'ENS': { grade: 'D', score: 52, gini: 0.976, category: 'Infrastructure', voters: 97, platform: 'Governor' },
   'Arbitrum': { grade: 'C', score: 68, gini: 0.885, category: 'L2', voters: 170, platform: 'Snapshot' },
@@ -116,6 +116,7 @@ export const AUDIT_DB: Record<string, AuditEntry> = {
   'ShapeShift': { grade: 'C', score: 70, gini: 0.778, category: 'DeFi', voters: 51, platform: 'Snapshot' },
   'Starknet': { grade: 'B', score: 78, gini: 0.850, category: 'L2', voters: 160, platform: 'Snapshot' },
   'Optimism Citizens House': { grade: 'B', score: 82, gini: 0.365, category: 'Delegated Council', voters: 60, platform: 'Snapshot' },
+  'BitDAO': { grade: 'B', score: 75, gini: 0.981, category: 'L2', voters: 654, platform: 'Snapshot' },
 };
 
 /**
