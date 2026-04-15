@@ -1,11 +1,13 @@
 import type { Argv, ArgumentsCamelCase } from 'yargs';
 import { ethers } from 'ethers';
 import { query } from '../../lib/subgraph';
-import { resolveOrgId } from '../../lib/resolve';
+import { resolveOrgId, resolveOrgModules } from '../../lib/resolve';
+import { resolveNetworkConfig } from '../../config/networks';
 import { fetchJson } from '../../lib/ipfs';
 import { FETCH_PROJECTS_DATA } from '../../queries/task';
 import { formatAddress } from '../../lib/encoding';
 import * as output from '../../lib/output';
+import { probeTaskOnChain } from './probe';
 
 interface ViewArgs {
   org: string;
@@ -39,9 +41,87 @@ export const viewHandler = {
         if (found) break;
       }
 
+      // Task #385 (HB#236): on-chain fallback probe when subgraph says
+      // "not found". The POP subgraph periodically falls 30+ task IDs
+      // behind chain state (HB#223 brain lesson: task-list-stuck-at-367
+      // class of bug). Before giving up, probe the TaskManager contract
+      // directly via event-log scanning. This is the symmetric companion
+      // to Task #378's vote/list.ts probe.
       if (!found) {
+        try {
+          const modules = await resolveOrgModules(argv.org, argv.chain);
+          if (modules.taskManagerAddress) {
+            const netConfig = resolveNetworkConfig(argv.chain);
+            const provider = new ethers.providers.JsonRpcProvider(
+              netConfig.resolvedRpc,
+              netConfig.chainId,
+            );
+            const probed = await probeTaskOnChain(
+              modules.taskManagerAddress,
+              argv.task,
+              provider,
+            );
+            if (probed) {
+              spin.stop();
+              // Try to pull IPFS metadata — usually works even when the
+              // subgraph is lagging, since IPFS is pinned independently.
+              let probedMeta: any = null;
+              if (probed.metadataHash) {
+                try {
+                  probedMeta = await fetchJson(probed.metadataHash);
+                } catch { /* ignore */ }
+              }
+              const probedPayout = probed.payout
+                ? ethers.utils.formatUnits(probed.payout, 18)
+                : '0';
+              if (output.isJsonMode()) {
+                output.json({
+                  taskId: probed.taskId,
+                  title: probed.title || probedMeta?.name,
+                  description: probedMeta?.description,
+                  status: probed.status,
+                  project: probed.projectId,
+                  payout: probedPayout + ' PT',
+                  bountyToken: probed.bountyToken,
+                  bountyPayout: probed.bountyPayout,
+                  assignee: probed.assignee,
+                  claimer: probed.claimer,
+                  completer: probed.completer,
+                  difficulty: probedMeta?.difficulty,
+                  estHours: probedMeta?.estimatedHours || probedMeta?.estHours,
+                  createdBlock: probed.createdBlock,
+                  lastEventBlock: probed.lastEventBlock,
+                  _source: 'on-chain probe (subgraph lag fallback, Task #385)',
+                });
+              } else {
+                console.log('');
+                console.log(`  Task #${probed.taskId}: ${probed.title || probedMeta?.name || 'Untitled'}`);
+                console.log(`  Source:      on-chain probe (subgraph lag fallback)`);
+                console.log(`  Status:      ${probed.status}`);
+                console.log(`  Payout:      ${probedPayout} PT`);
+                if (probed.assignee) console.log(`  Assignee:    ${probed.assignee}`);
+                if (probed.claimer && probed.claimer !== probed.assignee) {
+                  console.log(`  Claimer:     ${probed.claimer}`);
+                }
+                if (probed.completer) console.log(`  Completer:   ${probed.completer}`);
+                if (probedMeta?.description) console.log(`  Description: ${probedMeta.description}`);
+                console.log(`  Created at:  block ${probed.createdBlock}`);
+                console.log(`  Last event:  block ${probed.lastEventBlock}`);
+                console.log('');
+                console.log(`  \x1b[33mNote: subgraph does not know about this task yet.\x1b[0m`);
+                console.log(`  \x1b[33mShowing on-chain state only; applications/rejections/IPFS-metadata-derived fields may be incomplete.\x1b[0m`);
+                console.log('');
+              }
+              return;
+            }
+          }
+        } catch {
+          // Fall through to the normal "not found" error if the probe
+          // itself errors out — don't mask the underlying subgraph-miss
+          // with an unrelated RPC error.
+        }
         spin.stop();
-        output.error(`Task ${argv.task} not found`);
+        output.error(`Task ${argv.task} not found (subgraph + on-chain probe both failed)`);
         process.exit(1);
         return;
       }

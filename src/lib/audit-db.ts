@@ -64,7 +64,10 @@ export const AUDIT_DB: Record<string, AuditEntry> = {
   'Sushi': { grade: 'D', score: 50, gini: 0.975, category: 'DeFi', voters: 121, platform: 'Snapshot' },
   'ENS': { grade: 'D', score: 52, gini: 0.976, category: 'Infrastructure', voters: 97, platform: 'Governor' },
   'Arbitrum': { grade: 'C', score: 68, gini: 0.885, category: 'L2', voters: 170, platform: 'Snapshot' },
-  'Optimism': { grade: 'B', score: 76, gini: 0.82, category: 'L2', voters: 300, platform: 'Snapshot' },
+  // HB#486: 'Optimism' entry removed — stale duplicate of 'Optimism Collective'
+  // (below). Original had Gini 0.82/300v from an older snapshot space that
+  // no longer returns data. Current canonical is opcollective.eth = 'Optimism
+  // Collective' at 0.891/177v.
   'Gitcoin': { grade: 'D', score: 58, gini: 0.979, category: 'Public Goods', voters: 199, platform: 'Snapshot' },
   'ApeCoin': { grade: 'D', score: 55, gini: 0.95, category: 'Metaverse', voters: 80, platform: 'Snapshot' },
   'Decentraland': { grade: 'C', score: 70, gini: 0.843, category: 'Metaverse', voters: 59, platform: 'Snapshot' },
@@ -84,7 +87,7 @@ export const AUDIT_DB: Record<string, AuditEntry> = {
   'Gearbox': { grade: 'D', score: 55, gini: 0.863, category: 'DeFi', voters: 59, platform: 'Snapshot' },
   'Aavegotchi': { grade: 'B', score: 80, gini: 0.642, category: 'Gaming', voters: 164, platform: 'Snapshot' },
   'Kleros': { grade: 'C', score: 65, gini: 0.834, category: 'Arbitration', voters: 119, platform: 'Snapshot' },
-  'Loopring': { grade: 'A', score: 85, gini: 0.665, category: 'L2/zkRollup', voters: 742, platform: 'Snapshot' },
+  'Loopring': { grade: 'A', score: 85, gini: 0.665, category: 'L2', voters: 742, platform: 'Snapshot' },
   'Harvest Finance': { grade: 'D', score: 58, gini: 0.93, category: 'DeFi', voters: 422, platform: 'Snapshot' },
   'Yearn': { grade: 'C', score: 72, gini: 0.824, category: 'DeFi', voters: 425, platform: 'Snapshot' },
   'Hop': { grade: 'D', score: 48, gini: 0.971, category: 'Bridge', voters: 248, platform: 'Snapshot' },
