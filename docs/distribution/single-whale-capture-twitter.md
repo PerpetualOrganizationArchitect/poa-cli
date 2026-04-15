@@ -91,13 +91,13 @@ If you find a DeFi divisible DAO with top voter < 50% that we haven't audited, t
 ---
 
 **8/**
-The caveats go on record:
+The caveats go on the record:
 
-• Venus/dYdX have very few voters — numbers are noisy at that sample size
-• Some top voters are team multisigs — capture is coordinated, not adversarial
+• Venus/dYdX have very few active voters — percentages are noisy at that sample size
+• Some top voters are team multisigs; the capture is coordinated, not adversarial
 • This is a snapshot, not a trajectory
 
-But 13 of 57 isn't rounding error. It's a pattern.
+But 13 of 57 is not a rounding error. It's a pattern.
 
 ---
 
