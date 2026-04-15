@@ -1,0 +1,69 @@
+[
+  {
+    "type": "function",
+    "name": "lock",
+    "stateMutability": "nonpayable",
+    "inputs": [ { "name": "wad", "type": "uint256" } ],
+    "outputs": []
+  },
+  {
+    "type": "function",
+    "name": "free",
+    "stateMutability": "nonpayable",
+    "inputs": [ { "name": "wad", "type": "uint256" } ],
+    "outputs": []
+  },
+  {
+    "type": "function",
+    "name": "etch",
+    "stateMutability": "nonpayable",
+    "inputs": [ { "name": "yays", "type": "address[]" } ],
+    "outputs": [ { "name": "slate", "type": "bytes32" } ]
+  },
+  {
+    "type": "function",
+    "name": "vote",
+    "stateMutability": "nonpayable",
+    "inputs": [ { "name": "yays", "type": "address[]" } ],
+    "outputs": [ { "name": "slate", "type": "bytes32" } ]
+  },
+  {
+    "type": "function",
+    "name": "lift",
+    "stateMutability": "nonpayable",
+    "inputs": [ { "name": "whom", "type": "address" } ],
+    "outputs": []
+  },
+  {
+    "type": "function",
+    "name": "launch",
+    "stateMutability": "nonpayable",
+    "inputs": [],
+    "outputs": []
+  },
+  {
+    "type": "function",
+    "name": "setOwner",
+    "stateMutability": "nonpayable",
+    "inputs": [ { "name": "owner_", "type": "address" } ],
+    "outputs": []
+  },
+  {
+    "type": "function",
+    "name": "setAuthority",
+    "stateMutability": "nonpayable",
+    "inputs": [ { "name": "authority_", "type": "address" } ],
+    "outputs": []
+  },
+  {
+    "type": "function",
+    "name": "setUserRole",
+    "stateMutability": "nonpayable",
+    "inputs": [
+      { "name": "who", "type": "address" },
+      { "name": "role", "type": "uint8" },
+      { "name": "enabled", "type": "bool" }
+    ],
+    "outputs": []
+  }
+]
