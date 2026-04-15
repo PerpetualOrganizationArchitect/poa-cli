@@ -125,13 +125,121 @@ async function fetchContractName(rpcUrl, address) {
   return null;
 }
 
+/**
+ * HB#387 task #392 — index-validation mode.
+ *
+ * Reads agent/brain/Knowledge/audit-corpus-index.json and checks every
+ * entry against live on-chain data via name(). Strict exact-match:
+ * the entry's canonicalName must equal the live result, OR both must
+ * be null (for contracts that don't expose name()).
+ *
+ * This is strictly better than the filename-fuzzy mode: no alias map
+ * needed because the index file IS the source of truth.
+ *
+ * Mode selection (from main()):
+ *   default     → index mode only (requires audit-corpus-index.json)
+ *   --filename  → filename-fuzzy mode only (pre-HB#387 behavior)
+ *   --both      → run both sequentially
+ */
+async function runIndexValidation() {
+  const REPO_ROOT = new URL('../..', import.meta.url).pathname;
+  const INDEX_PATH = join(REPO_ROOT, 'agent/brain/Knowledge/audit-corpus-index.json');
+  let index;
+  try {
+    index = JSON.parse(readFileSync(INDEX_PATH, 'utf8'));
+  } catch (err) {
+    console.error(`Failed to read index at ${INDEX_PATH}: ${err.message}`);
+    process.exit(2);
+  }
+
+  const entries = index.entries || [];
+  console.log(`\nArgus corpus index validation — ${entries.length} entries from ${INDEX_PATH}\n`);
+  console.log('─'.repeat(120));
+  console.log(
+    `${'LABEL'.padEnd(40)} ${'CHAIN'.padEnd(6)} ${'EXPECTED'.padEnd(30)} ${'ACTUAL'.padEnd(30)} MATCH`,
+  );
+  console.log('─'.repeat(120));
+
+  let mismatchCount = 0;
+  let nullOkCount = 0;
+  let matchedCount = 0;
+
+  for (const entry of entries) {
+    const { address, chainId, filenameLabel, canonicalName } = entry;
+    const rpc = CHAIN_RPC[chainId];
+    if (!rpc) {
+      console.log(`${filenameLabel.padEnd(40)} chain=${chainId} (no RPC configured)`);
+      continue;
+    }
+    const actual = await fetchContractName(rpc, address);
+
+    let status;
+    if (canonicalName === null) {
+      if (actual === null) {
+        status = '✓ null-ok';
+        nullOkCount++;
+      } else {
+        status = `✗ unexpected name: ${actual}`;
+        mismatchCount++;
+      }
+    } else {
+      if (actual === canonicalName) {
+        status = '✓';
+        matchedCount++;
+      } else {
+        status = `✗ MISMATCH`;
+        mismatchCount++;
+      }
+    }
+
+    const expectedDisplay = (canonicalName ?? '(null — manual verify)').slice(0, 28);
+    const actualDisplay = (actual ?? '(null)').slice(0, 28);
+    console.log(
+      `${filenameLabel.padEnd(40)} ${String(chainId).padEnd(6)} ${expectedDisplay.padEnd(30)} ${actualDisplay.padEnd(30)} ${status}`,
+    );
+  }
+
+  console.log('─'.repeat(120));
+  console.log(
+    `\nSummary: ${entries.length} entries | ${matchedCount} matched | ${nullOkCount} null-ok | ${mismatchCount} mismatches\n`,
+  );
+
+  if (mismatchCount > 0) {
+    console.log('MISMATCHES — investigate and update the index.\n');
+    return false;
+  }
+
+  console.log('CLEAN INDEX — every entry matches its live on-chain name() result.\n');
+  return true;
+}
+
 async function main() {
+  // HB#387: dispatch between index mode (default) and filename mode (--filename fallback).
+  const args = process.argv.slice(2);
+  const mode = args.includes('--filename')
+    ? 'filename'
+    : args.includes('--both')
+      ? 'both'
+      : 'index';
+
+  if (mode === 'index') {
+    const ok = await runIndexValidation();
+    if (!ok) process.exit(1);
+    return;
+  }
+  if (mode === 'both') {
+    const ok = await runIndexValidation();
+    if (!ok) process.exit(1);
+    // Fall through to filename sweep
+  }
+
+  // Filename-fuzzy mode (pre-HB#387 behavior, fallback for when index is missing)
   const SCRIPTS_DIR = new URL('.', import.meta.url).pathname;
   const files = readdirSync(SCRIPTS_DIR)
     .filter((f) => f.startsWith('probe-') && f.endsWith('.json'))
     .sort();
 
-  console.log(`\nArgus corpus identity sweep — ${files.length} probe artifacts\n`);
+  console.log(`\nArgus corpus identity sweep (filename mode) — ${files.length} probe artifacts\n`);
   console.log('─'.repeat(120));
   console.log(
     `${'FILE'.padEnd(48)} ${'CHAIN'.padEnd(6)} ${'ACTUAL NAME'.padEnd(35)} MATCH`,
