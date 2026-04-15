@@ -329,18 +329,27 @@
       "chainId": 1,
       "canonicalName": "GTC Governor Alpha",
       "filenameLabel": "Gitcoin Governor Alpha",
-      "category": null,
-      "categoryLabel": "UNRANKED — pending GovernorAlpha ABI",
-      "score": null,
-      "auditHB": 384,
-      "sourceFile": "agent/scripts/probe-gitcoin-alpha-mainnet.json",
-      "leaderboardRank": null,
-      "lastVerified": "2026-04-15T16:30:00Z",
+      "category": "A",
+      "categoryLabel": "Inline-modifier governance (restored from UNRANKED in HB#297)",
+      "score": 90,
+      "scoreStatus": "clean — 6/6 gated, immutable governor, 66 proposals, 0 suspicious passes",
+      "auditHB": 297,
+      "originalAuditHB": 384,
+      "sourceFile": "agent/scripts/probe-gitcoin-alpha-mainnet-fresh.json",
+      "legacySourceFile": "agent/scripts/probe-gitcoin-alpha-mainnet.json",
+      "legacySourceStatus": "SUPERSEDED by HB#297 re-audit — the HB#384 probe used --skip-code-check + Bravo ABI against an Alpha contract, producing 15 phantom passes. Retained as a methodology-error archive.",
+      "reportFile": "agent/artifacts/audits/gitcoin-governor-alpha-audit-hb297.md",
+      "leaderboardRank": 3,
+      "lastVerified": "2026-04-15T18:50:00Z",
       "notes": [
-        "Gitcoin's real governance contract. Discovered HB#384 during the Gitcoin/Uniswap mislabel correction — Gitcoin uses GovernorAlpha (pre-Bravo Compound implementation), not GovernorBravo.",
-        "Probed HB#384 with the Compound Bravo ABI as a diagnostic — produced weak signal (14 passed / 4 gated / 1 unknown) because Alpha has different function shapes than Bravo.",
-        "UNRANKED in Leaderboard v3 pending a proper vendored GovernorAlpha.json ABI and a clean re-probe. Filed as Sprint 14 follow-up.",
-        "Contract name is 'GTC Governor Alpha' where GTC is Gitcoin's token ticker — the corpus-index sweep matcher needed a gitcoin → gtc alias."
+        "RESTORED to Category A after HB#297 re-audit with new src/abi/external/GovernorAlpha.json. Rank 3 in Category A (Compound 100 → Nouns 92 → Gitcoin 90 → Arbitrum 87 → Uniswap 85 → ENS 84 / Optimism Agora 84).",
+        "Probe results: 6/6 functions gated with plain-text error strings. 0 suspicious passes. 0 not-implemented. Perfect gate rate.",
+        "F-1 STRONG POSITIVE: ZERO admin setter functions in bytecode. No __acceptAdmin, no __abdicate, no guardian(), no whitelist*. Verified via selector-level grep against the runtime code. Gitcoin Alpha is an IMMUTABLE governor — once deployed, parameters cannot be changed. Fewer admin knobs = fewer attack surfaces.",
+        "F-2 POSITIVE: proposalCount() = 66 (as of HB#297). Contract is ACTIVE, not deprecated. Parameters: quorumVotes 2.5M GTC, proposalThreshold 1M GTC, votingDelay ~2 days, votingPeriod ~5.6 days. Timelock at 0x57a8865cfb1ecef7253c27da6b4bc3daee5be518.",
+        "F-3 METHODOLOGY CORRECTION: the HB#384 probe artifact was tool-error, not governance signal. Used --skip-code-check against a Bravo ABI where selectors don't match Alpha. When probe-access calls a non-existent selector under --skip-code-check, the EVM routes to fallback/receive which returns success — phantom passes. 15 of the HB#384 'passed' results were phantom. Only 4 (propose, cancel, queue, execute) were real.",
+        "F-4 ARCHITECTURAL: Alpha uses castVote(uint256,bool) not Bravo's castVote(uint256,uint8) — older for/against model without abstention or castVoteWithReason. Simpler surface is the tradeoff for the immutability.",
+        "PREVENTION RULE (surfaces as brain lesson): never combine --skip-code-check with a mismatched ABI. Without a matching ABI, run without the flag and trust 'not-implemented' results.",
+        "HB#384 legacy note: Gitcoin's on-chain contract is GovernorAlpha (pre-Bravo Compound fork) not GovernorBravo. The HB#384 discovery of this fact stands; the subsequent probe data on it was corrupt and is now superseded."
       ]
     }
   ],
@@ -368,17 +377,17 @@
   "schemaVersion": 1,
   "meta": {
     "totalEntries": 17,
-    "rankedEntries": 15,
-    "unrankedEntries": 2,
-    "categoryA": 6,
+    "rankedEntries": 16,
+    "unrankedEntries": 1,
+    "categoryA": 7,
     "categoryB": 2,
     "categoryC": 6,
     "categoryD": 2,
     "corrections": 1,
     "lastSweepHB": 386,
     "lastSweepResult": "clean (0 mismatches beyond the documented correction)",
-    "lastAuditHB": 296,
-    "lastAuditProject": "Velodrome V2 + Aerodrome veNFT (Sprint 14 P1 batch complete)"
+    "lastAuditHB": 297,
+    "lastAuditProject": "Gitcoin GovernorAlpha re-audit (restored to Category A at rank 3, score 90)"
   },
   "pending": [
     {
