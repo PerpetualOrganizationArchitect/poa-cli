@@ -16,12 +16,19 @@ import type { Argv, ArgumentsCamelCase } from 'yargs';
 import { ethers } from 'ethers';
 import { openBrainDoc, stopBrainNode } from '../../lib/brain';
 import { routedDispatch } from '../../lib/brain-ops';
+import {
+  argvToIdempotencyString,
+  checkIdempotencyCache,
+  recordIdempotentResult,
+} from '../../lib/idempotency';
 import * as output from '../../lib/output';
 
 interface RemoveProjectArgs {
   doc: string;
   projectId: string;
   reason?: string;
+  'idempotency-key'?: string;
+  'no-idempotency'?: boolean;
 }
 
 export const removeProjectHandler = {
@@ -40,7 +47,9 @@ export const removeProjectHandler = {
       .option('reason', {
         describe: 'Optional human-readable reason recorded on the tombstone',
         type: 'string',
-      }),
+      })
+      .option('idempotency-key', { type: 'string', describe: 'Task #375 (HB#217) idempotency cache.' })
+      .option('no-idempotency', { type: 'boolean', default: false, describe: 'Bypass the idempotency cache.' }),
 
   handler: async (argv: ArgumentsCamelCase<RemoveProjectArgs>) => {
     try {
@@ -89,6 +98,20 @@ export const removeProjectHandler = {
       const removerAddress = new ethers.Wallet(key).address.toLowerCase();
       const now = Math.floor(Date.now() / 1000);
 
+      // Task #375 (HB#217): agent-scoped idempotency cache
+      const idempKey = argv.idempotencyKey || argvToIdempotencyString(argv as Record<string, any>);
+      if (!argv.noIdempotency) {
+        const cached = checkIdempotencyCache(removerAddress, 'brain.removeProject', idempKey);
+        if (cached) {
+          if (output.isJsonMode()) {
+            output.json({ status: 'ok', cached: true, ...cached });
+          } else {
+            console.log(`  Project "${argv.projectId}" already removed (idempotency cache hit). head: ${cached.headCid}`);
+          }
+          return;
+        }
+      }
+
       // Route through the unified dispatcher (HB#324 ship-2).
       const result = await routedDispatch({
         type: 'removeProject',
@@ -98,6 +121,14 @@ export const removeProjectHandler = {
         removedAt: now,
         removedReason: argv.reason,
       });
+
+      if (!argv.noIdempotency) {
+        recordIdempotentResult(removerAddress, 'brain.removeProject', idempKey, {
+          docId: argv.doc,
+          projectId: argv.projectId,
+          headCid: result.headCid,
+        });
+      }
 
       if (output.isJsonMode()) {
         output.json({

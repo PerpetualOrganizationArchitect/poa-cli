@@ -28,9 +28,15 @@
  */
 
 import type { Argv, ArgumentsCamelCase } from 'yargs';
+import { ethers } from 'ethers';
 import { stopBrainNode } from '../../lib/brain';
 import { routedDispatch } from '../../lib/brain-ops';
 import type { RetroChangeStatus } from '../../lib/brain-projections';
+import {
+  argvToIdempotencyString,
+  checkIdempotencyCache,
+  recordIdempotentResult,
+} from '../../lib/idempotency';
 import * as output from '../../lib/output';
 
 interface MarkChangeArgs {
@@ -39,6 +45,8 @@ interface MarkChangeArgs {
   changeId: string;
   status: RetroChangeStatus;
   filedTaskId?: string;
+  'idempotency-key'?: string;
+  'no-idempotency'?: boolean;
 }
 
 const VALID_STATUSES: RetroChangeStatus[] = [
@@ -71,6 +79,8 @@ export const retroMarkChangeHandler = {
         describe: 'When --status=filed, record the on-chain task id on the change (optional)',
         type: 'string',
       })
+      .option('idempotency-key', { type: 'string', describe: 'Task #375 (HB#217) idempotency cache.' })
+      .option('no-idempotency', { type: 'boolean', default: false, describe: 'Bypass the idempotency cache.' })
       .demandOption(['retro-id', 'change-id']),
 
   handler: async (argv: ArgumentsCamelCase<MarkChangeArgs>) => {
@@ -81,6 +91,19 @@ export const retroMarkChangeHandler = {
         return;
       }
 
+      // Task #375 idempotency check, agent-scoped
+      const signerKey = process.env.POP_PRIVATE_KEY;
+      const authorScope = signerKey ? new ethers.Wallet(signerKey).address.toLowerCase() : 'anonymous';
+      const idempKey = (argv as any).idempotencyKey || argvToIdempotencyString(argv as Record<string, any>);
+      if (!(argv as any).noIdempotency) {
+        const cached = checkIdempotencyCache(authorScope, 'brain.retroMarkChange', idempKey);
+        if (cached) {
+          if (output.isJsonMode()) output.json({ status: 'ok', cached: true, ...cached });
+          else console.log(`  Change "${argv.changeId}" already marked (idempotency cache hit). head: ${cached.headCid}`);
+          return;
+        }
+      }
+
       const result = await routedDispatch({
         type: 'updateChangeStatus',
         docId: argv.doc,
@@ -89,6 +112,16 @@ export const retroMarkChangeHandler = {
         newStatus: argv.status,
         filedTaskId: argv.filedTaskId,
       });
+
+      if (!(argv as any).noIdempotency) {
+        recordIdempotentResult(authorScope, 'brain.retroMarkChange', idempKey, {
+          docId: argv.doc,
+          retroId: argv.retroId,
+          changeId: argv.changeId,
+          newStatus: argv.status,
+          headCid: result.headCid,
+        });
+      }
 
       if (output.isJsonMode()) {
         output.json({

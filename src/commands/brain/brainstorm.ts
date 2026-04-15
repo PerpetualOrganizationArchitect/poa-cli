@@ -27,6 +27,11 @@ import type { Argv, ArgumentsCamelCase } from 'yargs';
 import { ethers } from 'ethers';
 import { openBrainDoc, stopBrainNode } from '../../lib/brain';
 import { routedDispatch } from '../../lib/brain-ops';
+import {
+  argvToIdempotencyString,
+  checkIdempotencyCache,
+  recordIdempotentResult,
+} from '../../lib/idempotency';
 import * as output from '../../lib/output';
 
 // ---------------------------------------------------------------------------
@@ -97,13 +102,26 @@ export const brainstormStartHandler = {
       .option('window-to-hb', {
         describe: 'Ending HB number of the brainstorm window',
         type: 'number',
-      }),
+      })
+      .option('idempotency-key', { type: 'string', describe: 'Task #375 (HB#217) idempotency cache.' })
+      .option('no-idempotency', { type: 'boolean', default: false, describe: 'Bypass the idempotency cache.' }),
 
   handler: async (argv: ArgumentsCamelCase<StartArgs>) => {
     try {
       const author = resolveAuthor(argv.author);
       const now = Math.floor(Date.now() / 1000);
       const id = argv.id ?? `${slugify(argv.title) || 'brainstorm'}-${now}`;
+
+      // Task #375 idempotency check, agent-scoped
+      const idempKey = (argv as any).idempotencyKey || argvToIdempotencyString(argv as Record<string, any>);
+      if (!(argv as any).noIdempotency) {
+        const cached = checkIdempotencyCache(author, 'brain.brainstormStart', idempKey);
+        if (cached) {
+          if (output.isJsonMode()) output.json({ status: 'ok', cached: true, ...cached });
+          else console.log(`  Brainstorm already opened (idempotency cache hit). id: ${cached.brainstormId} head: ${cached.headCid}`);
+          return;
+        }
+      }
 
       const result = await routedDispatch({
         type: 'startBrainstorm',
@@ -116,6 +134,14 @@ export const brainstormStartHandler = {
         windowFromHB: argv.windowFromHb,
         windowToHB: argv.windowToHb,
       });
+
+      if (!(argv as any).noIdempotency) {
+        recordIdempotentResult(author, 'brain.brainstormStart', idempKey, {
+          docId: argv.doc,
+          brainstormId: id,
+          headCid: result.headCid,
+        });
+      }
 
       if (output.isJsonMode()) {
         output.json({
@@ -192,6 +218,8 @@ export const brainstormRespondHandler = {
         type: 'array',
         string: true,
       })
+      .option('idempotency-key', { type: 'string', describe: 'Task #375 (HB#217) idempotency cache.' })
+      .option('no-idempotency', { type: 'boolean', default: false, describe: 'Bypass the idempotency cache.' })
       .check((argv) => {
         if (!argv.message && !argv.addIdea && (!argv.vote || argv.vote.length === 0)) {
           throw new Error('Must supply at least one of --message / --add-idea / --vote');
@@ -241,6 +269,17 @@ export const brainstormRespondHandler = {
         addIdeaPayload = { id: ideaId, message: argv.addIdea };
       }
 
+      // Task #375 idempotency check, agent-scoped
+      const idempKey = (argv as any).idempotencyKey || argvToIdempotencyString(argv as Record<string, any>);
+      if (!(argv as any).noIdempotency) {
+        const cached = checkIdempotencyCache(author, 'brain.brainstormRespond', idempKey);
+        if (cached) {
+          if (output.isJsonMode()) output.json({ status: 'ok', cached: true, ...cached });
+          else console.log(`  Brainstorm response already recorded (idempotency cache hit). head: ${cached.headCid}`);
+          return;
+        }
+      }
+
       const result = await routedDispatch({
         type: 'respondToBrainstorm',
         docId: argv.doc,
@@ -251,6 +290,14 @@ export const brainstormRespondHandler = {
         votes: Object.keys(votes).length > 0 ? votes : undefined,
         timestamp: now,
       });
+
+      if (!(argv as any).noIdempotency) {
+        recordIdempotentResult(author, 'brain.brainstormRespond', idempKey, {
+          docId: argv.doc,
+          brainstormId: argv.id,
+          headCid: result.headCid,
+        });
+      }
 
       if (output.isJsonMode()) {
         output.json({
@@ -324,12 +371,24 @@ export const brainstormPromoteHandler = {
       .option('author', {
         describe: 'Override the author address',
         type: 'string',
-      }),
+      })
+      .option('idempotency-key', { type: 'string', describe: 'Task #375 (HB#217) idempotency cache.' })
+      .option('no-idempotency', { type: 'boolean', default: false, describe: 'Bypass the idempotency cache.' }),
 
   handler: async (argv: ArgumentsCamelCase<PromoteArgs>) => {
     try {
       const author = resolveAuthor(argv.author);
       const now = Math.floor(Date.now() / 1000);
+
+      const idempKey = (argv as any).idempotencyKey || argvToIdempotencyString(argv as Record<string, any>);
+      if (!(argv as any).noIdempotency) {
+        const cached = checkIdempotencyCache(author, 'brain.brainstormPromote', idempKey);
+        if (cached) {
+          if (output.isJsonMode()) output.json({ status: 'ok', cached: true, ...cached });
+          else console.log(`  Idea already promoted (idempotency cache hit). head: ${cached.headCid}`);
+          return;
+        }
+      }
 
       const result = await routedDispatch({
         type: 'promoteIdea',
@@ -340,6 +399,15 @@ export const brainstormPromoteHandler = {
         promotedBy: author,
         promotedAt: now,
       });
+
+      if (!(argv as any).noIdempotency) {
+        recordIdempotentResult(author, 'brain.brainstormPromote', idempKey, {
+          docId: argv.doc,
+          brainstormId: argv.id,
+          ideaId: argv.ideaId,
+          headCid: result.headCid,
+        });
+      }
 
       if (output.isJsonMode()) {
         output.json({
@@ -397,12 +465,24 @@ export const brainstormCloseHandler = {
       })
       .option('author', {
         type: 'string',
-      }),
+      })
+      .option('idempotency-key', { type: 'string', describe: 'Task #375 (HB#217) idempotency cache.' })
+      .option('no-idempotency', { type: 'boolean', default: false, describe: 'Bypass the idempotency cache.' }),
 
   handler: async (argv: ArgumentsCamelCase<CloseArgs>) => {
     try {
       const author = resolveAuthor(argv.author);
       const now = Math.floor(Date.now() / 1000);
+
+      const idempKey = (argv as any).idempotencyKey || argvToIdempotencyString(argv as Record<string, any>);
+      if (!(argv as any).noIdempotency) {
+        const cached = checkIdempotencyCache(author, 'brain.brainstormClose', idempKey);
+        if (cached) {
+          if (output.isJsonMode()) output.json({ status: 'ok', cached: true, ...cached });
+          else console.log(`  Brainstorm "${argv.id}" already closed (idempotency cache hit). head: ${cached.headCid}`);
+          return;
+        }
+      }
 
       const result = await routedDispatch({
         type: 'closeBrainstorm',
@@ -412,6 +492,14 @@ export const brainstormCloseHandler = {
         closedAt: now,
         reason: argv.reason,
       });
+
+      if (!(argv as any).noIdempotency) {
+        recordIdempotentResult(author, 'brain.brainstormClose', idempKey, {
+          docId: argv.doc,
+          brainstormId: argv.id,
+          headCid: result.headCid,
+        });
+      }
 
       if (output.isJsonMode()) {
         output.json({
@@ -468,12 +556,24 @@ export const brainstormRemoveHandler = {
       })
       .option('author', {
         type: 'string',
-      }),
+      })
+      .option('idempotency-key', { type: 'string', describe: 'Task #375 (HB#217) idempotency cache.' })
+      .option('no-idempotency', { type: 'boolean', default: false, describe: 'Bypass the idempotency cache.' }),
 
   handler: async (argv: ArgumentsCamelCase<RemoveArgs>) => {
     try {
       const author = resolveAuthor(argv.author);
       const now = Math.floor(Date.now() / 1000);
+
+      const idempKey = (argv as any).idempotencyKey || argvToIdempotencyString(argv as Record<string, any>);
+      if (!(argv as any).noIdempotency) {
+        const cached = checkIdempotencyCache(author, 'brain.brainstormRemove', idempKey);
+        if (cached) {
+          if (output.isJsonMode()) output.json({ status: 'ok', cached: true, ...cached });
+          else console.log(`  Brainstorm "${argv.id}" already removed (idempotency cache hit). head: ${cached.headCid}`);
+          return;
+        }
+      }
 
       const result = await routedDispatch({
         type: 'removeBrainstorm',
@@ -483,6 +583,14 @@ export const brainstormRemoveHandler = {
         removedAt: now,
         removedReason: argv.reason,
       });
+
+      if (!(argv as any).noIdempotency) {
+        recordIdempotentResult(author, 'brain.brainstormRemove', idempKey, {
+          docId: argv.doc,
+          brainstormId: argv.id,
+          headCid: result.headCid,
+        });
+      }
 
       if (output.isJsonMode()) {
         output.json({

@@ -16,12 +16,19 @@ import type { Argv, ArgumentsCamelCase } from 'yargs';
 import { ethers } from 'ethers';
 import { stopBrainNode } from '../../lib/brain';
 import { routedDispatch } from '../../lib/brain-ops';
+import {
+  argvToIdempotencyString,
+  checkIdempotencyCache,
+  recordIdempotentResult,
+} from '../../lib/idempotency';
 import * as output from '../../lib/output';
 
 interface RetroRemoveArgs {
   doc: string;
   retroId: string;
   reason?: string;
+  'idempotency-key'?: string;
+  'no-idempotency'?: boolean;
 }
 
 export const retroRemoveHandler = {
@@ -40,6 +47,8 @@ export const retroRemoveHandler = {
         describe: 'Optional human-readable reason recorded on the tombstone',
         type: 'string',
       })
+      .option('idempotency-key', { type: 'string', describe: 'Task #375 (HB#217) idempotency cache.' })
+      .option('no-idempotency', { type: 'boolean', default: false, describe: 'Bypass the idempotency cache.' })
       .demandOption('retro-id'),
 
   handler: async (argv: ArgumentsCamelCase<RetroRemoveArgs>) => {
@@ -55,6 +64,17 @@ export const retroRemoveHandler = {
       const removerAddress = new ethers.Wallet(key).address.toLowerCase();
       const now = Math.floor(Date.now() / 1000);
 
+      // Task #375 idempotency check
+      const idempKey = (argv as any).idempotencyKey || argvToIdempotencyString(argv as Record<string, any>);
+      if (!(argv as any).noIdempotency) {
+        const cached = checkIdempotencyCache(removerAddress, 'brain.retroRemove', idempKey);
+        if (cached) {
+          if (output.isJsonMode()) output.json({ status: 'ok', cached: true, ...cached });
+          else console.log(`  Retro "${argv.retroId}" already removed (idempotency cache hit). head: ${cached.headCid}`);
+          return;
+        }
+      }
+
       const result = await routedDispatch({
         type: 'removeRetro',
         docId: argv.doc,
@@ -63,6 +83,14 @@ export const retroRemoveHandler = {
         removedAt: now,
         removedReason: argv.reason,
       });
+
+      if (!(argv as any).noIdempotency) {
+        recordIdempotentResult(removerAddress, 'brain.retroRemove', idempKey, {
+          docId: argv.doc,
+          retroId: argv.retroId,
+          headCid: result.headCid,
+        });
+      }
 
       if (output.isJsonMode()) {
         output.json({
