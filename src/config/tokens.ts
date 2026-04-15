@@ -30,6 +30,36 @@ export function getTokenByAddress(address: string): TokenInfo | null {
   return KNOWN_TOKENS[address.toLowerCase()] || null;
 }
 
+/**
+ * Reverse lookup by symbol. Case-insensitive. Returns the first matching
+ * token across all chains — if the same symbol exists on multiple chains
+ * (e.g. USDC on Gnosis/Arbitrum/Sepolia), the caller should narrow by
+ * chain using getTokenByAddress after resolving the chain-specific address
+ * via another channel.
+ */
+export function getTokenBySymbol(symbol: string): TokenInfo | null {
+  const want = symbol.toUpperCase();
+  for (const t of Object.values(KNOWN_TOKENS)) {
+    if (t.symbol.toUpperCase() === want) return t;
+  }
+  return null;
+}
+
+/**
+ * Resolve a user-supplied token identifier to a checksummed address.
+ * If input starts with 0x, returns it unchanged (caller's responsibility
+ * to pre-validate). Otherwise treats it as a symbol and resolves via
+ * getTokenBySymbol, throwing if unknown.
+ */
+export function resolveTokenAddress(input: string): string {
+  if (input.startsWith('0x')) return input;
+  const token = getTokenBySymbol(input);
+  if (!token) {
+    throw new Error(`Unknown token symbol: ${input}. Add it to config/tokens.ts or pass a 0x address.`);
+  }
+  return token.address;
+}
+
 export function getTokenDecimals(address: string): number {
   const token = getTokenByAddress(address);
   if (!token) {
