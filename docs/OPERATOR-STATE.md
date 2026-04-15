@@ -1,6 +1,6 @@
 # Argus Operator State
 
-**Last updated:** HB#414 by sentinel_01 (2026-04-14, refresh of HB#391 version)
+**Last updated:** HB#446 by sentinel_01 (2026-04-15, refresh of HB#414 version)
 **Audience:** Hudson — single-page TL;DR of where Argus is and the highest-leverage things you can do this week.
 **Refresh cadence:** sentinel_01 keeps this current as part of regular heartbeats. If it's > 30 HBs old it's stale, ping the agents.
 
@@ -8,11 +8,11 @@
 
 ## State in 5 lines
 
-- **3 agents** (argus_prime, vigil_01, sentinel_01), all healthy, gas-sponsored, brain doctor green
-- **PT supply:** ~4797 (up ~160 since HB#373 refresh; all internal task payouts for HB#359/#362/#363/#364/#365/#367 ship chain)
+- **3 agents** (argus_prime, vigil_01, sentinel_01), all healthy, gas-sponsored, brain doctor green. Bot identity fix shipped PR #11 — all agents correctly attributed to ClawDAOBot via `~/.pop-agent/bot-identity.sh`.
+- **PT supply:** ~4827. Mostly flat since HB#417 because sentinel's 3 submitted tasks (#377 post-thread skill, #378 subgraph-lag mitigation, #383 audit-vetoken) + argus's #380 Curve audit are all stuck in cross-review queue due to a real subgraph-indexer lag (which #378 itself fixes once it's reviewed). When the next cross-review wave hits, supply jumps ~60+ PT.
 - **Treasury:** ~3 xDAI + ~24 BREAD + 1.6 sDAI yield + 277 GRT for subgraph
 - **Revenue this session:** still **$0** — the single unchanged number across the whole session
-- **Brain state:** 57 lessons in `pop.brain.shared`, ALL tagged with the topic/category/severity taxonomy. 3 retros in `pop.brain.retros` (retro-327 vigil, retro-337 argus, retro-396 sentinel, all at discussed or open). Cross-agent convergence achieved post-HB#385 #356 migration. **🟡 PR #10 merge vote ACTIVE** — proposal #54 at 3/3 votes, closes within the hour, is the gating event for everything post-freeze.
+- **Brain state:** ~58 lessons in `pop.brain.shared`, fully tagged. 3 retros across 3 agents at various states. Dataset committed: AUDIT_DB v3.2 at **66 DAOs** machine-readable (QmZcakBwo1Aw4sN8sPanaftcra3cnbxQgDcefYeyG65yPT), Capture Cluster v1.3 at **17289 bytes** with live on-chain Convex-cascade finding (QmYKJ3jYiGy6AFfRCc7sc6H5q7vrEay9DpB9wWktYTLPFN). **PR #10 merged HB#417, freeze lifted.** PR #17 merged HB#435 (sentinel distribution pack + idempotency Tier 2). PR #18 merged HB#442-ish (MakerDAO Chief + AUDIT_DB v3.1 + post-thread skill).
 
 ## The 3 things blocking on you specifically
 
@@ -43,11 +43,11 @@ These are the work items that NO agent can unblock; only Hudson can. Every other
 
 ## What the agents are doing right now
 
-**Sprint 12 is live** (framed by vigil_01 HB#200 via task #362 / retro-198-1776198731). Theme: **deliberation cadence + external audit corpus growth** — explicit response to Hudson's HB#198 callout that the HB#163-198 ship chain was reactive-only with zero forward planning. Sprint 12 priorities 1-5: ship #354 brainstorm surface, cross-agent respond to retro-198, advance sprint-12 project propose→discuss, #360 audit 5 new DAOs, #361 governance health leaderboard v2. See `agent/brain/Knowledge/sprint-priorities.md` for the full list.
+**Sprint 13 is live** (refreshed by argus_prime HB#369 via task #362 → committed to main in PR #11-era). Theme: **"deploy the product"** — brain substrate is production-ready, audit corpus is complete, human onboarding is a 2-command flow, bot identity is fixed. Sprint 13's core product claim is "onboard a real remote agent on a different machine" (priority #1). Priorities 2-5: #361 governance leaderboard (shipped), #354 brainstorm surface phases b+c (shipped), per-agent bot-identity.sh for vigil/sentinel (shipped HB#423 for sentinel), content distribution (still Hudson-credential-blocked). See `agent/brain/Knowledge/sprint-priorities.md` for the full list on main.
 
-- **argus_prime:** shipped the #353 import-snapshot tool + brain daemon + retro infra + lesson tagging. Prolific infra run through HB#189+.
-- **vigil_01:** shipped #362 sprint-priorities refresh (HB#391 this side), #357 modern generated.md parser, #358 merge mode, executed the #353 migration HB#189-191 on their node. Heavy on brain-layer convergence work.
-- **sentinel_01 (me):** HB#385 executed task #356 (sentinel side of #353 migration) — replayed 29 local lessons into pop.brain.shared, 50 lessons post-migration. HB#387 added Index Coop to AUDIT_DB as 55-DAO mark (Gini 0.675, first DeFi-divisible outlier below 0.80). HB#389 first post-migration cross-agent retro response on retro-337 (argus's retro), agreed on 4 of 5 changes incl the "freeze internal shipping until PR #10 merges" change. HB#390 drafted `docs/distribution/index-coop-outlier-note.md` as honest caveat piece for Four Architectures v2.5. Honoring the shipping freeze — doc/brain/retro work only until PR #10 merges.
+- **argus_prime:** shipped the #353 import-snapshot tool → brain daemon resilience chain (#364 + #365 + #367 back-to-back) → task #380 Curve DAO access-control audit (HB#380, `docs/audits/curve-dao.md`, 202 lines) → various other task submissions including #382. The #364/#365/#367 arc together delivers "ready for first external operator," and #380 is the deep-dive research piece that exposed the veToken methodology gap sentinel's Capture Cluster had been living with.
+- **vigil_01:** shipped #354 phases (a)/(b)/(c) the brainstorm surface, #362 sprint-priorities refresh, #363 risk-framework.md adaptation from the ClawDAOBot archive, #366 triage expired-proposal no-op close, #375 idempotency Tier 2 rollout, task #376, and various ongoing infra work. Heavy on brain layer + infra reliability.
+- **sentinel_01 (me):** HB#385-445 arc — executed #356 migration → shipped 4 new DAO audits (Index Coop, Euler, Kwenta, Alchemix, Instadapp, Prisma, Goldfinch, Threshold, Notional, BendDAO, Drops DAO, Silo Finance = **+12 DeFi entries, dataset now 66 DAOs**) → published Single-Whale Capture Cluster as standalone IPFS research artifact with 4 distribution formats (Reddit/Twitter/Mirror/IPFS) → evolved v1 through v1.3 integrating BendDAO methodology illustration + veToken Snapshot-gap correction + live on-chain Convex-cascade finding. Shipped three on-chain tasks end-to-end: **#377** (post-x-thread skill), **#378** (pop vote list subgraph-lag mitigation via callStatic.announceWinner probe — literally fixing the bug that was hiding my own task submissions), **#383** (pop org audit-vetoken — closed my own research methodology gap by building the tool that produced the Convex 53.69% on-chain finding). HB#432-445 = 14 consecutive substantive HBs post the HB#420-431 stall-rationalization correction.
 
 If you want a specific agent to focus on something, the easiest mechanism is to write a brain lesson titled "operator request from hudson" that names the work, OR (more directly) interrupt and tell the on-call agent. Brain lessons are async and visible to all agents on next heartbeat; direct interrupts are immediate.
 
