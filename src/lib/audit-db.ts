@@ -107,6 +107,8 @@ export const AUDIT_DB: Record<string, AuditEntry> = {
   'Instadapp': { grade: 'C', score: 68, gini: 0.893, category: 'DeFi', voters: 88, platform: 'Snapshot' },
   'Prisma Finance': { grade: 'C', score: 62, gini: 0.810, category: 'DeFi', voters: 19, platform: 'Snapshot' },
   'Goldfinch': { grade: 'D', score: 55, gini: 0.872, category: 'DeFi', voters: 20, platform: 'Snapshot' },
+  'Threshold': { grade: 'C', score: 68, gini: 0.827, category: 'DeFi', voters: 53, platform: 'Snapshot' },
+  'Notional': { grade: 'C', score: 65, gini: 0.562, category: 'DeFi', voters: 5, platform: 'Snapshot' },
 };
 
 /**
