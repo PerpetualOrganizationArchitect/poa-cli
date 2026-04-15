@@ -85,17 +85,16 @@ export const announceHandler = {
       }
 
       spin.text = 'Announcing winner...';
-      // minCallGas 2M floor: see announce-all.ts for the rationale. Without
-      // this, proposals with execution batches (Curve+bridge style) silently
-      // fail at deep subcalls due to gas forwarding starvation under the
-      // default 300K UserOp callGasLimit.
+      // The 2M callGasLimit floor for execution batches (Curve+bridge style,
+      // which silently fail at deep subcalls under the default 300K UserOp
+      // callGasLimit) is applied inside src/lib/sponsored.ts — no per-call
+      // opt-in needed here.
       const result = await executeTx(
         contract,
         'announceWinner',
         [argv.proposal],
         {
           dryRun: argv.dryRun,
-          minCallGas: 2_000_000n,
         }
       );
 

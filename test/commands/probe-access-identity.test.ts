@@ -119,4 +119,42 @@ describe('matchContractName — HB#385 task #390', () => {
       expect(matchContractName(row.actual, row.expected)).toBe(true);
     }
   });
+
+  // Task #395 (HB#387 follow-up): alias map expansion. HB#386's sweep hit
+  // three false positives — "curve votingescrow" vs "Vote-escrowed CRV",
+  // "gitcoin alpha" vs "GTC Governor Alpha", and the Gitcoin/Uniswap
+  // mislabel. The sweep fixed this with a LABEL_ALIASES map (gitcoin→gtc,
+  // curve→{crv, vote-escrowed}) but probe-access's --expected-name flag
+  // still did literal substring. These tests lock in the alias-aware
+  // behavior so an operator running `--expected-name Curve` against Curve's
+  // VotingEscrow no longer gets a false NAME CHECK MISMATCH warning.
+  describe('LABEL_ALIASES expansion (task #395)', () => {
+    it('matches Curve → Vote-escrowed CRV via the curve alias map', () => {
+      expect(matchContractName('Vote-escrowed CRV', 'Curve')).toBe(true);
+      expect(matchContractName('Vote-escrowed CRV', 'curve')).toBe(true);
+      expect(matchContractName('Vote-escrowed CRV', 'Curve VotingEscrow')).toBe(true);
+    });
+
+    it('matches Gitcoin → GTC Governor Alpha via the gitcoin alias map', () => {
+      expect(matchContractName('GTC Governor Alpha', 'Gitcoin')).toBe(true);
+      expect(matchContractName('GTC Governor Alpha', 'gitcoin')).toBe(true);
+      expect(matchContractName('GTC Governor Alpha', 'Gitcoin Alpha')).toBe(true);
+    });
+
+    it('does NOT introduce false positives for unrelated labels', () => {
+      // Alias expansion must not make arbitrary strings match.
+      expect(matchContractName('Uniswap Governor Bravo', 'Gitcoin')).toBe(false);
+      expect(matchContractName('Compound Governor Bravo', 'Curve')).toBe(false);
+      expect(matchContractName('MakerDAO Chief', 'Gitcoin')).toBe(false);
+    });
+
+    it('preserves HB#385 literal-substring behavior when it already works', () => {
+      // When the expected label is already in the actual name, alias
+      // expansion is irrelevant — literal match still wins.
+      expect(matchContractName('Compound Governor Bravo', 'Compound')).toBe(true);
+      expect(matchContractName('Uniswap Governor Bravo', 'Uniswap')).toBe(true);
+      // And the HB#384 mislabel case still fails correctly.
+      expect(matchContractName('Uniswap Governor Bravo', 'Gitcoin')).toBe(false);
+    });
+  });
 });

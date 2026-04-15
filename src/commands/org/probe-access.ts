@@ -39,6 +39,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { resolveNetworkConfig } from '../../config/networks';
 import * as output from '../../lib/output';
+import { expandAliases } from '../../lib/label-aliases';
 
 interface ProbeAccessArgs {
   address: string;
@@ -72,10 +73,28 @@ interface ProbeAccessArgs {
 /**
  * Pure helper for the substring name-match logic. Exported for unit testing
  * without needing to mock an RPC provider.
+ *
+ * Match semantics (HB#387+, task #395):
+ *   1. Case-insensitive substring of the raw expected string against the
+ *      on-chain `name()` return value. This is the original HB#385 behavior.
+ *   2. If step 1 fails, consult LABEL_ALIASES: split the expected label into
+ *      words, look up aliases for each word, and accept a match if any alias
+ *      appears as a case-insensitive substring of the actual name. This
+ *      closes the HB#386 sweep false-positive class where "curve" doesn't
+ *      literally appear in "Vote-escrowed CRV".
+ *
+ * An empty expected string matches everything (String.includes semantic).
+ * A null actual never matches.
  */
 export function matchContractName(actual: string | null, expected: string): boolean {
   if (actual === null) return false;
-  return actual.toLowerCase().includes(expected.toLowerCase());
+  const actualLower = actual.toLowerCase();
+  if (actualLower.includes(expected.toLowerCase())) return true;
+  // Alias fallback: any aliased token expanded from the expected label.
+  for (const candidate of expandAliases(expected)) {
+    if (candidate && actualLower.includes(candidate)) return true;
+  }
+  return false;
 }
 
 export async function fetchContractNameAndCheck(
