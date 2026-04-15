@@ -203,6 +203,67 @@ export interface TagLessonOp {
   allowInvalidShape?: boolean;
 }
 
+// --- Brainstorms (task #354 phase b, HB#208) -------------------------
+//
+// Forward-looking cross-agent ideation surface. See src/lib/brain-schemas.ts
+// validateBrainstormsDoc for the doc shape.
+
+export interface StartBrainstormOp {
+  type: 'startBrainstorm';
+  docId: string;
+  brainstormId: string;
+  title: string;
+  prompt: string;
+  author: string;
+  openedAt: number;
+  windowFromHB?: number;
+  windowToHB?: number;
+}
+
+export interface RespondToBrainstormOp {
+  type: 'respondToBrainstorm';
+  docId: string;
+  brainstormId: string;
+  author: string;
+  /** Message posted by the responding agent. Plain string, no schema. */
+  message?: string;
+  /** New idea to add to the brainstorm's ideas list. */
+  addIdea?: { id: string; message: string };
+  /** Map of idea id → stance (support/explore/oppose). Merges into existing votes without overwriting other agents' votes. */
+  votes?: Record<string, 'support' | 'explore' | 'oppose'>;
+  timestamp: number;
+}
+
+export interface PromoteIdeaOp {
+  type: 'promoteIdea';
+  docId: string;
+  brainstormId: string;
+  ideaId: string;
+  /** The pop.brain.projects id to link to after promotion. Caller creates the project separately via newProject; this op just records the back-reference. */
+  promotedProjectId: string;
+  promotedBy: string;
+  promotedAt: number;
+}
+
+export interface CloseBrainstormOp {
+  type: 'closeBrainstorm';
+  docId: string;
+  brainstormId: string;
+  closedBy: string;
+  closedAt: number;
+  /** Free-form reason for the close. */
+  reason?: string;
+}
+
+export interface RemoveBrainstormOp {
+  type: 'removeBrainstorm';
+  docId: string;
+  brainstormId: string;
+  removedBy: string;
+  removedAt: number;
+  removedReason?: string;
+}
+
 export type BrainOp =
   | AppendLessonOp
   | EditLessonOp
@@ -214,7 +275,12 @@ export type BrainOp =
   | RespondToRetroOp
   | UpdateChangeStatusOp
   | RemoveRetroOp
-  | TagLessonOp;
+  | TagLessonOp
+  | StartBrainstormOp
+  | RespondToBrainstormOp
+  | PromoteIdeaOp
+  | CloseBrainstormOp
+  | RemoveBrainstormOp;
 
 export interface DispatchResult {
   headCid: string;
@@ -541,6 +607,157 @@ export async function dispatchOp(op: BrainOp): Promise<DispatchResult> {
         },
         { allowInvalidShape: op.allowInvalidShape },
       );
+      break;
+    }
+
+    // --- Brainstorms (task #354 phase b, HB#208) ----------------------
+
+    case 'startBrainstorm': {
+      applied = await applyBrainChange(op.docId, (doc: any) => {
+        if (!Array.isArray(doc.brainstorms)) doc.brainstorms = [];
+        if (doc.brainstorms.some((b: any) => b && b.id === op.brainstormId)) {
+          throw new Error(`brainstorm ${op.brainstormId} already exists in ${op.docId}`);
+        }
+        const entry: any = {
+          id: op.brainstormId,
+          title: op.title,
+          prompt: op.prompt,
+          author: op.author,
+          openedAt: op.openedAt,
+          status: 'open',
+          ideas: [],
+        };
+        if (op.windowFromHB != null || op.windowToHB != null) {
+          entry.window = {};
+          if (op.windowFromHB != null) entry.window.from = op.windowFromHB;
+          if (op.windowToHB != null) entry.window.to = op.windowToHB;
+        }
+        doc.brainstorms.push(entry);
+      });
+      break;
+    }
+
+    case 'respondToBrainstorm': {
+      applied = await applyBrainChange(op.docId, (doc: any) => {
+        if (!Array.isArray(doc.brainstorms)) {
+          throw new Error(`no brainstorms list in doc ${op.docId}`);
+        }
+        const brainstorm = doc.brainstorms.find((b: any) => b && b.id === op.brainstormId);
+        if (!brainstorm) {
+          throw new Error(`brainstorm ${op.brainstormId} not found in ${op.docId}`);
+        }
+        if (brainstorm.removed || brainstorm.status === 'closed') {
+          throw new Error(`brainstorm ${op.brainstormId} is ${brainstorm.removed ? 'removed' : 'closed'} — cannot respond`);
+        }
+        if (!Array.isArray(brainstorm.ideas)) brainstorm.ideas = [];
+
+        // Add a new idea if requested
+        if (op.addIdea) {
+          if (brainstorm.ideas.some((i: any) => i && i.id === op.addIdea!.id)) {
+            throw new Error(`idea ${op.addIdea.id} already exists in brainstorm ${op.brainstormId}`);
+          }
+          brainstorm.ideas.push({
+            id: op.addIdea.id,
+            author: op.author,
+            message: op.addIdea.message,
+            timestamp: op.timestamp,
+            votes: {},
+          });
+        }
+
+        // Merge votes into existing ideas — per-agent slot so concurrent
+        // writes from different agents don't overwrite each other's votes
+        if (op.votes) {
+          for (const [ideaId, stance] of Object.entries(op.votes)) {
+            const idea = brainstorm.ideas.find((i: any) => i && i.id === ideaId);
+            if (!idea) {
+              throw new Error(`cannot vote on unknown idea ${ideaId} in brainstorm ${op.brainstormId}`);
+            }
+            if (!idea.votes || typeof idea.votes !== 'object') idea.votes = {};
+            idea.votes[op.author] = stance;
+          }
+        }
+
+        // Auto-advance status from open to voting once any vote lands
+        if (op.votes && Object.keys(op.votes).length > 0 && brainstorm.status === 'open') {
+          brainstorm.status = 'voting';
+        }
+
+        // Record the discussion message (separate from ideas — a response
+        // can have a message without adding an idea or casting a vote)
+        if (op.message) {
+          if (!Array.isArray(brainstorm.discussion)) brainstorm.discussion = [];
+          brainstorm.discussion.push({
+            author: op.author,
+            message: op.message,
+            timestamp: op.timestamp,
+          });
+        }
+      });
+      break;
+    }
+
+    case 'promoteIdea': {
+      applied = await applyBrainChange(op.docId, (doc: any) => {
+        if (!Array.isArray(doc.brainstorms)) {
+          throw new Error(`no brainstorms list in doc ${op.docId}`);
+        }
+        const brainstorm = doc.brainstorms.find((b: any) => b && b.id === op.brainstormId);
+        if (!brainstorm) {
+          throw new Error(`brainstorm ${op.brainstormId} not found in ${op.docId}`);
+        }
+        const idea = (brainstorm.ideas || []).find((i: any) => i && i.id === op.ideaId);
+        if (!idea) {
+          throw new Error(`idea ${op.ideaId} not found in brainstorm ${op.brainstormId}`);
+        }
+        if (!Array.isArray(brainstorm.promotedToProjectIds)) brainstorm.promotedToProjectIds = [];
+        if (!brainstorm.promotedToProjectIds.includes(op.promotedProjectId)) {
+          brainstorm.promotedToProjectIds.push(op.promotedProjectId);
+        }
+        // Mark the idea itself as promoted so the projection can show
+        // the link visibly
+        idea.promotedAt = op.promotedAt;
+        idea.promotedBy = op.promotedBy;
+        idea.promotedProjectId = op.promotedProjectId;
+        // Advance the brainstorm to promoted status if it wasn't already
+        if (brainstorm.status !== 'closed' && brainstorm.status !== 'promoted') {
+          brainstorm.status = 'promoted';
+        }
+      });
+      break;
+    }
+
+    case 'closeBrainstorm': {
+      applied = await applyBrainChange(op.docId, (doc: any) => {
+        if (!Array.isArray(doc.brainstorms)) {
+          throw new Error(`no brainstorms list in doc ${op.docId}`);
+        }
+        const brainstorm = doc.brainstorms.find((b: any) => b && b.id === op.brainstormId);
+        if (!brainstorm) {
+          throw new Error(`brainstorm ${op.brainstormId} not found in ${op.docId}`);
+        }
+        brainstorm.status = 'closed';
+        brainstorm.closedAt = op.closedAt;
+        brainstorm.closedBy = op.closedBy;
+        if (op.reason) brainstorm.closedReason = op.reason;
+      });
+      break;
+    }
+
+    case 'removeBrainstorm': {
+      applied = await applyBrainChange(op.docId, (doc: any) => {
+        if (!Array.isArray(doc.brainstorms)) {
+          throw new Error(`no brainstorms list in doc ${op.docId}`);
+        }
+        const brainstorm = doc.brainstorms.find((b: any) => b && b.id === op.brainstormId);
+        if (!brainstorm) {
+          throw new Error(`brainstorm ${op.brainstormId} not found in ${op.docId}`);
+        }
+        brainstorm.removed = true;
+        brainstorm.removedAt = op.removedAt;
+        brainstorm.removedBy = op.removedBy;
+        if (op.removedReason) brainstorm.removedReason = op.removedReason;
+      });
       break;
     }
 

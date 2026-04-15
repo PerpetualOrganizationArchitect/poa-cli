@@ -251,6 +251,77 @@ export const triageHandler = {
         // triage for the rest of the org state.
       }
 
+      // Open brainstorms needing response (task #354 phase c, HB#209).
+      // Same shape as the retro hook above but for pop.brain.brainstorms.
+      // Surface HIGH action when an open brainstorm exists whose author is
+      // NOT me AND I have not yet posted a message, added an idea, or cast
+      // a vote. "Fresh" window is the same 75-min (5 HB) threshold.
+      try {
+        const manifestPath = path.join(homedir(), '.pop-agent', 'brain', 'doc-heads.json');
+        if (fs.existsSync(manifestPath)) {
+          const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+          if (manifest['pop.brain.brainstorms']) {
+            const { readBrainDoc, stopBrainNode } = require('../../lib/brain');
+            try {
+              const { doc: brainstormsDoc } = await readBrainDoc('pop.brain.brainstorms');
+              const brainstorms: any[] = Array.isArray(brainstormsDoc?.brainstorms)
+                ? brainstormsDoc.brainstorms
+                : [];
+              const freshThresholdSecs = 75 * 60; // same as retro cadence
+              const nowSecs = Math.floor(Date.now() / 1000);
+              for (const b of brainstorms) {
+                if (!b || b.removed) continue;
+                // Only "open" or "voting" brainstorms need responses;
+                // "closed" and "promoted" have been resolved already
+                if (b.status !== 'open' && b.status !== 'voting') continue;
+                const author = (b.author ?? '').toLowerCase();
+                if (!author || author === myAddr) continue;
+                const age = b.openedAt ? nowSecs - b.openedAt : Infinity;
+                if (age > freshThresholdSecs) continue;
+                // Have I already engaged with this brainstorm? Check both
+                // the discussion array (for --message posts) and any idea's
+                // votes map (for --vote casts)
+                const discussion: any[] = Array.isArray(b.discussion) ? b.discussion : [];
+                const postedMessage = discussion.some((e: any) =>
+                  (e?.author ?? '').toLowerCase() === myAddr,
+                );
+                const ideas: any[] = Array.isArray(b.ideas) ? b.ideas : [];
+                const voted = ideas.some((idea: any) => {
+                  const votes = idea?.votes;
+                  return votes && typeof votes === 'object' && votes[myAddr] != null;
+                });
+                const addedIdea = ideas.some((idea: any) =>
+                  (idea?.author ?? '').toLowerCase() === myAddr,
+                );
+                if (postedMessage || voted || addedIdea) continue;
+                const ideaCount = ideas.length;
+                actions.push({
+                  priority: 'HIGH',
+                  type: 'brainstorm-respond',
+                  detail:
+                    `Brainstorm "${b.id}" by ${author.slice(0, 10)} needs your response ` +
+                    `(${ideaCount} idea${ideaCount === 1 ? '' : 's'}, ` +
+                    `status=${b.status}, ${Math.floor(age / 60)}min old). ` +
+                    `Run: pop brain read --doc pop.brain.brainstorms --json | less && ` +
+                    `pop brain brainstorm-respond --id ${b.id} --message "..." [--add-idea "..."] [--vote idea-id=support]`,
+                  data: {
+                    brainstormId: b.id,
+                    author,
+                    ideaCount,
+                    status: b.status,
+                    ageSeconds: age,
+                  },
+                });
+              }
+            } finally {
+              try { await stopBrainNode(); } catch { /* best-effort */ }
+            }
+          }
+        }
+      } catch {
+        // Brainstorm check is best-effort — same isolation as the retro check.
+      }
+
       // Unclaimed distributions — skip ones known to have no allocation for this address
       const noAllocSet = getNoAllocationSet(myAddr);
       const orgIdLower = modules.orgId.toLowerCase();
