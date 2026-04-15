@@ -7,6 +7,11 @@ import { pinJson } from '../../lib/ipfs';
 import { stringToBytes, ipfsCidToBytes32, parseProjectId } from '../../lib/encoding';
 import { requireArg } from '../../lib/validation';
 import { getTokenDecimals } from '../../config/tokens';
+import {
+  argvToIdempotencyString,
+  checkIdempotencyCache,
+  recordIdempotentResult,
+} from '../../lib/idempotency';
 import * as output from '../../lib/output';
 import { resolveOrgContracts } from './helpers';
 import { query } from '../../lib/subgraph';
@@ -29,6 +34,8 @@ interface CreateArgs {
   rpc?: string;
   'private-key'?: string;
   'dry-run'?: boolean;
+  'idempotency-key'?: string;
+  'no-idempotency'?: boolean;
 }
 
 export const createHandler = {
@@ -43,7 +50,16 @@ export const createHandler = {
     .option('bounty-token', { type: 'string', describe: 'Bounty ERC20 token address' })
     .option('bounty-amount', { type: 'number', describe: 'Bounty payout amount' })
     .option('requires-application', { type: 'boolean', default: false, describe: 'Require applications' })
-    .option('force', { type: 'boolean', default: false, describe: 'Skip duplicate check' }),
+    .option('force', { type: 'boolean', default: false, describe: 'Skip duplicate check' })
+    .option('idempotency-key', {
+      type: 'string',
+      describe: 'Task #369 (HB#213): explicit idempotency key. Two calls with the same orgId + this key within 15 minutes return the same taskId without re-submitting. Default: auto-derived from a hash of the full argv.',
+    })
+    .option('no-idempotency', {
+      type: 'boolean',
+      default: false,
+      describe: 'Bypass the idempotency cache and always submit a new task.',
+    }),
 
   handler: async (argv: ArgumentsCamelCase<CreateArgs>) => {
     const spin = output.spinner('Creating task...');
@@ -51,24 +67,61 @@ export const createHandler = {
 
     try {
       const { taskManagerAddress, orgId } = await resolveOrgContracts(argv.org, argv.chain);
+
+      // Task #369: idempotency check. Same pattern as pop vote create —
+      // see src/lib/idempotency.ts for the TTL + key derivation details.
+      const idempKey = argv.idempotencyKey || argvToIdempotencyString(argv as Record<string, any>);
+      if (!argv.noIdempotency) {
+        const cached = checkIdempotencyCache(orgId, 'task.create', idempKey);
+        if (cached) {
+          spin.stop();
+          output.success('Task already created (idempotency cache hit)', {
+            ...cached,
+            cached: true,
+            note: 'A prior call within the 15-minute idempotency window produced this result. Pass --no-idempotency to force a new submission.',
+          });
+          return;
+        }
+      }
       const { signer } = createSigner({ privateKey: argv.privateKey as string, chainId: argv.chain, rpcUrl: argv.rpc as string });
 
       // Duplicate check: warn if similar task exists
+      // Heuristic: strip stopwords + common CLI scaffolding words, then compare by
+      // Jaccard similarity (overlap / union). Require at least 3 shared meaningful
+      // words to flag — prevents short titles from tripping on a single shared word.
       if (!argv.force) {
         try {
+          const STOPWORDS = new Set([
+            'the', 'and', 'for', 'with', 'from', 'into', 'onto', 'that', 'this',
+            'task', 'tasks', 'create', 'build', 'make', 'add', 'new', 'fix',
+            'command', 'commands', 'update', 'updates', 'support', 'test',
+            'cli', 'pop', 'org', 'orgs', 'run', 'use', 'using', 'via', 'like',
+            'proposal', 'proposals', 'vote', 'votes', 'write', 'generate',
+          ]);
+          const tokenize = (s: string): Set<string> => {
+            const words = (s || '').toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length >= 4);
+            return new Set(words.filter(w => !STOPWORDS.has(w)));
+          };
           const result = await query<any>(FETCH_PROJECTS_DATA, { orgId }, argv.chain);
           const projects = result.organization?.taskManager?.projects || [];
           const allTasks = projects.flatMap((p: any) => p.tasks || []);
-          const newWords = new Set((argv.name as string).toLowerCase().split(/\s+/).filter(w => w.length > 3));
-          if (newWords.size > 0) {
+          const newWords = tokenize(argv.name as string);
+          if (newWords.size >= 3) {
             for (const task of allTasks) {
               if (task.status === 'Cancelled') continue;
-              const existingWords = new Set((task.title || '').toLowerCase().split(/\s+/).filter((w: string) => w.length > 3));
-              const overlap = [...newWords].filter(w => existingWords.has(w)).length;
-              const similarity = overlap / Math.max(newWords.size, 1);
-              if (similarity >= 0.5) {
+              const existingWords = tokenize(task.title || '');
+              if (existingWords.size === 0) continue;
+              const shared = [...newWords].filter(w => existingWords.has(w));
+              if (shared.length < 3) continue; // absolute floor
+              const union = new Set([...newWords, ...existingWords]);
+              const jaccard = shared.length / union.size;
+              if (jaccard >= 0.5) {
                 spin.stop();
-                output.warn(`Similar task exists: #${task.taskId} "${task.title}" (${task.status}). Use --force to create anyway.`);
+                output.warn(
+                  `Similar task exists: #${task.taskId} "${task.title}" (${task.status}). ` +
+                  `Jaccard=${jaccard.toFixed(2)}, shared=[${shared.join(',')}]. ` +
+                  `Use --force to create anyway.`
+                );
                 process.exit(1);
               }
             }
@@ -147,6 +200,15 @@ export const createHandler = {
         // Extract taskId from TaskCreated event
         const taskCreatedEvent = result.logs?.find(l => l.name === 'TaskCreated');
         const taskId = taskCreatedEvent?.args?.id?.toString();
+
+        // Task #369: record idempotent result so retries hit the cache
+        if (!argv.noIdempotency) {
+          recordIdempotentResult(orgId, 'task.create', idempKey, {
+            taskId,
+            txHash: result.txHash,
+            ipfsCid: cid,
+          });
+        }
 
         output.success('Task created', {
           taskId,

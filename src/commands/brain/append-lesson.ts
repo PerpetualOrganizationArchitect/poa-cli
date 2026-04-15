@@ -25,6 +25,11 @@ import { resolve } from 'path';
 import { ethers } from 'ethers';
 import { stopBrainNode } from '../../lib/brain';
 import { routedDispatch } from '../../lib/brain-ops';
+import {
+  argvToIdempotencyString,
+  checkIdempotencyCache,
+  recordIdempotentResult,
+} from '../../lib/idempotency';
 import * as output from '../../lib/output';
 
 interface AppendArgs {
@@ -35,6 +40,8 @@ interface AppendArgs {
   author?: string;
   id?: string;
   allowInvalidShape?: boolean;
+  'idempotency-key'?: string;
+  'no-idempotency'?: boolean;
 }
 
 /**
@@ -83,6 +90,16 @@ export const appendLessonHandler = {
           'Bypass write-time schema validation (Task #346). Use only when you deliberately need a non-canonical shape.',
         type: 'boolean',
         default: false,
+      })
+      .option('idempotency-key', {
+        type: 'string',
+        describe:
+          'Task #370 (HB#214): explicit idempotency key. Two identical append-lesson calls within 15 minutes return the same result without re-submitting. Default: auto-derived from argv (title + body + docId). Scope: author address (brain writes are agent-scoped not org-scoped).',
+      })
+      .option('no-idempotency', {
+        type: 'boolean',
+        default: false,
+        describe: 'Bypass the idempotency cache and always submit a new lesson.',
       })
       .check((argv) => {
         if (!argv.body && !argv['body-file']) {
@@ -136,6 +153,31 @@ export const appendLessonHandler = {
         authorLabel = new ethers.Wallet(key).address.toLowerCase();
       }
 
+      // Task #370: idempotency check. Brain writes are agent-scoped
+      // (no orgId), so the scope is the author address instead.
+      const idempKey = argv.idempotencyKey || argvToIdempotencyString(argv as Record<string, any>);
+      if (!argv.noIdempotency) {
+        const cached = checkIdempotencyCache(authorLabel, 'brain.appendLesson', idempKey);
+        if (cached) {
+          if (output.isJsonMode()) {
+            output.json({
+              status: 'ok',
+              cached: true,
+              ...cached,
+              note: 'Prior call within 15-min window produced this result.',
+            });
+          } else {
+            console.log('');
+            console.log(`  Lesson already appended (idempotency cache hit)`);
+            console.log(`  id:     ${cached.lessonId}`);
+            console.log(`  head:   ${cached.headCid}`);
+            console.log(`  note:   Prior call within 15-min window. Use --no-idempotency to force re-submit.`);
+            console.log('');
+          }
+          return;
+        }
+      }
+
       // Route through the unified dispatcher (HB#324 ship-2). When a
       // brain daemon is running, this sends the op via IPC so the
       // daemon's long-lived gossipsub mesh handles the publish. When
@@ -151,6 +193,16 @@ export const appendLessonHandler = {
         timestamp: now,
         allowInvalidShape: argv.allowInvalidShape,
       });
+
+      // Task #370: record idempotent result after successful dispatch
+      if (!argv.noIdempotency) {
+        recordIdempotentResult(authorLabel, 'brain.appendLesson', idempKey, {
+          docId: argv.doc,
+          lessonId: id,
+          headCid: result.headCid,
+          author: authorLabel,
+        });
+      }
 
       if (output.isJsonMode()) {
         output.json({

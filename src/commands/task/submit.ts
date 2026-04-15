@@ -8,6 +8,11 @@ import { parseTaskId, ipfsCidToBytes32 } from '../../lib/encoding';
 import { query } from '../../lib/subgraph';
 import { resolveOrgId } from '../../lib/resolve';
 import { FETCH_PROJECTS_DATA } from '../../queries/task';
+import {
+  argvToIdempotencyString,
+  checkIdempotencyCache,
+  recordIdempotentResult,
+} from '../../lib/idempotency';
 import * as output from '../../lib/output';
 import { resolveOrgContracts } from './helpers';
 
@@ -21,6 +26,8 @@ interface SubmitArgs {
   'dry-run'?: boolean;
   commit?: boolean;
   commitFiles?: string;
+  'idempotency-key'?: string;
+  'no-idempotency'?: boolean;
 }
 
 export const submitHandler = {
@@ -37,6 +44,15 @@ export const submitHandler = {
       type: 'string',
       describe:
         'Comma-separated list of files to git add + commit when --commit is set. Required if --commit is true; ignored otherwise. Use specific paths only — never . or -A — to avoid sweeping in cross-agent in-flight work.',
+    })
+    .option('idempotency-key', {
+      type: 'string',
+      describe: 'Task #370 (HB#214): explicit idempotency key. Two submits of the same task within 15 minutes return the same result without re-submitting or re-pinning.',
+    })
+    .option('no-idempotency', {
+      type: 'boolean',
+      default: false,
+      describe: 'Bypass the idempotency cache and always submit.',
     }),
 
   handler: async (argv: ArgumentsCamelCase<SubmitArgs>) => {
@@ -50,6 +66,21 @@ export const submitHandler = {
       // Fetch existing task metadata so we preserve it in the submission
       spin.text = 'Fetching task metadata...';
       const orgId = await resolveOrgId(argv.org, argv.chain);
+
+      // Task #370: idempotency check BEFORE IPFS pin (expensive, don't repeat)
+      const idempKey = argv.idempotencyKey || argvToIdempotencyString(argv as Record<string, any>);
+      if (!argv.noIdempotency) {
+        const cached = checkIdempotencyCache(orgId, 'task.submit', idempKey);
+        if (cached) {
+          spin.stop();
+          output.success(`Task ${argv.task} already submitted (idempotency cache hit)`, {
+            ...cached,
+            cached: true,
+            note: 'Prior call within the 15-minute window produced this result. Use --no-idempotency to force re-submit.',
+          });
+          return;
+        }
+      }
       const taskData = await query<any>(FETCH_PROJECTS_DATA, { orgId }, argv.chain);
       const projects = taskData.organization?.taskManager?.projects || [];
       let existingMeta: any = null;
@@ -84,6 +115,14 @@ export const submitHandler = {
       spin.stop();
 
       if (result.success) {
+        // Task #370: record idempotent result
+        if (!argv.noIdempotency) {
+          recordIdempotentResult(orgId, 'task.submit', idempKey, {
+            taskId: argv.task,
+            txHash: result.txHash,
+            ipfsCid: cid,
+          });
+        }
         output.success(`Task ${argv.task} submitted`, { txHash: result.txHash, explorerUrl: result.explorerUrl, ipfsCid: cid });
 
         // Task #355 (HB#185): optional auto-commit. Runs git add + git
