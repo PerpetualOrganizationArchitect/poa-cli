@@ -17,6 +17,12 @@ import { readFileSync, existsSync } from 'fs';
 import { resolve } from 'path';
 import { openBrainDoc, stopBrainNode } from '../../lib/brain';
 import { routedDispatch } from '../../lib/brain-ops';
+import { ethers } from 'ethers';
+import {
+  argvToIdempotencyString,
+  checkIdempotencyCache,
+  recordIdempotentResult,
+} from '../../lib/idempotency';
 import * as output from '../../lib/output';
 
 interface EditArgs {
@@ -28,6 +34,8 @@ interface EditArgs {
   author?: string;
   touch?: boolean;
   allowInvalidShape?: boolean;
+  'idempotency-key'?: string;
+  'no-idempotency'?: boolean;
 }
 
 export const editLessonHandler = {
@@ -56,6 +64,15 @@ export const editLessonHandler = {
         describe: 'Bypass write-time schema validation (Task #346).',
         type: 'boolean',
         default: false,
+      })
+      .option('idempotency-key', {
+        type: 'string',
+        describe: 'Task #374 (HB#215): explicit idempotency key. Agent-scoped.',
+      })
+      .option('no-idempotency', {
+        type: 'boolean',
+        default: false,
+        describe: 'Bypass the idempotency cache.',
       })
       .check((argv) => {
         if (
@@ -132,6 +149,26 @@ export const editLessonHandler = {
         return;
       }
 
+      // Task #374: idempotency check. Brain writes are agent-scoped, so
+      // the scope component is the signing wallet address.
+      const signerKey = process.env.POP_PRIVATE_KEY;
+      const authorScope = signerKey ? new ethers.Wallet(signerKey).address.toLowerCase() : 'anonymous';
+      const idempKey = argv.idempotencyKey || argvToIdempotencyString(argv as Record<string, any>);
+      if (!argv.noIdempotency) {
+        const cached = checkIdempotencyCache(authorScope, 'brain.editLesson', idempKey);
+        if (cached) {
+          if (output.isJsonMode()) {
+            output.json({ status: 'ok', cached: true, ...cached });
+          } else {
+            console.log('');
+            console.log(`  Lesson "${argv.lessonId}" edit cached (idempotency hit)`);
+            console.log(`  head:   ${cached.headCid}`);
+            console.log('');
+          }
+          return;
+        }
+      }
+
       // Route through the unified dispatcher. When the brain daemon is
       // running, this serializes an `editLesson` op and sends it via IPC
       // so the write lands in the daemon's long-lived libp2p context.
@@ -150,6 +187,14 @@ export const editLessonHandler = {
         touch: argv.touch === true,
         allowInvalidShape: argv.allowInvalidShape,
       });
+
+      if (!argv.noIdempotency) {
+        recordIdempotentResult(authorScope, 'brain.editLesson', idempKey, {
+          docId: argv.doc,
+          lessonId: argv.lessonId,
+          headCid: result.headCid,
+        });
+      }
 
       if (output.isJsonMode()) {
         output.json({

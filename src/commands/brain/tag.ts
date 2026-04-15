@@ -17,8 +17,14 @@
  */
 
 import type { Argv, ArgumentsCamelCase } from 'yargs';
+import { ethers } from 'ethers';
 import { openBrainDoc, stopBrainNode } from '../../lib/brain';
 import { routedDispatch } from '../../lib/brain-ops';
+import {
+  argvToIdempotencyString,
+  checkIdempotencyCache,
+  recordIdempotentResult,
+} from '../../lib/idempotency';
 import * as output from '../../lib/output';
 
 interface TagArgs {
@@ -27,6 +33,8 @@ interface TagArgs {
   add?: string;
   remove?: string;
   allowInvalidShape?: boolean;
+  'idempotency-key'?: string;
+  'no-idempotency'?: boolean;
 }
 
 function parseList(s: string | undefined): string[] {
@@ -63,6 +71,15 @@ export const tagHandler = {
         type: 'boolean',
         default: false,
       })
+      .option('idempotency-key', {
+        type: 'string',
+        describe: 'Task #374 (HB#215): explicit idempotency key. Agent-scoped.',
+      })
+      .option('no-idempotency', {
+        type: 'boolean',
+        default: false,
+        describe: 'Bypass the idempotency cache.',
+      })
       .check((argv) => {
         if (!argv.add && !argv.remove) {
           throw new Error('Must supply at least one of --add or --remove');
@@ -93,6 +110,25 @@ export const tagHandler = {
         return;
       }
 
+      // Task #374: idempotency check (agent-scoped).
+      const signerKey = process.env.POP_PRIVATE_KEY;
+      const authorScope = signerKey ? new ethers.Wallet(signerKey).address.toLowerCase() : 'anonymous';
+      const idempKey = argv.idempotencyKey || argvToIdempotencyString(argv as Record<string, any>);
+      if (!argv.noIdempotency) {
+        const cached = checkIdempotencyCache(authorScope, 'brain.tag', idempKey);
+        if (cached) {
+          if (output.isJsonMode()) {
+            output.json({ status: 'ok', cached: true, ...cached });
+          } else {
+            console.log('');
+            console.log(`  Lesson "${argv.lessonId}" tags already updated (idempotency cache hit)`);
+            console.log(`  head:   ${cached.headCid}`);
+            console.log('');
+          }
+          return;
+        }
+      }
+
       const result = await routedDispatch({
         type: 'tagLesson',
         docId: argv.doc,
@@ -101,6 +137,16 @@ export const tagHandler = {
         removeTags,
         allowInvalidShape: argv.allowInvalidShape,
       });
+
+      if (!argv.noIdempotency) {
+        recordIdempotentResult(authorScope, 'brain.tag', idempKey, {
+          docId: argv.doc,
+          lessonId: argv.lessonId,
+          added: addTags,
+          removed: removeTags,
+          headCid: result.headCid,
+        });
+      }
 
       if (output.isJsonMode()) {
         output.json({

@@ -24,6 +24,11 @@ import type { Argv, ArgumentsCamelCase } from 'yargs';
 import { ethers } from 'ethers';
 import { openBrainDoc, stopBrainNode } from '../../lib/brain';
 import { routedDispatch } from '../../lib/brain-ops';
+import {
+  argvToIdempotencyString,
+  checkIdempotencyCache,
+  recordIdempotentResult,
+} from '../../lib/idempotency';
 import * as output from '../../lib/output';
 
 interface RemoveArgs {
@@ -31,6 +36,8 @@ interface RemoveArgs {
   lessonId: string;
   reason?: string;
   allowInvalidShape?: boolean;
+  'idempotency-key'?: string;
+  'no-idempotency'?: boolean;
 }
 
 export const removeLessonHandler = {
@@ -54,6 +61,15 @@ export const removeLessonHandler = {
         describe: 'Bypass write-time schema validation (Task #346).',
         type: 'boolean',
         default: false,
+      })
+      .option('idempotency-key', {
+        type: 'string',
+        describe: 'Task #374 (HB#215): explicit idempotency key. Agent-scoped.',
+      })
+      .option('no-idempotency', {
+        type: 'boolean',
+        default: false,
+        describe: 'Bypass the idempotency cache.',
       }),
 
   handler: async (argv: ArgumentsCamelCase<RemoveArgs>) => {
@@ -108,6 +124,23 @@ export const removeLessonHandler = {
       const removerAddress = new ethers.Wallet(key).address.toLowerCase();
       const now = Math.floor(Date.now() / 1000);
 
+      // Task #374: idempotency check (agent-scoped, uses removerAddress)
+      const idempKey = argv.idempotencyKey || argvToIdempotencyString(argv as Record<string, any>);
+      if (!argv.noIdempotency) {
+        const cached = checkIdempotencyCache(removerAddress, 'brain.removeLesson', idempKey);
+        if (cached) {
+          if (output.isJsonMode()) {
+            output.json({ status: 'ok', cached: true, ...cached });
+          } else {
+            console.log('');
+            console.log(`  Lesson "${argv.lessonId}" already removed (idempotency cache hit)`);
+            console.log(`  head:   ${cached.headCid}`);
+            console.log('');
+          }
+          return;
+        }
+      }
+
       // Route through the unified dispatcher (HB#324 ship-2).
       const result = await routedDispatch({
         type: 'removeLesson',
@@ -118,6 +151,14 @@ export const removeLessonHandler = {
         removedReason: argv.reason,
         allowInvalidShape: argv.allowInvalidShape,
       });
+
+      if (!argv.noIdempotency) {
+        recordIdempotentResult(removerAddress, 'brain.removeLesson', idempKey, {
+          docId: argv.doc,
+          lessonId: argv.lessonId,
+          headCid: result.headCid,
+        });
+      }
 
       if (output.isJsonMode()) {
         output.json({
