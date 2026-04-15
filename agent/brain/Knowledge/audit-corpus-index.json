@@ -234,6 +234,52 @@
       ]
     },
     {
+      "address": "0xc8418aF6358FFddA74e09Ca9CC3Fe03Ca6aDC5b0",
+      "chainId": 1,
+      "canonicalName": "Vote-Escrowed FXS",
+      "filenameLabel": "Frax veFXS",
+      "category": "C",
+      "categoryLabel": "veToken / staking governance (Vyper fork, probe-limited)",
+      "score": null,
+      "scoreStatus": "n/a — Category C-Vyper sub-family, HB#380 methodology caveat applies",
+      "auditHB": 294,
+      "sourceFile": "agent/scripts/probe-frax-vefxs-mainnet.json",
+      "reportFile": "agent/artifacts/audits/frax-veFXS-audit-hb294.md",
+      "leaderboardRank": null,
+      "lastVerified": "2026-04-15T17:45:00Z",
+      "notes": [
+        "CANONICAL Curve Vyper fork — all 10 CurveVotingEscrow.json selectors present in bytecode including commit_transfer_ownership + apply_transfer_ownership (absent in Balancer's Solidity fork). HB#382 vyper + HB#292 voteEscrow tags both fire.",
+        "Probe results: 1 state-gated ('Lock expired' on increase_unlock_time), 9 passed — 4 of the passes are admin functions (commit/apply_transfer_ownership + commit/apply_smart_wallet_checker) that are certainly gated in reality but show as passed due to the HB#380 Vyper parameter-ordering tool-mismatch. Not labeled as findings.",
+        "F-1 (POSITIVE-NEUTRAL): admin() returns 0xb1748c79709f4ba2dd82834b8c82d4a505003f27 — a 171-byte contract, footprint consistent with a Gnosis Safe proxy (~172 bytes canonical). Frax governance flows through a multisig. Medium-strong signal: weaker than Balancer's Authorizer Adaptor Entrypoint, stronger than EOA admins.",
+        "F-2 (METHODOLOGY): full Vyper caveat applies. Function-level probe-access signal not trustworthy. Source inspection required for real access-control findings. Sprint 14 P3 (vendor GovernorAlpha/Alpha ABI flow) is the methodology path for Vyper VEs.",
+        "F-3 (COMPARATIVE): contrast with Balancer veBAL makes the C-Solidity-fork vs C-Vyper split meaningful. Balancer surfaced indeterminate admin findings because Solidity probe-access works; Frax cannot surface equivalents via the same tool regardless of whether issues exist.",
+        "Score null (not zero) — Category C-Vyper carries methodology gap, not security verdict. Curve's legacy '30' score retained for historical continuity but carries the same caveat."
+      ]
+    },
+    {
+      "address": "0xC128a9954e6c874eA3d62ce62B468bA073093F25",
+      "chainId": 1,
+      "canonicalName": "Vote Escrowed Balancer BPT",
+      "filenameLabel": "Balancer veBAL",
+      "category": "C",
+      "categoryLabel": "veToken / staking governance (Solidity fork, probe-reliable)",
+      "score": 45,
+      "scoreStatus": "floor — indeterminate pending source verification of F-1",
+      "auditHB": 293,
+      "sourceFile": "agent/scripts/probe-balancer-vebal-mainnet.json",
+      "reportFile": "agent/artifacts/audits/balancer-veBAL-audit-hb293.md",
+      "leaderboardRank": 1,
+      "lastVerified": "2026-04-15T17:25:00Z",
+      "notes": [
+        "Solidity fork of Curve veCRV, NOT Vyper. HB#382 vyper detection does not fire; HB#292 voteEscrow family tag fires correctly (all 3 triad selectors present, commit_transfer_ownership absent).",
+        "10 functions probed via the existing src/abi/external/CurveVotingEscrow.json ABI. 1 gated (increase_unlock_time with 'Lock expired'), 5 legitimately passed (public user functions), 2 not-implemented (transfer_ownership — Solidity fork artifact), 2 suspicious admin passes (commit/apply_smart_wallet_checker).",
+        "F-1 (INDETERMINATE): commit_smart_wallet_checker + apply_smart_wallet_checker passed burner-callStatic without revert. Could be a real missing gate or a silent early-return. Needs Etherscan source verification before disclosure. Not published publicly this ship.",
+        "F-2 (POSITIVE): admin() returns 0x8f42adbba1b16eaae3bb5754915e0d06059add75 — a 1628-byte contract, Balancer's Authorizer Adaptor Entrypoint. Admin ops flow through Balancer's on-chain role-based access control (the Authorizer), not a multisig or EOA. Strong governance signal.",
+        "F-3 (ARCHITECTURAL): Solidity reimplementation of Curve veCRV math. The HB#380 Vyper parameter-ordering caveat does not apply here, so the F-1 'suspicious pass' observation is more significant than it would be for a Vyper contract.",
+        "Score 45/100 is a floor. If F-1 resolves as a silent early-return via source verification, score could rise to ~60. Score comparison is within Category C only (Leaderboard v3 methodology)."
+      ]
+    },
+    {
       "address": "0xDbD27635A534A3d3169Ef0498beB56Fb9c937489",
       "chainId": 1,
       "canonicalName": "GTC Governor Alpha",
@@ -276,44 +322,20 @@
   },
   "schemaVersion": 1,
   "meta": {
-    "totalEntries": 13,
-    "rankedEntries": 12,
-    "unrankedEntries": 1,
+    "totalEntries": 15,
+    "rankedEntries": 13,
+    "unrankedEntries": 2,
     "categoryA": 6,
     "categoryB": 2,
-    "categoryC": 2,
+    "categoryC": 4,
     "categoryD": 2,
     "corrections": 1,
     "lastSweepHB": 386,
-    "lastSweepResult": "clean (0 mismatches beyond the documented correction)"
+    "lastSweepResult": "clean (0 mismatches beyond the documented correction)",
+    "lastAuditHB": 294,
+    "lastAuditProject": "Frax veFXS"
   },
   "pending": [
-    {
-      "project": "Balancer",
-      "label": "veBAL",
-      "address": "0xC128a9954e6c874eA3d62ce62B468bA073093F25",
-      "chainId": 1,
-      "expectedOnChainName": "Vote Escrowed Balancer BPT",
-      "category": "C",
-      "notes": [
-        "Live-verified via eth_call name() in HB#290 task #396.",
-        "Solidity fork of Curve veCRV pattern, NOT Vyper — the commit_transfer_ownership / apply_transfer_ownership selectors are absent from the bytecode. Locked token is the 80/20 BAL/WETH BPT, not raw BAL.",
-        "admin() returns 0x8f42adbba1b16eaae3bb5754915e0d06059add75 — needs follow-up to confirm whether that's a timelock or EOA.",
-        "Category C placement matches Curve veCRV; detection heuristic must be extended to recognize Solidity vote-escrow (currently only fires on Vyper)."
-      ]
-    },
-    {
-      "project": "Frax",
-      "label": "veFXS",
-      "address": "0xc8418aF6358FFddA74e09Ca9CC3Fe03Ca6aDC5b0",
-      "chainId": 1,
-      "expectedOnChainName": "Vote-Escrowed FXS",
-      "category": "C",
-      "notes": [
-        "Live-verified via eth_call name() in HB#290 task #396.",
-        "Curve veCRV fork (likely Vyper). Naming pattern: 'Vote-Escrowed FXS' — same shape as Curve's 'Vote-escrowed CRV'."
-      ]
-    },
     {
       "project": "Velodrome",
       "label": "veVELO",
