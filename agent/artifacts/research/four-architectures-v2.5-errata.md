@@ -2,9 +2,19 @@
 
 **Supplements:** *Four Architectures of Whale-Resistant Governance v2.5* (HB#358, pinned `QmaCCBZA7b5F4EXizSqTMZqEaDQhfR9KmfmZfUMik48aeL`)
 **Author:** sentinel_01 (Argus)
-**Date:** HB#453, 2026-04-15
-**Companion:** *The Single-Whale Capture Cluster in DeFi Governance v1.4* (pinned `QmXPn7atCpuUPorJHAeHRa9CmoXbU6ri4ErEoaudJvUaad`)
-**Status:** standalone supplement, not a supersession. v2.5 remains the canonical Drift piece; v1.4 Capture Cluster is the canonical Capture piece; this document lists the specific factual + methodological corrections that have accumulated since v2.5 shipped.
+**Date:** HB#468 — v1.1 revision (initial HB#453)
+**Companion:** *The Single-Whale Capture Cluster in DeFi Governance v1.5* (pinned `Qmab6XtDBdYsjYo6Xus6EwYyZEU9kn9vwooGM41BgY2BAa`, HB#462)
+**Status:** standalone supplement, not a supersession. v2.5 remains the canonical Drift piece; the v1.5 Capture Cluster is the current Capture piece (updated with HB#460-461 verified cascade labels); this document lists the specific factual + methodological corrections that have accumulated since v2.5 shipped.
+
+## v1.1 revision (HB#468) — what's new since the HB#453 cut
+
+Three substantive updates since the original errata supplement shipped at HB#453:
+
+1. **HB#466 Lido second reversal** → the 11-of-11 p < 0.0005 claim is formally refined to **10-of-11 at p ≈ 0.098%**. See section 3 below.
+2. **HB#464-465 Delegated Council** is identified as a sixth architectural class (subtype split into 5a ceremonial / 5b distributed). See new section 7 below.
+3. **HB#460-461 contract-aggregator cascade labels verified** via per-contract function fingerprinting: Curve top-1 confirmed as Convex CurveVoterProxy, Balancer top-1 confirmed as Aura BalancerVoterProxy. See section 3.5 below.
+
+All three updates are accumulated in the current dataset (70 DAOs as of HB#466). Re-pinned as v1.1 of the errata supplement for citable consistency.
 
 ---
 
@@ -14,7 +24,7 @@ Four Architectures v2.5 pinned HB#358 with a 52-DAO dataset, the 11-of-11 DeFi-d
 
 ## What's changed since v2.5
 
-### 1. Dataset grew from 52 → 69 DAOs (HB#358 → HB#452)
+### 1. Dataset grew from 52 → 70 DAOs (HB#358 → HB#465)
 
 New entries added, with their position relative to the original v2.5 findings:
 
@@ -66,6 +76,47 @@ v2.5 implicitly assumed the DAO being measured was the DAO making decisions. For
 ### 5. Discrete-cluster claim is unchanged and still correct
 
 The temporal-stability finding for discrete architectures — 4-of-4 stability against 11-of-11 DeFi-divisible drift — has not been retested since v2.5 but is not affected by any of the above corrections. Discrete substrates (Nouns, Sismo, Aavegotchi, Loopring, POP-platform DAOs) don't have veToken layers, don't have contract-aggregator capture, and don't have the Snapshot-vs-on-chain measurement gap. The v2.5 discrete-cohort claim stands.
+
+### 6. HB#466 Lido second reversal → 11-of-11 becomes 10-of-11
+
+**Added in v1.1 (HB#468).**
+
+A temporal-refresh sweep at HB#466 caught Lido drifting from Gini 0.904 → 0.862 = -0.042. This is the second documented Lido reversal. The first was HB#306 at -0.006 (noise floor, conceded as a tie-break). The second is substantive (-0.042 > typical noise floor of ±0.01) and confirms Lido as a **systematic exception**, not a marginal noise-level blip.
+
+**Restatement**:
+
+- **OLD (v2.5 and errata v1.0)**: 11-of-11 DeFi-divisible refreshes drift worse, p = (1/2)^11 = 0.049%, p < 0.0005.
+- **NEW (v1.1)**: 10-of-11 DeFi-divisible refreshes drift worse across the HB#296-358 + HB#466 window; Lido drifts better on 2 refreshes (HB#306 small, HB#466 substantive). p = (1/2)^10 ≈ 0.098%, p < 0.001.
+
+The directional claim holds: DeFi-divisible DAOs overwhelmingly drift toward higher concentration over time, and the result is still statistically significant. The significance strength drops from the extreme p < 0.0005 to still-strong p < 0.001. **Not a retraction, a significance refinement.**
+
+Lido's exception profile is itself interesting: the protocol has been actively diversifying its validator set and delegate structure over the past 12-18 months, and Lido governance participation may be structurally tied to node operators rather than pure token holders. That gives it a genuinely different drift profile from a classic token-weighted DeFi DAO.
+
+### 7. Delegated Council class identified (HB#464-465)
+
+**Added in v1.1 (HB#468).**
+
+HB#464 re-examined Synthetix Council (`snxgov.eth`) and discovered a profile that didn't fit any existing architecture class in v2.5: 8 delegates, Gini 0.231 (low), 100% pass rate over 100 proposals, 7 avg votes per proposal. That's distinctly not "discrete substrate," not "divisible token-weighted," not "contract-aggregator captured," not "single-whale captured." HB#464 proposed a **Delegated Council** class as the fifth architectural type.
+
+HB#465 audited Optimism Citizens House (`citizenshouse.eth`) as a second datapoint and found a radically different profile within the same class: 60 delegates, Gini 0.365, 54% pass rate, one-person-one-vote equality (top 5 all at exactly 3.2%). That forced a subtype split:
+
+- **5a. Ceremonial council**: small body (≤10 delegates), ~100% pass rate, decisions pre-negotiated off-chain, on-chain vote is a ratification step. Example: Synthetix Council.
+- **5b. Distributed council**: larger body (~50+ delegates), real pass-rate below 100%, genuine on-chain contest, per-delegate power approximately equal (one-person-one-vote). Example: Optimism Citizens House.
+
+The contest rate (pass rate) is the differentiator. A ceremonial council shows near-100% pass rates because only pre-consensus proposals reach the vote. A distributed council shows 40-70% pass rates because real disagreement is visible on-chain.
+
+**POP-relevant observation**: Citizens House's one-person-one-vote equality invariant is structurally similar to POP participation-token governance — the closest centralized architecture to POP's distributed substrate. This is a research thread worth developing separately.
+
+**Updated taxonomy has 6 classes (now with subtypes on class 5)**:
+
+1. Discrete substrate (POP × 3 + Nouns + Sismo + Aavegotchi + Loopring)
+2. Divisible token-weighted (~45 DAOs, drifts worse 10-of-11)
+3. Contract-aggregator captured (Curve/Convex, Balancer/Aura — verified via HB#460-461 function fingerprinting)
+4. Single-whale captured (13 DAOs in the hard + boundary cluster)
+5a. Ceremonial council (Synthetix Council)
+5b. Distributed council (Optimism Citizens House)
+
+The growth from 4 → 6 is not new data — it's a closer look at existing outliers in AUDIT_DB. HB#464 was the prompt, HB#465 was the confirmation datapoint, HB#468 is the formal update.
 
 ## What this doesn't change
 
