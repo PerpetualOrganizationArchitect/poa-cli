@@ -11,8 +11,8 @@ export function requireArg<T>(value: T | undefined, name: string): T {
   return value;
 }
 
-export function requireAddress(address: string, name: string): string {
-  if (!ethers.utils.isAddress(address)) {
+export function requireAddress(address: string | undefined, name: string): string {
+  if (!address || !ethers.utils.isAddress(address)) {
     throw new Error(`Invalid address for --${name}: ${address}`);
   }
   return ethers.utils.getAddress(address);

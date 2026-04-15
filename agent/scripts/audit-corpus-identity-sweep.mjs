@@ -62,6 +62,12 @@ function labeledFromFilename(filename) {
  * This map says "if the filename says X, consider these on-chain names
  * to be an acceptable match." Populated from the HB#386 first-run false
  * positives. Additions should be justified with a comment.
+ *
+ * Canonical source of truth: src/lib/label-aliases.ts (task #395, HB#387).
+ * Keep this copy in sync — the sweep is a .mjs Node script that cannot
+ * import TypeScript source directly. If you add a new alias, add it in
+ * BOTH places, or the probe-access --expected-name check and this sweep
+ * will disagree.
  */
 const LABEL_ALIASES = {
   // Gitcoin's token is GTC; Gitcoin's GovernorAlpha contract identifies
