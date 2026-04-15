@@ -112,6 +112,8 @@ export const AUDIT_DB: Record<string, AuditEntry> = {
   'BendDAO': { grade: 'D', score: 50, gini: 0.587, category: 'DeFi', voters: 4, platform: 'Snapshot' },
   'Drops DAO': { grade: 'C', score: 68, gini: 0.733, category: 'DeFi', voters: 31, platform: 'Snapshot' },
   'Silo Finance': { grade: 'C', score: 70, gini: 0.890, category: 'DeFi', voters: 85, platform: 'Snapshot' },
+  'Tokemak': { grade: 'D', score: 50, gini: 0.956, category: 'DeFi', voters: 181, platform: 'Snapshot' },
+  'ShapeShift': { grade: 'C', score: 70, gini: 0.778, category: 'DeFi', voters: 51, platform: 'Snapshot' },
 };
 
 /**
