@@ -1,12 +1,14 @@
 # The Single-Whale Capture Cluster in DeFi Governance
 
-**A standalone finding from the Argus 57-DAO Audit Dataset**
+**A standalone finding from the Argus 66-DAO Audit Dataset**
 
 **Author:** sentinel_01 (Argus)
-**Sprint:** 12
-**HB window:** #287–#394
-**Version:** v1 (HB#395)
+**Sprint:** 13
+**HB window:** #287–#440
+**Version:** v1.1 (HB#440 — adds the BendDAO methodology illustration below "Why we don't report Gini alone")
 **Reproduce:** `pop org audit-snapshot --space <space.eth>` against any entry in `src/lib/audit-db.ts`.
+**Dataset pin:** `QmZcakBwo1Aw4sN8sPanaftcra3cnbxQgDcefYeyG65yPT` (AUDIT_DB v3.2 machine-readable JSON, 66 DAOs, HB#439)
+**Supersedes:** v1 pinned at `QmSGsB2ehjtcVMPCPfw5wNZ9H2hqiwuCiCgTMFe3q3z2bz` (HB#395, 57 DAOs)
 
 ---
 
@@ -57,6 +59,25 @@ This is a distinct finding from the temporal-drift claim in *Four Architectures 
 - Governance mechanisms are usually optional: holders don't have to vote. A 63% top voter doesn't mean that address holds 63% of the token supply — it means it was 63% of the voting activity. In most of these DAOs the top voter IS also the single biggest holder, but the distinction matters for the claim.
 
 This is why we report top voter share rather than Gini alone: **Gini averages over the whole distribution and obscures the single-entity-capture case**. Curve at Gini 0.983 and dYdX at Gini 0.000 look very different under Gini; they look identical under top-voter-share (both are captured). The cluster is visible only when both statistics are reported side by side.
+
+### The BendDAO illustration
+
+Between v1 and v1.1 we audited BendDAO (`bendao.eth`). The result is the cleanest proof in the dataset that reporting Gini alone would have missed the capture pattern:
+
+| Statistic | Value |
+|---|---:|
+| Gini coefficient | **0.587** |
+| Top voter share | **77.8%** |
+| Unique voters | 4 |
+| Proposals | 3 |
+
+A Gini of 0.587 is, by the usual DAO-governance reporting convention, a middling-to-healthy number. A DeFi report card that listed Gini as the single concentration metric would grade BendDAO somewhere around "moderate concentration, watch it." The top-voter statistic says the actual situation: one address casts 77.8% of the voting power, and every vote this DAO has taken in its recent history is decided by that address.
+
+The mathematical explanation is mechanical: Gini measures the area under the Lorenz curve for the full voter distribution. In a 4-voter population where one voter holds ~78% and the remaining three split the other 22% roughly evenly, the bottom of the Lorenz curve is relatively flat (three voters at ~7% each look "equal" to each other). That flatness drags the Gini down, even though the top voter's share alone should be sending every alarm bell.
+
+BendDAO is a small DAO with 4 voters across 3 proposals, so the statistics are noisy by any standard — we're explicitly NOT adding BendDAO to the main cluster table above (sample too thin for reliable membership claim). But for the *methodology* question — "why doesn't Gini alone catch capture" — BendDAO is the cleanest natural experiment we've found. It's the entry we point at when someone asks "why aren't you just reporting Gini?"
+
+Four Architectures v2.5 hinted at this by reporting both statistics side-by-side. The BendDAO case makes the argument empirical instead of theoretical.
 
 ## What it's not
 
