@@ -234,6 +234,51 @@
       ]
     },
     {
+      "address": "0xFAf8FD17D9840595845582fCB047DF13f006787d",
+      "chainId": 10,
+      "canonicalName": "veNFT",
+      "filenameLabel": "Velodrome V2 veNFT",
+      "category": "C",
+      "categoryLabel": "veToken / staking governance (Solidly veNFT, probe-reliable)",
+      "score": 85,
+      "scoreStatus": "clean — all admin functions gated with custom-error reverts",
+      "auditHB": 296,
+      "sourceFile": "agent/scripts/probe-velodrome-venft-optimism.json",
+      "reportFile": "agent/artifacts/audits/solidly-venft-audit-hb296.md",
+      "leaderboardRank": 1,
+      "lastVerified": "2026-04-15T18:30:00Z",
+      "notes": [
+        "Solidly veNFT — NFT-position vote-escrow (ERC721), architecturally distinct from Curve-family veCRV. Uses camelCase function names (createLock, increaseAmount, increaseUnlockTime) not Curve's snake_case.",
+        "11 functions probed via new src/abi/external/SolidlyVotingEscrow.json. 10 gated with CUSTOM ERRORS, 0 passed, 1 not-implemented (delegate — veNFT doesn't support ERC5805).",
+        "Custom errors decoded: ZeroAmount (0x1f2a2005), NotApprovedOrOwner (0xe433766c), SameNFT (0x93b50ef2), NotTeam (0xe9f3e974 — ADMIN GATE), NotVoter (0xc18384c1 — ADMIN GATE).",
+        "F-1 STRONG POSITIVE: 3/3 admin functions (setTeam, setArtProxy, setVoterAndDistributor) properly gated via custom errors. Clean Solidity access control. Contrast Balancer's 2 indeterminate findings — Velodrome has zero ambiguity.",
+        "F-2 ARCHITECTURAL: NFT positions are transferable/mergeable, fundamentally different from Curve's locked balances. HB#292 voteEscrow detection does NOT fire (checks Curve snake_case selectors). Needs Solidly triad extension — filed as Sprint 14 follow-up.",
+        "F-3 BYTECODE-SIBLING: Aerodrome (Base) returns IDENTICAL custom error codes on every selector — confirmed direct fork of Velodrome V2.",
+        "team() = 0x0a16cb36b553ba2bb2339f3b206a965e9841d305 (812 bytes, Gnosis Safe shape). voter() = 0x41c914ee0c7e1a5edcd0295623e6dc557b5abf3c."
+      ]
+    },
+    {
+      "address": "0xeBf418Fe2512e7E6bd9b87a8F0f294aCDC67e6B4",
+      "chainId": 8453,
+      "canonicalName": "veNFT",
+      "filenameLabel": "Aerodrome veNFT",
+      "category": "C",
+      "categoryLabel": "veToken / staking governance (Solidly veNFT, probe-reliable)",
+      "score": 85,
+      "scoreStatus": "clean — bytecode-sibling of Velodrome V2, identical error codes on every selector",
+      "auditHB": 296,
+      "sourceFile": "agent/scripts/probe-aerodrome-venft-base.json",
+      "reportFile": "agent/artifacts/audits/solidly-venft-audit-hb296.md",
+      "leaderboardRank": 1,
+      "lastVerified": "2026-04-15T18:30:00Z",
+      "notes": [
+        "DIRECT bytecode-sibling fork of Velodrome V2. Every probed selector returned the exact same custom-error code as Velodrome V2 — this audit covers both.",
+        "team() = 0xee5b3c7b333e2870b746b3b2b168ef0958e55e15 (10993 bytes — larger than Velodrome's team, likely a full governance timelock or signer-set contract with execution logic).",
+        "Score 85 tied with Velodrome V2 because the bytecode is sibling-identical; differences are constructor params + chain deployment, not code.",
+        "See solidly-venft-audit-hb296.md for shared methodology and findings. Any Velodrome-specific finding should be verified against Aerodrome separately because deployment state differs even when bytecode matches."
+      ]
+    },
+    {
       "address": "0xc8418aF6358FFddA74e09Ca9CC3Fe03Ca6aDC5b0",
       "chainId": 1,
       "canonicalName": "Vote-Escrowed FXS",
@@ -322,42 +367,30 @@
   },
   "schemaVersion": 1,
   "meta": {
-    "totalEntries": 15,
-    "rankedEntries": 13,
+    "totalEntries": 17,
+    "rankedEntries": 15,
     "unrankedEntries": 2,
     "categoryA": 6,
     "categoryB": 2,
-    "categoryC": 4,
+    "categoryC": 6,
     "categoryD": 2,
     "corrections": 1,
     "lastSweepHB": 386,
     "lastSweepResult": "clean (0 mismatches beyond the documented correction)",
-    "lastAuditHB": 294,
-    "lastAuditProject": "Frax veFXS"
+    "lastAuditHB": 296,
+    "lastAuditProject": "Velodrome V2 + Aerodrome veNFT (Sprint 14 P1 batch complete)"
   },
   "pending": [
     {
-      "project": "Velodrome",
-      "label": "veVELO",
+      "project": "_placeholder",
+      "label": "Sprint 14 P1 complete — all 4 veToken targets audited",
       "address": null,
-      "chainId": 10,
-      "expectedOnChainName": "veNFT",
-      "category": "C",
+      "chainId": 0,
+      "expectedOnChainName": null,
+      "category": null,
       "notes": [
-        "Solidly-style veNFT vote-escrow on Optimism. Address TBD; resolve via Velodrome docs before audit.",
-        "Name alias pre-registered as 'venft' since Solidly contracts don't embed the project name in name()."
-      ]
-    },
-    {
-      "project": "Aerodrome",
-      "label": "veAERO",
-      "address": null,
-      "chainId": 8453,
-      "expectedOnChainName": "veNFT",
-      "category": "C",
-      "notes": [
-        "Solidly-fork vote-escrow on Base. Aerodrome is Velodrome's Base-deployed sister project.",
-        "Same veNFT naming pattern as Velodrome; shared alias registration."
+        "Sprint 14 P1 (execute pending[] veToken audits) is now complete: Balancer HB#293, Frax HB#294, Velodrome + Aerodrome HB#296. This placeholder entry is kept so downstream consumers can detect the transition (pending.length > 0 vs 0) gracefully.",
+        "Next candidates for the queue (NOT yet verified on-chain): Aura (AURA), Beethoven X (veBEETS on Fantom), Convex vlCVX, Yearn yCRV, Thena (veTHE on BNB Chain). Add as concrete pending[] entries after live name() verification like HB#291."
       ]
     }
   ]
