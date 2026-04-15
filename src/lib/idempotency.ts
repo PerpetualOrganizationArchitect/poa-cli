@@ -1,38 +1,118 @@
 /**
  * Idempotency cache for on-chain write commands — task #369 (HB#213).
  *
- * The HB#211 failure mode: vigil_01 created duplicate on-chain proposals
- * #55 and #56 for the same PR #14 merge because the first `pop vote create`
- * ran via background task, the output file was initially empty, and a
- * retry ran before the first call had completed. Both succeeded; both
- * expired with 0 votes; HB#212 had to announce both to clear state. See
- * brain lesson `background-retry-duplicate-on-chain-writes-hb-211-...`.
+ * ## The HB#211 failure mode
  *
- * Fix: a small file-backed cache that sits between the CLI's argument
- * parse and the actual `executeTx` call. When a write command runs, it:
+ * vigil_01 created duplicate on-chain proposals #55 and #56 for the same
+ * PR #14 merge because:
+ *
+ *   1. First `pop vote create` ran via background task (run_in_background=true)
+ *   2. Background task's stdout file was initially empty
+ *   3. Agent read the empty file, assumed the call failed, retried
+ *   4. Both calls landed → two identical proposals #55 and #56
+ *   5. Both expired with 0 votes over 12+ hours
+ *   6. HB#212 had to announce both to clear state
+ *   7. HB#373 discovered the triangular stuck state (announce=AlreadyExecuted,
+ *      execute=Active, vote=PastWindow) as a secondary consequence
+ *
+ * The root cause is agent discipline (retry-before-verify), but the
+ * side effect is real on-chain state that can't be undone. Vigil's brain
+ * lesson `background-retry-duplicate-on-chain-writes-hb-211-failure-mode-and-fix`
+ * documents the agent-discipline side. This module is the CLI-level
+ * defense-in-depth.
+ *
+ * ## Fix shape
+ *
+ * A small file-backed cache that sits between the CLI's argument parse
+ * and the actual `executeTx` call. When a write command runs, it:
  *
  *   1. Computes a deterministic cache key from { orgId, commandName,
  *      idempotencyKey } where idempotencyKey is either (a) passed
  *      explicitly via `--idempotency-key <str>` or (b) auto-derived
  *      from hash(JSON-serialized argv minus transient fields like
  *      --private-key, --dry-run, --yes).
- *   2. Checks the cache for a non-expired entry. TTL = 15 minutes —
- *      enough for any reasonable retry, short enough that intentional
- *      duplicates 16+ minutes later are treated as new writes.
+ *   2. Checks the cache for a non-expired entry. See "Why 15 minutes"
+ *      below.
  *   3. If a cache hit: returns the prior result without re-submitting
  *      the transaction. Caller prints the cached fields and exits 0.
  *   4. If no cache hit: caller submits the tx; on success, caller
  *      writes the fresh entry via `recordIdempotentResult`.
  *
+ * ## Why 15 minutes
+ *
+ * The TTL matches the Argus heartbeat cadence. The heartbeat runs every
+ * 15 minutes, so the cache window is exactly one heartbeat. The
+ * agent-discipline rule of thumb is: "one command per concept per
+ * heartbeat." If the same write happens twice within one heartbeat, it
+ * is almost certainly a retry, not an intentional duplicate. If it
+ * happens in two different heartbeats, the agent has deliberately
+ * decided to re-run it, and the cache expiring on the heartbeat
+ * boundary lines up with that mental model.
+ *
+ * Tradeoffs considered:
+ *   - **Shorter (1-5 min)**: would cover the HB#211 bug (retries happen
+ *     within seconds) but leaves narrow margin for clock drift, slow
+ *     chain confirmation, or RPC hiccups. A retry that slipped 6 min
+ *     after the first call would get through.
+ *   - **Longer (1 hour+)**: blocks legitimate re-use of the same
+ *     command template (e.g. re-issuing a failed proposal with tweaks)
+ *     for too long, encouraging operators to pass --no-idempotency
+ *     reflexively, which defeats the guard.
+ *   - **15 min**: wide enough to catch every realistic retry pattern,
+ *     narrow enough that a deliberate re-run in the next heartbeat
+ *     just works. Also aligns with the heartbeat cadence so the
+ *     operator's mental model ("one action per heartbeat") maps
+ *     cleanly onto the cache semantics.
+ *
+ * ## What this does NOT cover
+ *
+ *   - **On-chain state already corrupted** before the cache shipped —
+ *     duplicate proposals #55 and #56 remain as permanent stale
+ *     records on Argus DAO. The cache cannot unstick existing state.
+ *   - **Cross-agent duplicates** — the cache is local to one
+ *     POP_AGENT_HOME. If argus and vigil both independently try the
+ *     same write, they hit two different caches. Mitigation in practice
+ *     is proposal-title uniqueness felt at governance review time.
+ *   - **Truly concurrent retries** — if call 1 has not yet recorded
+ *     its result to the cache when call 2 starts, both race through.
+ *     Rare in practice: agent retries are always separated by at least
+ *     the time it takes to read an empty stdout, form a new tool call,
+ *     and issue it (several seconds minimum).
+ *   - **Commands not wired to consult the cache** — only the write
+ *     commands explicitly wired (all of them after #369 + #370 + #374)
+ *     get protection. New write commands must call
+ *     `checkIdempotencyCache` + `recordIdempotentResult` to opt in.
+ *
+ * ## Escape hatches
+ *
+ *   - `--no-idempotency` on any wired command bypasses the check
+ *     entirely. Use when you intentionally want a duplicate write.
+ *   - `--idempotency-key "<str>"` overrides the auto-derived argv
+ *     hash with an explicit key. Use when you want two structurally
+ *     different commands to be treated as the same logical action
+ *     (or two structurally identical commands to be treated as
+ *     different actions — pass a distinct key).
+ *
+ * ## Storage
+ *
  * The cache lives at `$POP_AGENT_HOME/idempotency-cache.json` where
  * POP_AGENT_HOME defaults to `~/.pop-agent`. Each agent home has its
- * own cache so argus / vigil / sentinel don't collide.
+ * own cache so argus / vigil / sentinel don't collide. The file is
+ * JSON so an operator can hand-inspect or manually evict entries
+ * without tooling.
  *
- * Explicit bypass via `--no-idempotency` skips the check entirely.
- * Out of scope: read operations (reads are safe to retry), brain
- * writes (different dispatch layer), treasury operations (different
- * invariants). This module is for pop vote create + pop task create
- * in the first ship; follow-up tasks extend it.
+ * ## Coverage (after the #369 → #370 → #374 rollout)
+ *
+ *   - Writes:    `pop vote create`, `pop vote cast`,
+ *                `pop task create`, `pop task claim`, `pop task submit`,
+ *                `pop task review`, `pop brain append-lesson`,
+ *                `pop brain edit-lesson`, `pop brain remove-lesson`,
+ *                `pop brain tag`
+ *   - Not wired: read-only commands (reads are safe to retry), brain
+ *                daemon-routed writes via routedDispatch (different
+ *                invariants — the daemon's post-connect failure rule
+ *                covers the same ground at a different layer),
+ *                treasury operations pending explicit review.
  */
 
 import * as fs from 'fs';
