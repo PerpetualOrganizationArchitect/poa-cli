@@ -2,8 +2,87 @@ import type { Argv, ArgumentsCamelCase } from 'yargs';
 import { ethers } from 'ethers';
 import { query } from '../../lib/subgraph';
 import { resolveOrgId } from '../../lib/resolve';
+import { resolveNetworkConfig } from '../../config/networks';
 import { FETCH_VOTING_DATA } from '../../queries/voting';
 import * as output from '../../lib/output';
+import HybridVotingAbi from '../../abi/HybridVotingNew.json';
+import DirectDemocracyVotingAbi from '../../abi/DirectDemocracyVotingNew.json';
+
+/**
+ * Task #378 (HB#437) mitigation for pop vote list subgraph-indexer lag.
+ *
+ * Observed twice this session: #54 (PR #10 merge) showed Ends-in decrementing
+ * at ~30% wall-clock speed, and #55/#56 (duplicate PR #14 merge) stayed
+ * status=Active with 0 votes for 13+ hours after actual on-chain execution.
+ * The pop vote announce --dry-run probe confirmed both returned
+ * `AlreadyExecuted()` — the subgraph had simply missed the Vote and
+ * Announced events.
+ *
+ * Root cause hypothesis (diagnosis step of #378): the Gnosis subgraph
+ * indexer for the POP HybridVoting/DirectDemocracyVoting contracts lags
+ * under bursty block production. The agent lifecycle uses sponsored tx
+ * bundles that can land multiple tx's in adjacent blocks — a vote cast +
+ * announce + execute sequence spanning 3-4 blocks can outrun the indexer's
+ * polling window. Missed events don't retroactively re-fire, so the stale
+ * state persists indefinitely.
+ *
+ * Full root-cause fix is upstream in the subgraph indexer (not in this
+ * repo). This file's mitigation: when the subgraph reports a proposal as
+ * Active + endTimestamp<chainNow (which should NEVER happen for a healthy
+ * indexer), probe the contract via callStatic.announceWinner(id). Three
+ * possible outcomes:
+ *   - callStatic succeeds → proposal is ready to announce (no one has run
+ *     the announce tx yet). Override displayStatus to "Announceable".
+ *   - reverts with AlreadyExecuted() → proposal has already been executed
+ *     on-chain. Override displayStatus to "Ended (chain)" and flag the
+ *     subgraph lag.
+ *   - reverts with any other error → subgraph is probably right; fall
+ *     through to the subgraph-reported state.
+ *
+ * Cost guard: only proposals matching `status === "Active" && endTs < now`
+ * get probed. Normal active-and-not-yet-expired proposals pay zero RPC
+ * cost. Zombies that have been in the stale state for hours pay one
+ * callStatic per list invocation — negligible.
+ */
+async function probeExpiredActiveProposal(
+  contractAddr: string,
+  proposalId: string,
+  provider: ethers.providers.Provider,
+  abi: any = HybridVotingAbi,
+): Promise<'announceable' | 'chain-ended' | 'unknown'> {
+  try {
+    const contract = new ethers.Contract(contractAddr, abi as any, provider);
+    await contract.callStatic.announceWinner(proposalId);
+    // No revert — announce would succeed → proposal is ready to announce.
+    return 'announceable';
+  } catch (err: any) {
+    const msg = err?.reason || err?.error?.message || err?.message || '';
+    if (msg.includes('AlreadyExecuted') || err?.errorName === 'AlreadyExecuted') {
+      return 'chain-ended';
+    }
+    return 'unknown';
+  }
+}
+
+/**
+ * Format a unix timestamp as a relative time string from a reference now.
+ * Returns "in 32m", "in 1h 45m", "expired 12m ago", "ended 3h 21m ago" depending on direction.
+ *
+ * Uses the chain's block.timestamp as `now`, NOT the agent's wall-clock time.
+ * Locale-formatted absolute times (Date.toLocaleString) caused multiple
+ * heartbeats of confusion this session — relative to chain time is unambiguous.
+ */
+function formatRelativeTime(endTs: number, nowTs: number): string {
+  const diff = endTs - nowTs;
+  const abs = Math.abs(diff);
+  const h = Math.floor(abs / 3600);
+  const m = Math.floor((abs % 3600) / 60);
+  const parts: string[] = [];
+  if (h > 0) parts.push(`${h}h`);
+  parts.push(`${m}m`);
+  const dur = parts.join(' ');
+  return diff > 0 ? `in ${dur}` : `expired ${dur} ago`;
+}
 
 interface ListArgs {
   org?: string;
@@ -42,6 +121,19 @@ export const listHandler = {
       const result = await query<any>(FETCH_VOTING_DATA, { orgId }, argv.chain);
       const org = result.organization;
 
+      // Fetch chain block.timestamp as the relative-time reference. Using
+      // chain time (not Date.now()) means displayed countdowns line up with
+      // what the contract sees — the same time used for VotingOpen checks.
+      let chainNow = Math.floor(Date.now() / 1000);
+      try {
+        const networkConfig = resolveNetworkConfig(argv.chain);
+        const provider = new ethers.providers.JsonRpcProvider(networkConfig.resolvedRpc, networkConfig.chainId);
+        const block = await provider.getBlock('latest');
+        chainNow = block.timestamp;
+      } catch {
+        // Fall back to wall clock if RPC unreachable
+      }
+
       if (!org) {
         spin.stop();
         output.error('Organization not found');
@@ -50,6 +142,7 @@ export const listHandler = {
       }
 
       const rows: string[][] = [];
+      let lagWarnings: Array<{ id: string; type: string; chainState: string }> = [];
 
       // Helper: check if address has voted on a proposal
       function hasVoted(proposal: any): boolean {
@@ -57,19 +150,58 @@ export const listHandler = {
         return (proposal.votes || []).some((v: any) => v.voter?.toLowerCase() === myAddress);
       }
 
+      // Task #378 mitigation: share one provider for chain probes across
+      // hybrid + dd loops. Reuse the same provider the chainNow fetch
+      // already used if available.
+      let probeProvider: ethers.providers.Provider | null = null;
+      try {
+        const networkConfig = resolveNetworkConfig(argv.chain);
+        probeProvider = new ethers.providers.JsonRpcProvider(networkConfig.resolvedRpc, networkConfig.chainId);
+      } catch {
+        // Fall through — if no provider, the probe step is skipped.
+      }
+
       // Hybrid proposals
       if (argv.type === 'all' || argv.type === 'hybrid') {
+        const hybridContractAddr = org.hybridVoting?.id;
         const proposals = org.hybridVoting?.proposals || [];
         for (const p of proposals) {
           if (argv.status && p.status !== argv.status) continue;
           if (argv.unvoted && hasVoted(p)) continue;
 
-          const endDate = p.endTimestamp
-            ? new Date(parseInt(p.endTimestamp) * 1000).toLocaleString()
+          const endRelative = p.endTimestamp
+            ? formatRelativeTime(parseInt(p.endTimestamp), chainNow)
             : '';
           const voteCount = (p.votes || []).length;
 
-          const displayStatus = p.executionFailed ? 'ExecFailed' : p.status;
+          let displayStatus = p.executionFailed ? 'ExecFailed' : p.status;
+          let winnerDisplay = p.winningOption != null ? `#${p.winningOption}` : '-';
+
+          // Task #378 probe: subgraph says Active but chain time has passed?
+          // That's the stale-state signature. Run a cheap callStatic probe.
+          const endTs = p.endTimestamp ? parseInt(p.endTimestamp) : 0;
+          if (
+            p.status === 'Active' &&
+            endTs > 0 &&
+            endTs < chainNow &&
+            probeProvider &&
+            hybridContractAddr
+          ) {
+            const chainState = await probeExpiredActiveProposal(
+              hybridContractAddr,
+              p.proposalId,
+              probeProvider,
+            );
+            if (chainState === 'chain-ended') {
+              displayStatus = 'Ended (chain)';
+              lagWarnings.push({ id: p.proposalId, type: 'hybrid', chainState: 'executed' });
+            } else if (chainState === 'announceable') {
+              displayStatus = 'Announceable';
+              lagWarnings.push({ id: p.proposalId, type: 'hybrid', chainState: 'ready' });
+            }
+            // 'unknown' = leave as-is, subgraph is probably right
+          }
+
           rows.push([
             p.proposalId,
             'hybrid',
@@ -77,25 +209,54 @@ export const listHandler = {
             displayStatus,
             `${p.numOptions}`,
             `${voteCount}`,
-            p.winningOption != null ? `#${p.winningOption}` : '-',
-            endDate,
+            winnerDisplay,
+            endRelative,
           ]);
         }
       }
 
       // DD proposals
       if (argv.type === 'all' || argv.type === 'dd') {
+        const ddContractAddr = org.directDemocracyVoting?.id;
         const proposals = org.directDemocracyVoting?.ddvProposals || [];
         for (const p of proposals) {
           if (argv.status && p.status !== argv.status) continue;
           if (argv.unvoted && hasVoted(p)) continue;
 
-          const endDate = p.endTimestamp
-            ? new Date(parseInt(p.endTimestamp) * 1000).toLocaleString()
+          const endRelative = p.endTimestamp
+            ? formatRelativeTime(parseInt(p.endTimestamp), chainNow)
             : '';
           const voteCount = (p.votes || []).length;
 
-          const ddDisplayStatus = p.executionFailed ? 'ExecFailed' : p.status;
+          let ddDisplayStatus = p.executionFailed ? 'ExecFailed' : p.status;
+
+          // Task #378 mitigation extended to DD (HB#438). DD and hybrid both
+          // expose `announceWinner(uint256)` on their contracts with matching
+          // AlreadyExecuted() error signatures, so the same probe helper
+          // works — just pass the DD ABI in.
+          const ddEndTs = p.endTimestamp ? parseInt(p.endTimestamp) : 0;
+          if (
+            p.status === 'Active' &&
+            ddEndTs > 0 &&
+            ddEndTs < chainNow &&
+            probeProvider &&
+            ddContractAddr
+          ) {
+            const chainState = await probeExpiredActiveProposal(
+              ddContractAddr,
+              p.proposalId,
+              probeProvider,
+              DirectDemocracyVotingAbi,
+            );
+            if (chainState === 'chain-ended') {
+              ddDisplayStatus = 'Ended (chain)';
+              lagWarnings.push({ id: p.proposalId, type: 'dd', chainState: 'executed' });
+            } else if (chainState === 'announceable') {
+              ddDisplayStatus = 'Announceable';
+              lagWarnings.push({ id: p.proposalId, type: 'dd', chainState: 'ready' });
+            }
+          }
+
           rows.push([
             p.proposalId,
             'dd',
@@ -104,7 +265,7 @@ export const listHandler = {
             `${p.numOptions}`,
             `${voteCount}`,
             p.winningOption != null ? `#${p.winningOption}` : '-',
-            endDate,
+            endRelative,
           ]);
         }
       }
@@ -120,6 +281,26 @@ export const listHandler = {
         ['ID', 'Type', 'Title', 'Status', 'Options', 'Votes', 'Winner', 'Ends'],
         rows
       );
+
+      // Footer: show the chain reference time so the relative-time column
+      // is auditable. Block timestamp is what the contract sees.
+      if (!output.isJsonMode()) {
+        const refIso = new Date(chainNow * 1000).toISOString();
+        console.log(`\n  Chain time: ${refIso} (block.timestamp)`);
+
+        // Task #378: warn when subgraph lag was detected + corrected.
+        if (lagWarnings.length > 0) {
+          console.log(
+            `\n  ⚠️  Subgraph lag detected: ${lagWarnings.length} proposal(s) had stale Active state corrected from on-chain probe:`,
+          );
+          for (const w of lagWarnings) {
+            console.log(`       #${w.id} (${w.type}) — chain state: ${w.chainState}`);
+          }
+          console.log(
+            `     These proposals are CORRECTLY handled on-chain; the subgraph just hasn't indexed the announce/execute events yet.`,
+          );
+        }
+      }
     } catch (err: any) {
       spin.stop();
       output.error(err.message);

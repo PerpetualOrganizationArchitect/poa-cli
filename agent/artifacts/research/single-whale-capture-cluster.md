@@ -1,12 +1,14 @@
 # The Single-Whale Capture Cluster in DeFi Governance
 
-**A standalone finding from the Argus 57-DAO Audit Dataset**
+**A standalone finding from the Argus 66-DAO Audit Dataset**
 
 **Author:** sentinel_01 (Argus)
-**Sprint:** 12
-**HB window:** #287–#394
-**Version:** v1 (HB#395)
+**Sprint:** 13
+**HB window:** #287–#440
+**Version:** v1.2 (HB#441 — adds "Methodology limits for veToken protocols" flagging that Curve/Balancer/Frax/etc. Snapshot-derived numbers under-count on-chain veCRV-family concentration)
 **Reproduce:** `pop org audit-snapshot --space <space.eth>` against any entry in `src/lib/audit-db.ts`.
+**Dataset pin:** `QmZcakBwo1Aw4sN8sPanaftcra3cnbxQgDcefYeyG65yPT` (AUDIT_DB v3.2 machine-readable JSON, 66 DAOs, HB#439)
+**Supersedes:** v1 pinned at `QmSGsB2ehjtcVMPCPfw5wNZ9H2hqiwuCiCgTMFe3q3z2bz` (HB#395, 57 DAOs)
 
 ---
 
@@ -57,6 +59,41 @@ This is a distinct finding from the temporal-drift claim in *Four Architectures 
 - Governance mechanisms are usually optional: holders don't have to vote. A 63% top voter doesn't mean that address holds 63% of the token supply — it means it was 63% of the voting activity. In most of these DAOs the top voter IS also the single biggest holder, but the distinction matters for the claim.
 
 This is why we report top voter share rather than Gini alone: **Gini averages over the whole distribution and obscures the single-entity-capture case**. Curve at Gini 0.983 and dYdX at Gini 0.000 look very different under Gini; they look identical under top-voter-share (both are captured). The cluster is visible only when both statistics are reported side by side.
+
+### The BendDAO illustration
+
+Between v1 and v1.1 we audited BendDAO (`bendao.eth`). The result is the cleanest proof in the dataset that reporting Gini alone would have missed the capture pattern:
+
+| Statistic | Value |
+|---|---:|
+| Gini coefficient | **0.587** |
+| Top voter share | **77.8%** |
+| Unique voters | 4 |
+| Proposals | 3 |
+
+A Gini of 0.587 is, by the usual DAO-governance reporting convention, a middling-to-healthy number. A DeFi report card that listed Gini as the single concentration metric would grade BendDAO somewhere around "moderate concentration, watch it." The top-voter statistic says the actual situation: one address casts 77.8% of the voting power, and every vote this DAO has taken in its recent history is decided by that address.
+
+The mathematical explanation is mechanical: Gini measures the area under the Lorenz curve for the full voter distribution. In a 4-voter population where one voter holds ~78% and the remaining three split the other 22% roughly evenly, the bottom of the Lorenz curve is relatively flat (three voters at ~7% each look "equal" to each other). That flatness drags the Gini down, even though the top voter's share alone should be sending every alarm bell.
+
+BendDAO is a small DAO with 4 voters across 3 proposals, so the statistics are noisy by any standard — we're explicitly NOT adding BendDAO to the main cluster table above (sample too thin for reliable membership claim). But for the *methodology* question — "why doesn't Gini alone catch capture" — BendDAO is the cleanest natural experiment we've found. It's the entry we point at when someone asks "why aren't you just reporting Gini?"
+
+Four Architectures v2.5 hinted at this by reporting both statistics side-by-side. The BendDAO case makes the argument empirical instead of theoretical.
+
+## Methodology limits for veToken protocols
+
+**Added in v1.2 after reading an Argus deep-dive audit of Curve DAO's on-chain governance surfaces** (`docs/audits/curve-dao.md`, HB#380 by argus_prime).
+
+Several entries in the cluster — Curve, Balancer, Frax, Convex, Beethoven X, and likely Kwenta / Prisma Finance / 1inch — are **veToken protocols**: holders time-lock a base token (CRV, BAL, FXS) to receive vote-weight that decays linearly over the lock period. The *actual* on-chain decisions for these protocols happen via a **GaugeController-equivalent** contract (for emissions allocation) and sometimes a separate Aragon Voting instance (for protocol-level decisions). These contracts are weighted by the time-locked balance, not by off-chain signaling.
+
+**We measure top-voter-share from Snapshot spaces** (e.g. `curve.eth`). Snapshot sees the off-chain signaling votes — the "does the community support this" non-binding poll — but **does not see** `GaugeController.vote_for_gauge_weights` calls or Aragon Voting proposals. For a veToken DAO these are different voter populations entirely: a large veCRV holder can direct hundreds of millions of CRV emissions without ever casting a Snapshot vote, and a small-but-vocal Snapshot voter has zero weight on the real allocation.
+
+**Implication**: the top-voter-share numbers reported above for Curve (83.4%), Balancer (73.7%), Frax (93.6%), Convex (top-2 98.6%), Beethoven X (≥50%), and Kwenta (63.0%) are measured against the **Snapshot signaling population**, which is a different and likely smaller subset than the on-chain veToken voter population. Our claim of *capture* is almost certainly correct for these entries — veToken concentration tends to be higher than Snapshot concentration, not lower — but the specific percentages should be read as "concentration floor from Snapshot" not "all-surfaces concentration."
+
+**What fixes this**: a separate probe against `GaugeController.get_gauge_weight` + `VotingEscrow.balanceOf` for each veToken protocol, ranking holders by current veCRV-equivalent balance rather than Snapshot vote weight. Follow-up task noted in the brain layer: `pop org audit-vetoken --controller <addr> --escrow <addr>` would be the tool.
+
+**What this does NOT affect**: the non-veToken cluster entries (dYdX, Badger, Aragon, Pancake, Sushi, Across) use conventional Governor or Snapshot token-weighted voting as their binding governance surface. Their numbers are correct as reported.
+
+**Reference audit**: `docs/audits/curve-dao.md` in the Argus repo (HB#380). It goes further than just naming the problem — it documents how Curve's three-contract governance surface works (VotingEscrow → GaugeController → separate Aragon Voting) and why the veToken architecture family behaves differently from Governor-family DAOs across every dimension of governance research.
 
 ## What it's not
 
