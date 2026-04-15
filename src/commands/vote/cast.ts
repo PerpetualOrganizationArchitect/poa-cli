@@ -2,29 +2,46 @@ import type { Argv, ArgumentsCamelCase } from 'yargs';
 import { createSigner } from '../../lib/signer';
 import { createWriteContract } from '../../lib/contracts';
 import { executeTx } from '../../lib/tx';
+import {
+  argvToIdempotencyString,
+  checkIdempotencyCache,
+  recordIdempotentResult,
+} from '../../lib/idempotency';
+import { resolveOrgId } from '../../lib/resolve';
 import * as output from '../../lib/output';
-import { resolveVotingContracts } from './helpers';
+import { resolveVotingContracts, resolveProposalId } from './helpers';
 import { query } from '../../lib/subgraph';
 import { resolveOrgModules } from '../../lib/resolve';
 
 interface CastArgs {
   org: string;
   type: string;
-  proposal: number;
+  proposal: string;
   options: string;
   weights: string;
   chain?: number;
   rpc?: string;
   'private-key'?: string;
   'dry-run'?: boolean;
+  'idempotency-key'?: string;
+  'no-idempotency'?: boolean;
 }
 
 export const castHandler = {
   builder: (yargs: Argv) => yargs
     .option('type', { type: 'string', demandOption: true, choices: ['hybrid', 'dd'], describe: 'Voting type' })
-    .option('proposal', { type: 'number', demandOption: true, describe: 'Proposal ID' })
+    .option('proposal', { type: 'string', demandOption: true, describe: 'Proposal ID (number) or fuzzy title query (e.g. "bridge retry")' })
     .option('options', { type: 'string', demandOption: true, describe: 'Comma-separated option indices to vote for' })
-    .option('weights', { type: 'string', demandOption: true, describe: 'Comma-separated weights (must sum to 100)' }),
+    .option('weights', { type: 'string', demandOption: true, describe: 'Comma-separated weights (must sum to 100)' })
+    .option('idempotency-key', {
+      type: 'string',
+      describe: 'Task #370 (HB#214): explicit idempotency key. Two casts of the same vote within 15 minutes return the same result without re-submitting.',
+    })
+    .option('no-idempotency', {
+      type: 'boolean',
+      default: false,
+      describe: 'Bypass the idempotency cache and always submit.',
+    }),
 
   handler: async (argv: ArgumentsCamelCase<CastArgs>) => {
     const optionIndices = (argv.options as string).split(',').map(s => parseInt(s.trim(), 10));
@@ -54,7 +71,23 @@ export const castHandler = {
 
     try {
       const contracts = await resolveVotingContracts(argv.org, argv.chain);
+      const resolvedOrgId = await resolveOrgId(argv.org, argv.chain);
       const { signer } = createSigner({ privateKey: argv.privateKey as string, chainId: argv.chain, rpcUrl: argv.rpc as string });
+
+      // Task #370: idempotency check
+      const idempKey = argv.idempotencyKey || argvToIdempotencyString(argv as Record<string, any>);
+      if (!argv.noIdempotency) {
+        const cached = checkIdempotencyCache(resolvedOrgId, 'vote.cast', idempKey);
+        if (cached) {
+          spin.stop();
+          output.success(`Vote already cast (idempotency cache hit)`, {
+            ...cached,
+            cached: true,
+            note: 'Prior call within the 15-minute window produced this result. Use --no-idempotency to force re-submit.',
+          });
+          return;
+        }
+      }
 
       const isHybrid = argv.type === 'hybrid';
       const contractAddr = isHybrid ? contracts.hybridVotingAddress : contracts.ddVotingAddress;
@@ -65,10 +98,20 @@ export const castHandler = {
       const abiName = isHybrid ? 'HybridVotingNew' : 'DirectDemocracyVotingNew';
       const contract = createWriteContract(contractAddr, abiName, signer);
 
+      // Resolve proposal — accepts numeric ID or fuzzy title query
+      spin.text = 'Resolving proposal...';
+      const proposalId = await resolveProposalId(
+        String(argv.proposal),
+        contractAddr,
+        argv.chain,
+        { preferActive: true }
+      );
+      spin.text = 'Casting vote...';
+
       const result = await executeTx(
         contract,
         'vote',
-        [argv.proposal, optionIndices, weights],
+        [proposalId, optionIndices, weights],
         { dryRun: argv.dryRun }
       );
 
@@ -79,7 +122,7 @@ export const castHandler = {
         let optionMap = '';
         try {
           const modules = await resolveOrgModules(argv.org, argv.chain);
-          const pq = `{ organization(id: "${modules.orgId}") { hybridVoting { proposals(where: {proposalId: ${argv.proposal}}) { metadata { optionNames } } } } }`;
+          const pq = `{ organization(id: "${modules.orgId}") { hybridVoting { proposals(where: {proposalId: ${proposalId}}) { metadata { optionNames } } } } }`;
           const pResult = await query<any>(pq, {}, argv.chain);
           const names = pResult.organization?.hybridVoting?.proposals?.[0]?.metadata?.optionNames || [];
           if (names.length > 0) {
@@ -87,8 +130,19 @@ export const castHandler = {
           }
         } catch { /* non-critical */ }
 
-        output.success(`Vote cast on proposal #${argv.proposal}`, {
+        // Task #370: record idempotent result
+        if (!argv.noIdempotency) {
+          recordIdempotentResult(resolvedOrgId, 'vote.cast', idempKey, {
+            proposalId,
+            txHash: result.txHash,
+            options: optionIndices.join(','),
+            weights: weights.join(','),
+          });
+        }
+
+        output.success(`Vote cast on proposal #${proposalId}`, {
           txHash: result.txHash, explorerUrl: result.explorerUrl,
+          proposalId,
           options: optionIndices.join(','),
           weights: weights.join(','),
           ...(optionMap ? { allocation: optionMap } : {}),
