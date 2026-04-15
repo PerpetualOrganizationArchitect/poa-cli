@@ -104,7 +104,11 @@ export const auditVetokenHandler = {
     spin.start();
 
     try {
-      const escrow = argv.escrow.trim();
+      // HB#445 UX fix: ethers.utils.isAddress rejects mixed-case-wrong-checksum
+      // addresses. Operators frequently paste from explorers with inconsistent
+      // case. Normalize to lowercase before validation, which isAddress accepts
+      // as canonical EIP-55-lowercase-form.
+      const escrow = argv.escrow.trim().toLowerCase();
       if (!ethers.utils.isAddress(escrow)) {
         spin.stop();
         output.error(`Invalid escrow address: ${escrow}`);
@@ -114,7 +118,7 @@ export const auditVetokenHandler = {
 
       const holderAddrs = argv.holders
         .split(',')
-        .map(a => a.trim())
+        .map(a => a.trim().toLowerCase())
         .filter(a => a.length > 0);
 
       for (const h of holderAddrs) {
