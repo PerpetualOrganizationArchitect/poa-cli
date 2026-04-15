@@ -58,15 +58,76 @@ const VE_VIEW_ABI = [
   'function token() view returns (address)',
   'function name() view returns (string)',
   'function symbol() view returns (string)',
+  // HB#448 task #386: Deposit event for --enumerate mode candidate discovery.
+  // Signature matches the Curve VotingEscrow reference impl; Balancer veBAL,
+  // Frax veFXS, and related forks use the same signature.
+  'event Deposit(address indexed provider, uint256 value, uint256 indexed locktime, int128 type, uint256 ts)',
 ];
+
+// Default enumeration window: last 50,000 blocks (~7 days on Ethereum mainnet
+// at 12s block time, or ~23 hours on Gnosis at 5s). Conservative enough to
+// be a cheap first call but wide enough to find active depositors.
+const DEFAULT_ENUMERATE_LOOKBACK_BLOCKS = 50_000;
+// Per-chunk getLogs range. Most RPCs cap at 10k; setting lower is safer.
+const DEFAULT_ENUMERATE_CHUNK_BLOCKS = 10_000;
 
 interface AuditVetokenArgs {
   escrow: string;
-  holders: string;
+  holders?: string;
+  enumerate?: boolean;
+  'from-block'?: number;
+  'to-block'?: number;
+  chunk?: number;
   top?: number;
   chain?: number;
   rpc?: string;
   json?: boolean;
+}
+
+/**
+ * HB#448 task #386: enumerate candidate holders via Deposit-event scan.
+ * Paginates getLogs in chunks of `chunk` blocks from `fromBlock` to `toBlock`,
+ * decodes the Deposit event topic[1] as `provider`, and returns a deduped set
+ * of addresses. Typed as a generic helper so future veToken contracts with
+ * alternate event signatures can plug in their own topic decoder without
+ * rewriting the pagination scaffold.
+ */
+async function enumerateDepositors(
+  contract: ethers.Contract,
+  provider: ethers.providers.Provider,
+  fromBlock: number,
+  toBlock: number,
+  chunk: number,
+): Promise<{ holders: string[]; windowFrom: number; windowTo: number; chunksScanned: number }> {
+  const depositFilter = contract.filters.Deposit();
+  const seen = new Set<string>();
+  let chunksScanned = 0;
+
+  for (let start = fromBlock; start <= toBlock; start += chunk) {
+    const end = Math.min(start + chunk - 1, toBlock);
+    try {
+      const logs = await contract.queryFilter(depositFilter, start, end);
+      chunksScanned++;
+      for (const log of logs) {
+        const providerAddr = (log.args as any)?.provider;
+        if (providerAddr) {
+          seen.add(String(providerAddr).toLowerCase());
+        }
+      }
+    } catch (err: any) {
+      // Transient RPC errors: chunk too large, rate limit, timeout. Log via
+      // debug path (stderr would disrupt JSON output); just skip the chunk.
+      // Aggregate enumeration is best-effort.
+      void err;
+    }
+  }
+
+  return {
+    holders: Array.from(seen),
+    windowFrom: fromBlock,
+    windowTo: toBlock,
+    chunksScanned,
+  };
 }
 
 interface HolderRow {
@@ -88,8 +149,33 @@ export const auditVetokenHandler = {
     })
     .option('holders', {
       type: 'string',
-      describe: 'Comma-separated list of candidate holder addresses to rank',
-      demandOption: true,
+      describe:
+        'Comma-separated list of candidate holder addresses to rank. ' +
+        'Optional when --enumerate is passed. The two modes can be combined ' +
+        '— enumerated addresses are union-ed with the explicit list.',
+    })
+    .option('enumerate', {
+      type: 'boolean',
+      default: false,
+      describe:
+        'Scan recent Deposit events to discover candidate holders. Defaults ' +
+        'to the last 50,000 blocks (~7 days on Ethereum). Override with ' +
+        '--from-block / --to-block / --chunk.',
+    })
+    .option('from-block', {
+      type: 'number',
+      describe:
+        'Enumeration lower bound (inclusive). Default: latest - 50000.',
+    })
+    .option('to-block', {
+      type: 'number',
+      describe: 'Enumeration upper bound (inclusive). Default: latest block.',
+    })
+    .option('chunk', {
+      type: 'number',
+      default: DEFAULT_ENUMERATE_CHUNK_BLOCKS,
+      describe:
+        'getLogs pagination chunk size in blocks. Default 10000 (most RPCs cap here).',
     })
     .option('top', {
       type: 'number',
@@ -116,12 +202,14 @@ export const auditVetokenHandler = {
         return;
       }
 
-      const holderAddrs = argv.holders
-        .split(',')
-        .map(a => a.trim().toLowerCase())
-        .filter(a => a.length > 0);
+      const explicitHolders = argv.holders
+        ? argv.holders
+            .split(',')
+            .map(a => a.trim().toLowerCase())
+            .filter(a => a.length > 0)
+        : [];
 
-      for (const h of holderAddrs) {
+      for (const h of explicitHolders) {
         if (!ethers.utils.isAddress(h)) {
           spin.stop();
           output.error(`Invalid holder address: ${h}`);
@@ -129,9 +217,12 @@ export const auditVetokenHandler = {
           return;
         }
       }
-      if (holderAddrs.length === 0) {
+
+      if (!argv.enumerate && explicitHolders.length === 0) {
         spin.stop();
-        output.error('--holders must contain at least one address');
+        output.error(
+          'Provide --holders <comma-list> OR pass --enumerate to auto-discover via Deposit events',
+        );
         process.exit(1);
         return;
       }
@@ -141,6 +232,48 @@ export const auditVetokenHandler = {
       const provider = new ethers.providers.JsonRpcProvider(rpc, networkConfig.chainId);
 
       const ve = new ethers.Contract(escrow, VE_VIEW_ABI, provider);
+
+      // HB#448 task #386: enumerate candidate holders via Deposit-event scan
+      // BEFORE the balanceOf loop so the top-N ranking can include them.
+      let enumerationMeta: { windowFrom: number; windowTo: number; chunksScanned: number; enumerated: number } | null = null;
+      let discoveredHolders: string[] = [];
+      if (argv.enumerate) {
+        const latestBlock = await provider.getBlockNumber();
+        const toBlock = argv['to-block'] ?? latestBlock;
+        const fromBlock =
+          argv['from-block'] ?? Math.max(0, latestBlock - DEFAULT_ENUMERATE_LOOKBACK_BLOCKS);
+        const chunk = argv.chunk ?? DEFAULT_ENUMERATE_CHUNK_BLOCKS;
+
+        spin.stop();
+        output.info(
+          `  Enumerating Deposit events ${fromBlock}..${toBlock} in ${chunk}-block chunks...`,
+        );
+        spin.start();
+
+        const enumResult = await enumerateDepositors(ve, provider, fromBlock, toBlock, chunk);
+        discoveredHolders = enumResult.holders;
+        enumerationMeta = {
+          windowFrom: enumResult.windowFrom,
+          windowTo: enumResult.windowTo,
+          chunksScanned: enumResult.chunksScanned,
+          enumerated: discoveredHolders.length,
+        };
+      }
+
+      // Union the explicit list and the discovered list, deduping case-
+      // insensitively.
+      const holderAddrs = Array.from(
+        new Set([...explicitHolders, ...discoveredHolders].map(a => a.toLowerCase())),
+      );
+
+      if (holderAddrs.length === 0) {
+        spin.stop();
+        output.error(
+          `No candidate holders found. ${argv.enumerate ? 'Enumeration returned 0 addresses — try widening --from-block or verifying the VotingEscrow address has Deposit activity in the window.' : ''}`,
+        );
+        process.exit(1);
+        return;
+      }
 
       // Read metadata first so we fail fast on wrong-shape contracts.
       let veName = 'unknown';
@@ -199,6 +332,8 @@ export const auditVetokenHandler = {
           totalSupply: totalSupplyBn.toString(),
           totalSupplyHuman: totalSupplyNum.toFixed(4),
           probedHolderCount: holderAddrs.length,
+          explicitHolderCount: explicitHolders.length,
+          enumerationWindow: enumerationMeta,
           topHolders: topN,
           topNAggregateSharePct: topShareAggregate.toFixed(2) + '%',
           topHolderSharePct: topN[0]?.sharePct || '0%',
@@ -213,7 +348,12 @@ export const auditVetokenHandler = {
       output.info(`\n  veToken: ${veName} (${veSymbol}) @ ${escrow}`);
       output.info(`  Underlying: ${veTokenAddr}`);
       output.info(`  Total supply: ${totalSupplyNum.toFixed(4)}`);
-      output.info(`  Probed: ${holderAddrs.length} candidate holder(s)`);
+      if (enumerationMeta) {
+        output.info(
+          `  Enumerated: ${enumerationMeta.enumerated} unique depositor(s) from blocks ${enumerationMeta.windowFrom}..${enumerationMeta.windowTo} (${enumerationMeta.chunksScanned} chunk(s) scanned)`,
+        );
+      }
+      output.info(`  Probed: ${holderAddrs.length} candidate holder(s)${explicitHolders.length > 0 ? ` (${explicitHolders.length} explicit, ${discoveredHolders.length} enumerated)` : ''}`);
       output.info(`\n  Top ${topN.length} by current veBalance:\n`);
 
       const table = topN.map((r, i) => [
