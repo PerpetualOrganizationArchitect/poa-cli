@@ -17,8 +17,18 @@ import { outreachHandler } from './outreach';
 import { auditSnapshotHandler } from './audit-snapshot';
 import { auditSafeHandler } from './audit-safe';
 import { auditFullHandler } from './audit-full';
+import { auditGovernorHandler } from './audit-governor';
+import { gaasStatusHandler } from './gaas-status';
+import { publishHandler } from './publish';
 import { leaderboardHandler } from './leaderboard';
 import { auditRequestHandler } from './audit-request';
+import { portfolioHandler } from './portfolio';
+import { shareHandler } from './share';
+import { publicationsHandler } from './publications';
+import { compareHandler } from './compare';
+import { compareTimeWindowHandler } from './compare-time-window';
+import { probeAccessHandler } from './probe-access';
+import { auditVetokenHandler } from './audit-vetoken';
 
 export function registerOrgCommands(yargs: Argv) {
   return yargs
@@ -40,7 +50,17 @@ export function registerOrgCommands(yargs: Argv) {
     .command('audit-snapshot', 'Audit governance for any Snapshot DAO', auditSnapshotHandler.builder, auditSnapshotHandler.handler)
     .command('audit-safe', 'Audit treasury for any Safe multisig', auditSafeHandler.builder, auditSafeHandler.handler)
     .command('audit-full', 'Combined governance + treasury audit for any DAO', auditFullHandler.builder, auditFullHandler.handler)
+    .command('audit-governor', 'Audit on-chain Governor DAO governance', auditGovernorHandler.builder, auditGovernorHandler.handler)
+    .command('gaas-status', 'GaaS pipeline dashboard — audits, distribution, revenue', gaasStatusHandler.builder, gaasStatusHandler.handler)
+    .command('publish', 'Convert IPFS content to shareable HTML page with Open Graph tags', publishHandler.builder, publishHandler.handler)
     .command('leaderboard', 'Governance health leaderboard — rank multiple DAOs', leaderboardHandler.builder, leaderboardHandler.handler)
     .command('audit-request', 'Generate a governance audit request with pricing', auditRequestHandler.builder, auditRequestHandler.handler)
+    .command('portfolio', 'Generate shareable HTML audit portfolio page', portfolioHandler.builder, portfolioHandler.handler)
+    .command('share', 'Generate platform-ready posts from IPFS content', shareHandler.builder, shareHandler.handler)
+    .command('publications', 'Index all shareable IPFS content from completed tasks', publicationsHandler.builder, publicationsHandler.handler)
+    .command('compare', 'Head-to-head governance comparison of two Snapshot DAOs', compareHandler.builder, compareHandler.handler)
+    .command('compare-time-window', 'Re-audit a stored AUDIT_DB entry and report drift (codifies the asymmetric-drift research finding)', compareTimeWindowHandler.builder, compareTimeWindowHandler.handler)
+    .command('probe-access', 'Burner-callStatic access-control probe — map a contract\'s gating model in <5 min, zero gas', probeAccessHandler.builder, probeAccessHandler.handler)
+    .command('audit-vetoken', 'On-chain top-holder probe for veCRV-family VotingEscrow contracts (task #383)', auditVetokenHandler.builder, auditVetokenHandler.handler)
     .demandCommand(1, 'Please specify an org action');
 }
