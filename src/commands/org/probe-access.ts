@@ -61,6 +61,92 @@ interface ProbeResult {
 }
 
 /**
+ * HB#382 task #384 — probe-reliability heuristic.
+ *
+ * Detect contract patterns that make burner-callStatic probe results
+ * unreliable BEFORE running the probe, so operators can interpret the
+ * output correctly instead of treating a passed result as a security
+ * finding.
+ *
+ * Two patterns detected:
+ *
+ * 1. **ds-auth** (Dappsys library, used by MakerDAO and many older
+ *    Ethereum contracts). The permission check is an EXTERNAL CALL to
+ *    a separate Authority contract, which is expensive. Contracts
+ *    economize by running cheap parameter validation first, so
+ *    burner-callStatic with default parameters hits early-return paths
+ *    BEFORE the Authority check. Detected by the presence of BOTH
+ *    `setUserRole(address,uint8,bool)` (0x67aff484) and
+ *    `setAuthority(address)` (0x7a9e5e4b) selectors in the runtime code.
+ *    See HB#379 Maker Chief audit for the empirical finding.
+ *
+ * 2. **Vyper compiler** (used by Curve, Yearn, and most veToken DAOs).
+ *    Vyper orders parameter loading + cheap parameter validation before
+ *    the `assert msg.sender == self.admin` statement in each function
+ *    body. Same symptom as ds-auth — default-parameter burner calls hit
+ *    early-returns before the permission check. Detected by the
+ *    presence of Curve's signature `commit_transfer_ownership(address)`
+ *    (0x6b441a40) + `apply_transfer_ownership()` (0x6a1c05ae) selectors,
+ *    which is the canonical 2-step Vyper admin transfer pattern.
+ *    See HB#380 Curve VotingEscrow + GaugeController audits.
+ *
+ * False positive tolerance: we'd rather flag one extra contract as
+ * probe-limited than miss a real one. Operators can ignore the warning
+ * if they know the contract uses inline modifiers despite matching the
+ * selector pattern.
+ *
+ * False negative concern: any contract using ds-auth or Vyper WITHOUT
+ * also exposing these selectors won't be detected. That's acceptable
+ * because (a) ds-auth without setAuthority is unusual, and (b) Vyper
+ * contracts without the transfer_ownership pattern are rare in DAO
+ * governance. Both would require per-contract case-by-case analysis
+ * anyway, which is outside the scope of the heuristic.
+ */
+export function detectProbeReliabilityPatterns(codeLower: string | null): {
+  dsAuth: boolean;
+  vyper: boolean;
+  warnings: string[];
+} {
+  const warnings: string[] = [];
+  if (!codeLower) {
+    return { dsAuth: false, vyper: false, warnings };
+  }
+
+  // ds-auth: setUserRole(address,uint8,bool) + setAuthority(address)
+  const HAS_SET_USER_ROLE = codeLower.includes('67aff484');
+  const HAS_SET_AUTHORITY = codeLower.includes('7a9e5e4b');
+  const dsAuth = HAS_SET_USER_ROLE && HAS_SET_AUTHORITY;
+  if (dsAuth) {
+    warnings.push(
+      'ds-auth detected: probe-access is UNRELIABLE for ds-auth contracts. ' +
+      'The Authority check is an external call run AFTER parameter validation, ' +
+      'so default-parameter burner calls hit early-return paths before the ' +
+      'permission check fires. Admin functions showing passed are probably ' +
+      'gated in reality. Source verification required. See the HB#379 Maker ' +
+      'Chief audit in docs/audits/ for the empirical finding.',
+    );
+  }
+
+  // Vyper 2-step ownership transfer: commit_transfer_ownership + apply_transfer_ownership
+  const HAS_COMMIT_TRANSFER = codeLower.includes('6b441a40');
+  const HAS_APPLY_TRANSFER = codeLower.includes('6a1c05ae');
+  const vyper = HAS_COMMIT_TRANSFER && HAS_APPLY_TRANSFER;
+  if (vyper) {
+    warnings.push(
+      'Vyper signature detected: probe-access is UNRELIABLE for Vyper contracts. ' +
+      'Vyper orders parameter loading + cheap validation before the ' +
+      '`assert msg.sender == self.admin` statement, so default-parameter ' +
+      'burner calls hit early-return paths before the permission check fires. ' +
+      'Admin functions showing passed are probably gated in reality. Source ' +
+      'verification required. See the HB#380 Curve DAO audit in docs/audits/ ' +
+      'for the empirical finding.',
+    );
+  }
+
+  return { dsAuth, vyper, warnings };
+}
+
+/**
  * Generate a zero/default value for any Solidity ABI type.
  * Recurses on tuples / arrays. Returns ethers-compatible JS shapes.
  */
@@ -368,6 +454,18 @@ export const probeAccessHandler = {
           // Canonical slot = bytes32(uint256(keccak256('eip1967.proxy.implementation')) - 1)
           const EIP1967_IMPL_SLOT =
             '0x360894a13ba1a3210667c828492db98dcef42afd4e7f9f47de01b44f10e6fe2c';
+
+          // HB#178 (#351) refinement: track whether the EIP-1967 lookup
+          // resolved a real implementation. If it did, the proxy chain has
+          // been fully unwound — there's no further indirection to try, so
+          // a still-low coverage means the ABI is definitively wrong and
+          // we should classify everything as not-implemented (rather than
+          // falling back to the legacy-delegator "probe everything" path
+          // and producing false positives). Only when the EIP-1967 lookup
+          // did NOT resolve (slot zero, getStorageAt failed, impl code
+          // empty) should we treat it as a legacy delegator and disable
+          // the check entirely.
+          let proxyResolved = false;
           try {
             const raw = await provider.getStorageAt(argv.address, EIP1967_IMPL_SLOT);
             const impl = '0x' + raw.slice(26);
@@ -375,6 +473,7 @@ export const probeAccessHandler = {
               const implCode = await provider.getCode(impl);
               if (implCode && implCode !== '0x') {
                 contractCodeLower = implCode.toLowerCase();
+                proxyResolved = true;
                 if (!output.isJsonMode()) {
                   console.log(`  [proxy] followed EIP-1967 → impl ${impl}`);
                 }
@@ -392,18 +491,38 @@ export const probeAccessHandler = {
           }).length;
 
           if (recheck / targetFns.length < 0.1) {
-            // Still nothing. Assume legacy delegator proxy or exotic dispatch
-            // — disable the selector check entirely and probe as before. That
-            // is strictly better than false-negatives; ABI-mismatch false
-            // positives still affect this case but that's the pre-#345 baseline.
-            contractCodeLower = null;
-            if (!output.isJsonMode()) {
-              console.log(
-                `  [probe] selector-presence check disabled: <10% of ABI ` +
-                  `selectors found in runtime code (legacy proxy or wrong ABI). ` +
-                  `Probing all functions; results may include ABI-mismatch false ` +
-                  `positives.`,
-              );
+            if (proxyResolved) {
+              // EIP-1967 resolved a real implementation but its code still
+              // doesn't match the ABI. This is a DEFINITIVE wrong-ABI
+              // signal — there's no further proxy indirection to unwind.
+              // Keep contractCodeLower set so the per-function loop
+              // classifies everything as not-implemented (correct
+              // behavior, not false positives).
+              if (!output.isJsonMode()) {
+                console.log(
+                  `  [probe] EIP-1967 implementation resolved but its code ` +
+                    `still has <10% coverage of the supplied ABI. Classifying ` +
+                    `all functions as not-implemented — wrong ABI for this ` +
+                    `contract family.`,
+                );
+              }
+            } else {
+              // No EIP-1967 implementation was resolved. Could be a legacy
+              // delegator proxy, custom dispatch, or unreachable storage.
+              // Disable the selector check entirely and probe as before.
+              // Strictly better than false-negatives; ABI-mismatch false
+              // positives still possible here but that's the pre-#345
+              // baseline behavior.
+              contractCodeLower = null;
+              if (!output.isJsonMode()) {
+                console.log(
+                  `  [probe] selector-presence check disabled: <10% of ABI ` +
+                    `selectors found in runtime code AND no EIP-1967 impl ` +
+                    `resolved (legacy proxy or unreachable storage). ` +
+                    `Probing all functions; results may include ABI-mismatch ` +
+                    `false positives.`,
+                );
+              }
             }
           }
         }
@@ -411,6 +530,59 @@ export const probeAccessHandler = {
         output.error(`Failed to fetch contract code: ${err.message}`);
         process.exit(1);
       }
+    }
+
+    // HB#382 task #384: probe-reliability heuristic. Detect ds-auth and Vyper
+    // patterns in the runtime code. When either is detected, emit a warning
+    // so operators interpret passed results correctly instead of treating
+    // them as security findings. See detectProbeReliabilityPatterns docstring
+    // for the full rationale.
+    //
+    // IMPORTANT: this heuristic needs to run even when --skip-code-check is
+    // set (which is the common case for proxies like Maker Chief and Curve
+    // VotingEscrow). The skip-code-check flag skips the SELECTOR COVERAGE
+    // check (because proxies don't contain their implementation's selectors)
+    // but the reliability heuristic is a DIFFERENT check: it needs the
+    // IMPLEMENTATION's bytecode to scan for ds-auth/Vyper patterns. If we
+    // already have contractCodeLower from the coverage check path, use it;
+    // otherwise fetch the code here (trying EIP-1967 impl lookup too) for
+    // the heuristic to scan. Tolerate fetch failures silently — the
+    // heuristic is purely additive and shouldn't break the probe.
+    let reliabilityCode: string | null = contractCodeLower;
+    if (reliabilityCode === null) {
+      try {
+        const code = await provider.getCode(argv.address);
+        if (code && code !== '0x') {
+          reliabilityCode = code.toLowerCase();
+          // Try EIP-1967 impl lookup for proxies so the heuristic sees the
+          // real implementation's selectors, not the proxy's dispatch stub.
+          const EIP1967_IMPL_SLOT =
+            '0x360894a13ba1a3210667c828492db98dcef42afd4e7f9f47de01b44f10e6fe2c';
+          try {
+            const raw = await provider.getStorageAt(argv.address, EIP1967_IMPL_SLOT);
+            const impl = '0x' + raw.slice(26);
+            if (impl !== '0x0000000000000000000000000000000000000000') {
+              const implCode = await provider.getCode(impl);
+              if (implCode && implCode !== '0x') {
+                reliabilityCode = implCode.toLowerCase();
+              }
+            }
+          } catch {
+            // EIP-1967 not applicable or RPC blocks state reads — use the
+            // proxy code we already have.
+          }
+        }
+      } catch {
+        // Fetch failed — heuristic will return no warnings for null input.
+      }
+    }
+    const reliability = detectProbeReliabilityPatterns(reliabilityCode);
+    if (reliability.warnings.length > 0 && !output.isJsonMode()) {
+      console.log('');
+      for (const w of reliability.warnings) {
+        console.log(`  ⚠ ${w}`);
+      }
+      console.log('');
     }
 
     const results: ProbeResult[] = [];
@@ -513,6 +685,15 @@ export const probeAccessHandler = {
         chainId: networkConfig.chainId,
         burnerAddress: burner,
         functionsProbed: results.length,
+        // HB#382 task #384: surface the probe-reliability heuristic in
+        // machine-readable output so downstream consumers (leaderboards,
+        // audit pipelines, corpus builders) can decide how to interpret
+        // the results.
+        reliability: {
+          dsAuth: reliability.dsAuth,
+          vyper: reliability.vyper,
+          warnings: reliability.warnings,
+        },
         results,
       });
       return;
@@ -540,6 +721,21 @@ export const probeAccessHandler = {
     console.log(`Summary: ${results.filter((r) => r.status === 'gated' || r.status === 'reentrancy-guarded').length} gated, ` +
       `${results.filter((r) => r.status === 'passed').length} passed-burner, ` +
       `${results.filter((r) => r.status === 'unknown' || r.status === 'invalid-input').length} unknown.`);
+    // HB#382 task #384: repeat the reliability warnings at the end of the
+    // summary so operators see them AFTER scanning the per-function table.
+    // The earlier pre-probe warning (before the probe runs) may have
+    // scrolled out of view for contracts with long ABIs.
+    if (reliability.warnings.length > 0) {
+      console.log('');
+      console.log('⚠ Probe reliability warnings:');
+      if (reliability.dsAuth) {
+        console.log('  • ds-auth library detected — passed results on admin functions are probably tool artifacts');
+      }
+      if (reliability.vyper) {
+        console.log('  • Vyper compiler signature detected — passed results on admin functions are probably tool artifacts');
+      }
+      console.log('  See the full warnings above and the HB#379/HB#380 audit reports in docs/audits/ for details.');
+    }
     console.log('');
   },
 };
