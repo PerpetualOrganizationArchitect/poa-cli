@@ -6,6 +6,7 @@ import { resolveNetworkConfig } from '../../config/networks';
 import { FETCH_VOTING_DATA } from '../../queries/voting';
 import * as output from '../../lib/output';
 import HybridVotingAbi from '../../abi/HybridVotingNew.json';
+import DirectDemocracyVotingAbi from '../../abi/DirectDemocracyVotingNew.json';
 
 /**
  * Task #378 (HB#437) mitigation for pop vote list subgraph-indexer lag.
@@ -47,9 +48,10 @@ async function probeExpiredActiveProposal(
   contractAddr: string,
   proposalId: string,
   provider: ethers.providers.Provider,
+  abi: any = HybridVotingAbi,
 ): Promise<'announceable' | 'chain-ended' | 'unknown'> {
   try {
-    const contract = new ethers.Contract(contractAddr, HybridVotingAbi as any, provider);
+    const contract = new ethers.Contract(contractAddr, abi as any, provider);
     await contract.callStatic.announceWinner(proposalId);
     // No revert — announce would succeed → proposal is ready to announce.
     return 'announceable';
@@ -215,6 +217,7 @@ export const listHandler = {
 
       // DD proposals
       if (argv.type === 'all' || argv.type === 'dd') {
+        const ddContractAddr = org.directDemocracyVoting?.id;
         const proposals = org.directDemocracyVoting?.ddvProposals || [];
         for (const p of proposals) {
           if (argv.status && p.status !== argv.status) continue;
@@ -225,7 +228,35 @@ export const listHandler = {
             : '';
           const voteCount = (p.votes || []).length;
 
-          const ddDisplayStatus = p.executionFailed ? 'ExecFailed' : p.status;
+          let ddDisplayStatus = p.executionFailed ? 'ExecFailed' : p.status;
+
+          // Task #378 mitigation extended to DD (HB#438). DD and hybrid both
+          // expose `announceWinner(uint256)` on their contracts with matching
+          // AlreadyExecuted() error signatures, so the same probe helper
+          // works — just pass the DD ABI in.
+          const ddEndTs = p.endTimestamp ? parseInt(p.endTimestamp) : 0;
+          if (
+            p.status === 'Active' &&
+            ddEndTs > 0 &&
+            ddEndTs < chainNow &&
+            probeProvider &&
+            ddContractAddr
+          ) {
+            const chainState = await probeExpiredActiveProposal(
+              ddContractAddr,
+              p.proposalId,
+              probeProvider,
+              DirectDemocracyVotingAbi,
+            );
+            if (chainState === 'chain-ended') {
+              ddDisplayStatus = 'Ended (chain)';
+              lagWarnings.push({ id: p.proposalId, type: 'dd', chainState: 'executed' });
+            } else if (chainState === 'announceable') {
+              ddDisplayStatus = 'Announceable';
+              lagWarnings.push({ id: p.proposalId, type: 'dd', chainState: 'ready' });
+            }
+          }
+
           rows.push([
             p.proposalId,
             'dd',
