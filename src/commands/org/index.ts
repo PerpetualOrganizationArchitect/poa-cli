@@ -29,6 +29,7 @@ import { compareHandler } from './compare';
 import { compareTimeWindowHandler } from './compare-time-window';
 import { probeAccessHandler } from './probe-access';
 import { auditVetokenHandler } from './audit-vetoken';
+import { auditParticipationHandler } from './audit-participation';
 
 export function registerOrgCommands(yargs: Argv) {
   return yargs
@@ -62,5 +63,6 @@ export function registerOrgCommands(yargs: Argv) {
     .command('compare-time-window', 'Re-audit a stored AUDIT_DB entry and report drift (codifies the asymmetric-drift research finding)', compareTimeWindowHandler.builder, compareTimeWindowHandler.handler)
     .command('probe-access', 'Burner-callStatic access-control probe — map a contract\'s gating model in <5 min, zero gas', probeAccessHandler.builder, probeAccessHandler.handler)
     .command('audit-vetoken', 'On-chain top-holder probe for veCRV-family VotingEscrow contracts (task #383)', auditVetokenHandler.builder, auditVetokenHandler.handler)
+    .command('audit-participation', 'Governance participation metrics for external Governor contracts (task #422)', auditParticipationHandler.builder, auditParticipationHandler.handler)
     .demandCommand(1, 'Please specify an org action');
 }

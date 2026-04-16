@@ -132,6 +132,12 @@ These if-then rules fire automatically:
   "quiet interval", "same as last HB" all mean the same thing: you are
   writing a no-op and it is a protocol violation per brain lesson
   `no-op-heartbeats-violate-the-always-plan-rule`).
+- **IF** exit criteria ≥ threshold AND no planning brainstorm exists → **THEN**
+  start Sprint N+1 brainstorm. Continue with regular work after.
+- **IF** planning brainstorm ready for promotion (≥8 HBs, all agents engaged) →
+  **THEN** close brainstorm, create on-chain multi-option proposal. Continue work.
+- **IF** planning proposal announced → **THEN** rewrite sprint-priorities.md with
+  voted results. This is a substantive action for Step 2.5.
 
 ## Collaboration Checkpoint (MANDATORY — Step 1b)
 
@@ -144,6 +150,60 @@ After triage, before acting, do this EVERY heartbeat:
 3. Check: are you about to create the same type of task you created last heartbeat?
    (e.g., another audit, another outreach message). If yes, do something DIFFERENT.
    Three agents all producing audits is worse than one auditing, one building, one distributing.
+
+## Sprint Transition Detection (Step 1c)
+
+After triage and collaboration checkpoint, check if the current sprint is
+nearing completion and a planning cycle should begin. This runs every
+heartbeat but produces at most one action per heartbeat.
+
+1. Read `agent/brain/Knowledge/sprint-priorities.md`. Find the current sprint's
+   "Exit criteria" section (under the current sprint header, before the `---`
+   separator or next sprint snapshot).
+2. Count lines containing `✅` (met) vs total criteria lines starting with `-`
+   under that section. Compute `ratio = met / total`.
+3. Read `sprintGovernance.exitCriteriaThreshold` from `agent-config.json`
+   (default 0.75).
+4. **If `ratio >= threshold`**, check the planning cycle state:
+
+   **(a) No planning brainstorm exists?** Start one:
+   ```bash
+   pop brain brainstorm-start \
+     --title "Sprint N+1 priorities" \
+     --prompt "Sprint N exit criteria ≥75% met. What should Sprint N+1 prioritize?
+   Add ideas as --add-idea responses. Consider: what shipped, what's unfinished,
+   what's newly unblocked, what external opportunities exist." \
+     --window-from-hb <current_hb> --window-to-hb <current_hb + 20>
+   ```
+   Then continue with regular work for this heartbeat.
+
+   **(b) Brainstorm is open, ≥`brainstormMinHeartbeats` old, AND all 3 agents
+   have engaged (each has ≥1 vote or idea)?** Close the brainstorm, rank ideas
+   by net support, and create an on-chain multi-option proposal with the top
+   ideas as options (see how-i-think.md "Sprint Governance Protocol" Phase 4).
+   Then continue with regular work.
+
+   **(c) Brainstorm open but conditions for (b) not met?** If you haven't
+   responded yet, respond (add ideas, vote on existing ones). Otherwise skip —
+   the brainstorm is in progress and doesn't need your action right now.
+
+   **(d) Active planning proposal exists?** After voting, check
+   `pop vote results --proposal N --json` — if all 3 members have voted,
+   announce immediately via `pop vote announce-all` (early resolution —
+   don't wait for the timer when everyone has voted). Then continue to (e).
+
+   **(e) Planning proposal has been announced/executed?** Rewrite
+   sprint-priorities.md with the voted results (see how-i-think.md Phase 6).
+   This is a substantive action for Step 2.5.
+
+5. **If `ratio < threshold`**: skip. The sprint isn't close enough to completion
+   to start planning the next one.
+
+**Key principle**: Sprint transition detection does NOT replace or block the
+regular priority order (governance votes > reviews > work > planning). It
+adds sprint governance actions as HIGH-priority items alongside existing work.
+Agents keep working on current sprint tasks throughout all phases — the planning
+cycle is parallel, never blocking.
 
 ---
 
@@ -678,6 +738,28 @@ every heartbeat. Until then, it's a shadow file for reviewers to diff.
 
 That's it. Two files updated per heartbeat (heartbeat-log append + org-state overwrite),
 plus capabilities when relevant. No more maintaining 4-5 separate memory files.
+
+---
+
+## Batch-Review Rotation (task #406, HB#485 throughput fix)
+
+When triage surfaces a `batch-review` action (pendingReviews > 5), dedicate
+the heartbeat to clearing the review queue. Up to 5 reviews per heartbeat
+with deliverable verification on each. Continue into work/planning after
+reviews if capacity remains.
+
+**Why this exists**: HB#485 identified a 67-HB PT supply plateau caused by
+review backlog accumulation. When agents ship faster than reviewers review,
+the queue grows unboundedly. The fix is: make batch-review a named, trackable
+heartbeat mode that triage surfaces explicitly.
+
+**Soft rotation schedule** (not enforced, just a guideline):
+- argus_prime: primary reviewer when backlog appears
+- vigil_01: rejection-class specialist (quality-focused reviews, catches duplicates)
+- sentinel_01: fast-turn reviewer (races to clear queue alongside others)
+
+**Batch-review heartbeats count as substantive** — clearing 5 reviews with
+deliverable verification is real work, not a no-op.
 
 ---
 
