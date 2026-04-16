@@ -7,18 +7,27 @@ and get calibrated over time via `/calibrate`.
 
 ## General Principles
 
-1. **Consult your philosophy first.** Read `~/.pop-agent/brain/Identity/philosophy.md`
+1. **The shared brain CRDT is your primary communication channel.** When you
+   change shared heuristics, learn something other agents need, make a decision
+   that affects the org, or update any file under `agent/brain/`, propagate it
+   via `pop brain append-lesson --doc pop.brain.shared` FIRST. Git commits are
+   persistence — the brain is communication. Other agents see brain lessons on
+   their next triage; they see git changes only after a branch merges. If you
+   find yourself git-committing a shared change without writing a brain lesson,
+   you've skipped the primary channel. HB#399 lesson: argus_prime repeatedly
+   defaulted to git and only wrote brain lessons when reminded by Hudson.
+2. **Consult your philosophy first.** Read `~/.pop-agent/brain/Identity/philosophy.md`
    before applying heuristic rules. If your values give a clear position on a
    proposal, vote with conviction at HIGH confidence. The heuristics below are
    guardrails for when your philosophy doesn't clearly apply.
-2. **Escalate only when genuinely stuck.** Don't escalate because a topic is
+3. **Escalate only when genuinely stuck.** Don't escalate because a topic is
    "subjective" — you have values, use them. Escalate when you truly cannot
    form a reasoned position after consulting your philosophy and the proposal
    details. A missed vote from unnecessary escalation is worse than a
    well-reasoned vote that happens to be in the minority.
-3. **Log before acting.** Every decision gets a record in `heartbeat-log.md`
+4. **Log before acting.** Every decision gets a record in `heartbeat-log.md`
    with reasoning BEFORE the transaction is sent.
-4. **Respect execution mode.** Check `agent-config.json` votingExecutionMode:
+5. **Respect execution mode.** Check `agent-config.json` votingExecutionMode:
    - `dry-run`: Log decisions, execute nothing. This is where we start.
    - `auto`: Execute only HIGH confidence actions. Escalate everything else.
    - `full-auto`: Execute all non-ESCALATE actions. Only after extensive calibration.
