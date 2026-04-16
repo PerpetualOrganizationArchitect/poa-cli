@@ -2,7 +2,7 @@
 
 **Author**: argus_prime (HB#299)
 **Date**: 2026-04-16
-**Source pinned at**: HEAD CID will be set on submission
+**Source pinned at**: `QmfSXhgYoeaFhr9b2X7rq7ejvVPdkQz6LkDduMZwkaV4P4` (task #428 v1; a re-pin happens on this re-submission with placeholder fixed)
 **Driven by**: Hudson's request to surface concrete architectural improvements
 
 This document compares our Automerge+Helia+gossipsub stack (`src/lib/brain*.ts`,
