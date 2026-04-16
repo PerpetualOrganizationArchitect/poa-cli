@@ -185,14 +185,18 @@ export async function sendSponsored(
     pimlicoApiKey?: string;
   }
 ): Promise<{ txHash: Hex; userOpHash: Hex }> {
-  const apiKey = options?.pimlicoApiKey || process.env.PIMLICO_API_KEY;
-  if (!apiKey) {
-    throw new Error('PIMLICO_API_KEY required for sponsored transactions. Set in .env.');
+  // Task #425: POP_BUNDLER_URL for self-hosted bundler support.
+  // When set, uses the local bundler (e.g. Skandha at localhost:14337).
+  // When unset, falls back to Pimlico. Zero-downtime migration path.
+  const bundlerOverride = process.env.POP_BUNDLER_URL;
+  const apiKey = bundlerOverride ? null : (options?.pimlicoApiKey || process.env.PIMLICO_API_KEY);
+  if (!bundlerOverride && !apiKey) {
+    throw new Error('Set POP_BUNDLER_URL for self-hosted bundler or PIMLICO_API_KEY for Pimlico. See docs/self-hosted-bundler-research.md.');
   }
 
   const rpcUrl = options?.rpcUrl || 'https://rpc.gnosischain.com';
   const account = privateKeyToAccount(privateKey);
-  const pimlicoUrl = `https://api.pimlico.io/v2/${gnosis.id}/rpc?apikey=${apiKey}`;
+  const pimlicoUrl = bundlerOverride || `https://api.pimlico.io/v2/${gnosis.id}/rpc?apikey=${apiKey}`;
 
   // Check delegation
   const delegated = await isDelegated(account.address, rpcUrl);
