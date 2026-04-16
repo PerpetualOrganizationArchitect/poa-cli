@@ -170,6 +170,7 @@ interface DaemonStats {
   lastKeepaliveAt: number | null;
   incomingAnnouncements: number;
   incomingMerges: number;
+  incomingRejects: number;
 }
 
 /**
@@ -236,6 +237,7 @@ export async function runDaemon(): Promise<void> {
     lastKeepaliveAt: null,
     incomingAnnouncements: 0,
     incomingMerges: 0,
+    incomingRejects: 0,
   };
 
   // --- Subscribe to the keepalive net topic ---
@@ -284,8 +286,13 @@ export async function runDaemon(): Promise<void> {
       // Fire-and-forget the block fetch + merge. Errors are logged.
       fetchAndMergeRemoteHead(ann.docId, ann.cid)
         .then(result => {
-          if (result.action !== 'skip') {
+          // Task #373: only count actions where content actually landed.
+          // 'adopt' = fast-forward or first head, 'merge' = CRDT merge.
+          // 'skip' = already at head, 'reject' = auth/fetch/disjoint fail.
+          if (result.action === 'adopt' || result.action === 'merge') {
             stats.incomingMerges += 1;
+          } else if (result.action === 'reject') {
+            stats.incomingRejects += 1;
           }
           log(`merge doc=${docId} cid=${ann.cid} action=${result.action} reason=${result.reason}`);
         })
@@ -430,6 +437,7 @@ export async function runDaemon(): Promise<void> {
           lastKeepaliveAt: stats.lastKeepaliveAt,
           incomingAnnouncements: stats.incomingAnnouncements,
           incomingMerges: stats.incomingMerges,
+          incomingRejects: stats.incomingRejects,
           brainHome: home,
           pidPath,
           sockPath,
