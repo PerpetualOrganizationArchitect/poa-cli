@@ -49,6 +49,7 @@ const FETCH_AUDIT_DATA = `
             assigneeUsername
             completer
             completerUsername
+            createdAt
           }
         }
       }
@@ -142,10 +143,30 @@ export const auditHandler = {
         }
       }
 
-      // Self-reviews
-      const selfReviews = completedTasks.filter((t: any) =>
+      // Self-reviews — split into bootstrap-phase vs ongoing.
+      // HB#473/#474 task #403: a solo-bootstrap agent necessarily self-completes
+      // seed work because no other reviewers exist yet. Those self-reviews are
+      // a historical scaffold, not an anti-pattern. We detect the bootstrap
+      // boundary as the earliest cross-review (a completed task where assignee
+      // !== completer). Self-reviews before that boundary are bootstrap; after
+      // are ongoing anti-pattern signals.
+      const selfReviewTasks = completedTasks.filter((t: any) =>
         t.assignee && t.completer && t.assignee.toLowerCase() === t.completer.toLowerCase()
+      );
+      const crossReviewTasks = completedTasks.filter((t: any) =>
+        t.assignee && t.completer && t.assignee.toLowerCase() !== t.completer.toLowerCase()
+      );
+      const bootstrapEndTs = crossReviewTasks.length > 0
+        ? Math.min(...crossReviewTasks.map((t: any) => parseInt(t.createdAt || '0')))
+        : Infinity;
+      const bootstrapSelfReviews = selfReviewTasks.filter((t: any) =>
+        parseInt(t.createdAt || '0') < bootstrapEndTs
       ).length;
+      const selfReviews = {
+        total: selfReviewTasks.length,
+        bootstrapPhase: bootstrapSelfReviews,
+        ongoing: selfReviewTasks.length - bootstrapSelfReviews,
+      };
 
       // Treasury
       const distributions = org.paymentManager?.distributions || [];
@@ -208,7 +229,7 @@ export const auditHandler = {
         console.log('  ────────────');
         console.log(`  Tasks completed:    ${completedTasks.length}`);
         console.log(`  PT earned (total):  ${totalPTDistributed.toFixed(1)}`);
-        console.log(`  Self-reviews:       ${selfReviews} ${selfReviews === 0 ? '(none — good)' : '(check these)'}`);
+        console.log(`  Self-reviews:       ${selfReviews.total} total (${selfReviews.bootstrapPhase} bootstrap, ${selfReviews.ongoing} ongoing${selfReviews.ongoing === 0 ? ' — good' : ' — check these'})`);
         console.log('  Review chains:');
         for (const [pair, count] of Object.entries(reviewPairs)) {
           console.log(`    ${pair}: ${count} review(s)`);
