@@ -87,6 +87,13 @@ import {
 } from './brain';
 
 export const REBROADCAST_INTERVAL_MS = 60_000;
+// T1 (task #429): anti-entropy tuning knobs.
+// Jitter randomizes each interval by ±(JITTER*100)% so a 3-agent fleet
+// does not lockstep-rebroadcast. Grace suppresses re-publishing a head we
+// just received from a peer — avoids amplification when all agents hold
+// identical state.
+export const REBROADCAST_JITTER = 0.3;
+export const REBROADCAST_GRACE_MS = 5_000;
 export const KEEPALIVE_INTERVAL_MS = 20_000;
 // HB#365: default peer redial interval. Daemon periodically checks each
 // POP_BRAIN_PEERS entry and re-dials any that are not currently in the
@@ -165,6 +172,7 @@ export function getRunningDaemonPid(): number | null {
 interface DaemonStats {
   startedAt: number;
   rebroadcastCount: number;
+  rebroadcastsSuppressedBySeen: number;
   keepaliveCount: number;
   lastRebroadcastAt: number | null;
   lastKeepaliveAt: number | null;
@@ -232,12 +240,52 @@ export async function runDaemon(): Promise<void> {
   const stats: DaemonStats = {
     startedAt: Date.now(),
     rebroadcastCount: 0,
+    rebroadcastsSuppressedBySeen: 0,
     keepaliveCount: 0,
     lastRebroadcastAt: null,
     lastKeepaliveAt: null,
     incomingAnnouncements: 0,
     incomingMerges: 0,
     incomingRejects: 0,
+  };
+
+  // T1 (task #429): seen-heads tracking for anti-entropy suppression.
+  // When an announcement arrives from a peer, record (docId, cid, receivedAt).
+  // The rebroadcast loop checks this map before publishing: if a head was
+  // received from any peer less than GRACE_MS ago, suppress the rebroadcast —
+  // another agent already did the work, no need to amplify. Keyed by
+  // "docId|cid" for O(1) lookup.
+  const seenHeads = new Map<string, number>();
+  const seenKey = (docId: string, cid: string) => `${docId}|${cid}`;
+
+  // Anti-entropy tuning — read from env, fall back to module defaults.
+  // Setting POP_BRAIN_REBROADCAST_INTERVAL_MS=0 disables the loop entirely
+  // (useful for unit tests that want deterministic write-path behavior).
+  const rebroadcastIntervalMs = (() => {
+    const raw = process.env.POP_BRAIN_REBROADCAST_INTERVAL_MS;
+    if (raw === undefined) return REBROADCAST_INTERVAL_MS;
+    const n = parseInt(raw, 10);
+    return Number.isFinite(n) && n >= 0 ? n : REBROADCAST_INTERVAL_MS;
+  })();
+  const rebroadcastJitter = (() => {
+    const raw = process.env.POP_BRAIN_REBROADCAST_JITTER;
+    if (raw === undefined) return REBROADCAST_JITTER;
+    const n = parseFloat(raw);
+    return Number.isFinite(n) && n >= 0 && n < 1 ? n : REBROADCAST_JITTER;
+  })();
+  const rebroadcastGraceMs = (() => {
+    const raw = process.env.POP_BRAIN_REBROADCAST_GRACE_MS;
+    if (raw === undefined) return REBROADCAST_GRACE_MS;
+    const n = parseInt(raw, 10);
+    return Number.isFinite(n) && n >= 0 ? n : REBROADCAST_GRACE_MS;
+  })();
+  const nextInterval = () => {
+    if (rebroadcastJitter <= 0) return rebroadcastIntervalMs;
+    const delta = rebroadcastIntervalMs * rebroadcastJitter;
+    return Math.max(
+      0,
+      Math.round(rebroadcastIntervalMs + (Math.random() * 2 - 1) * delta),
+    );
   };
 
   // --- Subscribe to the keepalive net topic ---
@@ -282,6 +330,9 @@ export async function runDaemon(): Promise<void> {
     subscribedDocs.add(docId);
     const unsub = await subscribeBrainTopic(docId, (ann, from) => {
       stats.incomingAnnouncements += 1;
+      // T1: record the (docId, cid) we just heard so the rebroadcast loop
+      // can skip re-publishing it during the grace window.
+      seenHeads.set(seenKey(docId, ann.cid), Date.now());
       log(`recv doc=${docId} cid=${ann.cid} from=${from} author=${ann.author}`);
       // Fire-and-forget the block fetch + merge. Errors are logged.
       fetchAndMergeRemoteHead(ann.docId, ann.cid)
@@ -321,19 +372,31 @@ export async function runDaemon(): Promise<void> {
     }
   }
 
-  // --- Rebroadcast loop ---
+  // --- Rebroadcast loop (T1, task #429) ---
   //
-  // go-ds-crdt default: every 60s, re-publish current heads so peers that
-  // came online after the last write can catch up. We do an unconditional
-  // rebroadcast of every head in the manifest; the seenHeads optimization
-  // is deferred to v2.
-  const rebroadcastTimer = setInterval(async () => {
+  // go-ds-crdt default: every 60s ±30% jitter, re-publish current heads so
+  // peers that came online after the last write can catch up. Suppresses
+  // re-publishing a head we received from a peer within the grace window —
+  // avoids amplification when fleet state is already converged.
+  //
+  // Disabled entirely if POP_BRAIN_REBROADCAST_INTERVAL_MS=0.
+  // Implemented as setTimeout-self-rescheduling instead of setInterval so
+  // each tick picks a fresh jittered delay.
+  let rebroadcastTimer: NodeJS.Timeout | null = null;
+  async function rebroadcastTick(): Promise<void> {
     const docs = listBrainDocs();
     for (const { docId, headCid } of docs) {
       // If the manifest picked up a new doc since startup, make sure we
       // are also subscribed to its topic.
       if (!subscribedDocs.has(docId)) {
         try { await subscribeDoc(docId); } catch {}
+      }
+      // Suppress rebroadcast of heads seen from peers within the grace
+      // window — another agent already published it; we'd just amplify.
+      const seenAt = seenHeads.get(seenKey(docId, headCid));
+      if (seenAt !== undefined && Date.now() - seenAt < rebroadcastGraceMs) {
+        stats.rebroadcastsSuppressedBySeen += 1;
+        continue;
       }
       try {
         await publishBrainHead(docId, headCid, authorAddress);
@@ -343,7 +406,22 @@ export async function runDaemon(): Promise<void> {
         log(`rebroadcast err doc=${docId}: ${err.message}`);
       }
     }
-  }, REBROADCAST_INTERVAL_MS);
+    // Prune seenHeads entries older than the grace window — bounded memory.
+    const cutoff = Date.now() - rebroadcastGraceMs;
+    for (const [key, ts] of seenHeads) {
+      if (ts < cutoff) seenHeads.delete(key);
+    }
+  }
+  function scheduleRebroadcast(): void {
+    if (rebroadcastIntervalMs === 0) return;
+    rebroadcastTimer = setTimeout(async () => {
+      try { await rebroadcastTick(); } catch (err: any) {
+        log(`rebroadcast tick err: ${err.message}`);
+      }
+      scheduleRebroadcast();
+    }, nextInterval());
+  }
+  scheduleRebroadcast();
 
   // --- Keepalive loop ---
   //
@@ -432,6 +510,10 @@ export async function runDaemon(): Promise<void> {
           topics,
           subscribedDocs: Array.from(subscribedDocs),
           rebroadcastCount: stats.rebroadcastCount,
+          rebroadcastsSuppressedBySeen: stats.rebroadcastsSuppressedBySeen,
+          rebroadcastIntervalMs,
+          rebroadcastJitter,
+          rebroadcastGraceMs,
           lastRebroadcastAt: stats.lastRebroadcastAt,
           keepaliveCount: stats.keepaliveCount,
           lastKeepaliveAt: stats.lastKeepaliveAt,
@@ -612,7 +694,7 @@ export async function runDaemon(): Promise<void> {
     if (shuttingDown) return;
     shuttingDown = true;
     log(`shutdown signal ${sig}`);
-    clearInterval(rebroadcastTimer);
+    if (rebroadcastTimer !== null) clearTimeout(rebroadcastTimer);
     clearInterval(keepaliveTimer);
     if (redialTimer) clearInterval(redialTimer);
     try { pubsub.removeEventListener('message', keepaliveListener); } catch {}
@@ -638,7 +720,7 @@ export async function runDaemon(): Promise<void> {
   });
 
   log(
-    `daemon ready — rebroadcast=${REBROADCAST_INTERVAL_MS}ms ` +
+    `daemon ready — rebroadcast=${rebroadcastIntervalMs === 0 ? 'disabled' : `${rebroadcastIntervalMs}ms±${Math.round(rebroadcastJitter*100)}% grace=${rebroadcastGraceMs}ms`} ` +
     `keepalive=${KEEPALIVE_INTERVAL_MS}ms ` +
     (redialTimer ? `redial=${redialInterval}ms ` : '') +
     `subscribed=${subscribedDocs.size} docs`,
