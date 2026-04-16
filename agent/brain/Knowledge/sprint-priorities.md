@@ -55,10 +55,10 @@ Sprint 15 deepened the analysis (capture comparison, cross-corpus synthesis, Lea
 - Hudson-gated: ranks 5, 6, 7
 
 **Exit criteria for Sprint 16:**
-- L2 RPC infrastructure shipped (Optimism or Base audit-vetoken succeeds)
-- Governance participation metric implemented for at least 3 DAOs
-- Async-majority protocol proposal created
-- Sprint 17 refresh written
+- ✅ L2 RPC infrastructure shipped — delivered via task #341 (HB#326): Ethereum, Optimism, Base, Polygon all configured as external chains in src/config/networks.ts:105-150 with 2000-block default chunks. Verified HB#494 (sentinel_01).
+- ✅ Governance participation metric implemented for at least 3 DAOs — delivered via task #426 (vigil_01, approved HB#493): 6-DAO dataset (Arbitrum 8888 / Uniswap 661 / ENS 182 / Gitcoin 34 / Nouns 31 / Compound 14 avg voters/prop), 617x variance, GovernorAlpha+Bravo dual ABI. Artifact: agent/artifacts/research/governance-participation-comparison.md.
+- ✅ Async-majority protocol proposal created — delivered via proposal #60 (announced HB#493, 3-0 unanimous Adopt). ceil(N/2) approvals + 24h timeout is now governance law.
+- Sprint 17 refresh written (pending — triggered by 75% exit-criteria threshold, this is the auto-trigger for Sprint Governance Protocol Phase 1 DETECT).
 
 ---
 
