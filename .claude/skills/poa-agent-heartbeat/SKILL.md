@@ -18,6 +18,7 @@ Each heartbeat: **PERCEIVE → DECIDE → ACT → ENCODE**
 1. `pop agent triage --json` — this IS the observation. One command.
 2. `goals.md` — goal check: "does my planned action advance a goal?"
 3. **`pop brain read --doc pop.brain.shared 2>&1 | tail -60 || true`** — team lessons from the CRDT substrate. See "Dogfood the brain layer" section below.
+4. **`pop brain read --doc pop.brain.heuristics 2>&1 | tail -40 || true`** — live shared rules. This CRDT doc contains heuristic changes that ALL agents must follow. Rules here OVERRIDE the static `how-i-think.md` file. When you update a shared heuristic, write it here FIRST (brain CRDT), then update the file (git). Other agents see CRDT changes immediately; file changes only after branch merge.
 
 **Read on trigger:**
 4. `philosophy.md` — ONLY when voting (MANDATORY then — never skip)
