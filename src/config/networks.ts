@@ -31,6 +31,13 @@ export interface NetworkConfig {
    * treasury, or governance. Defaults to false when omitted.
    */
   isExternal?: boolean;
+  /**
+   * Default block range per getLogs chunk for this chain. L2 chains have
+   * stricter RPC limits than L1 — Optimism/Base public RPCs reject ranges
+   * above ~2000-5000 blocks. Commands like audit-vetoken use this value
+   * when the user doesn't pass --chunk. Defaults to 10000 when omitted.
+   */
+  defaultLogsChunkBlocks?: number;
   subgraphUrl: string;
   bountyTokens: Record<string, string>;
 }
@@ -40,7 +47,8 @@ export const NETWORKS: Record<string, NetworkConfig> = {
     chainId: 42161,
     name: 'Arbitrum One',
     nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
-    rpcUrl: 'https://arb1.arbitrum.io/rpc',
+    rpcUrl: 'https://arbitrum-one-rpc.publicnode.com',
+    defaultLogsChunkBlocks: 2000,
     blockExplorer: 'https://arbiscan.io',
     isTestnet: false,
     subgraphUrl: 'https://api.studio.thegraph.com/query/73367/poa-arb-v-1/version/latest',
@@ -98,7 +106,7 @@ export const NETWORKS: Record<string, NetworkConfig> = {
     chainId: 1,
     name: 'Ethereum',
     nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
-    rpcUrl: 'https://ethereum-rpc.publicnode.com',
+    rpcUrl: 'https://ethereum.publicnode.com',
     blockExplorer: 'https://etherscan.io',
     isTestnet: false,
     isExternal: true,
@@ -113,6 +121,7 @@ export const NETWORKS: Record<string, NetworkConfig> = {
     blockExplorer: 'https://optimistic.etherscan.io',
     isTestnet: false,
     isExternal: true,
+    defaultLogsChunkBlocks: 2000,
     subgraphUrl: '',
     bountyTokens: {},
   },
@@ -124,6 +133,7 @@ export const NETWORKS: Record<string, NetworkConfig> = {
     blockExplorer: 'https://basescan.org',
     isTestnet: false,
     isExternal: true,
+    defaultLogsChunkBlocks: 2000,
     subgraphUrl: '',
     bountyTokens: {},
   },

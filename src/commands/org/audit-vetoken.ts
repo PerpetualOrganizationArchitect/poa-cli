@@ -43,7 +43,7 @@
 
 import type { Argv, ArgumentsCamelCase } from 'yargs';
 import { ethers } from 'ethers';
-import { resolveNetworkConfig } from '../../config/networks';
+import { resolveNetworkConfig, getNetworkByChainId } from '../../config/networks';
 import * as output from '../../lib/output';
 
 // Minimal view-surface ABI for any veCRV-family VotingEscrow. Contract uses
@@ -62,6 +62,11 @@ const VE_VIEW_ABI = [
   // Signature matches the Curve VotingEscrow reference impl; Balancer veBAL,
   // Frax veFXS, and related forks use the same signature.
   'event Deposit(address indexed provider, uint256 value, uint256 indexed locktime, int128 type, uint256 ts)',
+  // HB#252 task #418: ERC-721 Transfer event for Solidly veNFT enumeration.
+  // When --enumerate finds 0 Deposit events (Solidly contracts use a different
+  // Deposit signature), falls back to scanning Transfer(from=0x0) mint events
+  // on the VE contract itself. Every createLock mints an NFT position.
+  'event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)',
 ];
 
 // Default enumeration window: last 50,000 blocks (~7 days on Ethereum mainnet
@@ -76,6 +81,7 @@ interface AuditVetokenArgs {
   holders?: string;
   enumerate?: boolean;
   'enumerate-transfers'?: boolean;
+  'verify-top-holder'?: boolean;
   underlying?: string;
   'from-block'?: number;
   'to-block'?: number;
@@ -84,6 +90,66 @@ interface AuditVetokenArgs {
   chain?: number;
   rpc?: string;
   json?: boolean;
+}
+
+/**
+ * HB#470: `--verify-top-holder` implementation.
+ *
+ * The HB#463 cascade-fingerprinting-method.md document and the HB#460+#461
+ * worked examples established a reliable labeling technique for the
+ * Convex/Aura VoterProxy contract class: call `operator()` and `escrow()`,
+ * cross-check returns against a public-manifest map of known Booster
+ * addresses.
+ *
+ * This function automates it. For a top-holder address, try calling the
+ * VoterProxy-shaped getters with a minimal inline ABI. If operator()
+ * returns a known-public Booster address AND escrow() returns the same
+ * address we were probing, we have a positive ID. Otherwise return null
+ * and let the caller decide what to do with the unknown contract.
+ *
+ * Manifest built from HB#460 (Convex) and HB#461 (Aura) verified probes.
+ * Adding new VoterProxy-family aggregators is a one-line append to this
+ * map.
+ */
+const VOTER_PROXY_MANIFEST: Record<string, string> = {
+  // Convex Finance Booster (mainnet) — verified HB#460 via the
+  // 0x989AEb4d CurveVoterProxy operator() return
+  '0xf403c135812408bfbe8713b5a23a04b3d48aae31': 'Convex',
+  // Aura Finance Booster (mainnet) — verified HB#461 via the
+  // 0xaf52695e BalancerVoterProxy operator() return
+  '0xa57b8d98dae62b26ec3bcc4a365338157060b234': 'Aura',
+};
+
+const VOTER_PROXY_ABI = [
+  'function operator() view returns (address)',
+  'function escrow() view returns (address)',
+];
+
+async function verifyTopHolder(
+  holderAddr: string,
+  escrowAddr: string,
+  provider: ethers.providers.Provider,
+): Promise<string | null> {
+  try {
+    const c = new ethers.Contract(holderAddr, VOTER_PROXY_ABI, provider);
+    const [operator, escrow] = await Promise.all([
+      c.operator().catch(() => null),
+      c.escrow().catch(() => null),
+    ]);
+    if (!operator || !escrow) return null;
+    const escrowMatches = String(escrow).toLowerCase() === escrowAddr.toLowerCase();
+    if (!escrowMatches) return null;
+    const aggregator = VOTER_PROXY_MANIFEST[String(operator).toLowerCase()];
+    if (!aggregator) {
+      // operator() returns something, but it's not in our manifest. Still a
+      // useful partial signal — it's a VoterProxy-shaped contract with a
+      // matching escrow but an unknown aggregator.
+      return `VoterProxy (unknown aggregator: operator=${operator})`;
+    }
+    return `${aggregator} VoterProxy (verified via operator=${operator}, escrow=${escrow})`;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -121,6 +187,30 @@ async function enumerateDepositors(
       // debug path (stderr would disrupt JSON output); just skip the chunk.
       // Aggregate enumeration is best-effort.
       void err;
+    }
+  }
+
+  // HB#252 task #418: if Deposit events returned 0 holders, fall back to
+  // ERC-721 Transfer-from-zero (mint) events. Solidly veNFT contracts
+  // (Velodrome, Aerodrome) emit Transfer on createLock but use a different
+  // Deposit signature than Curve-family contracts.
+  if (seen.size === 0) {
+    const zeroAddr = '0x0000000000000000000000000000000000000000';
+    const mintFilter = contract.filters.Transfer(zeroAddr);
+    for (let start = fromBlock; start <= toBlock; start += chunk) {
+      const end = Math.min(start + chunk - 1, toBlock);
+      try {
+        const logs = await contract.queryFilter(mintFilter, start, end);
+        chunksScanned++;
+        for (const log of logs) {
+          const to = (log.args as any)?.to;
+          if (to) {
+            seen.add(String(to).toLowerCase());
+          }
+        }
+      } catch {
+        void 0; // same best-effort pattern as Deposit scan
+      }
     }
   }
 
@@ -316,6 +406,10 @@ export const auditVetokenHandler = {
         }
       }
 
+      // Chain-aware chunk size: L2 RPCs have stricter getLogs limits
+      const chainNetwork = argv.chain ? getNetworkByChainId(argv.chain) : null;
+      const chainDefaultChunk = chainNetwork?.defaultLogsChunkBlocks ?? DEFAULT_ENUMERATE_CHUNK_BLOCKS;
+
       const anyEnumerate = argv.enumerate || argv['enumerate-transfers'];
       if (!anyEnumerate && explicitHolders.length === 0) {
         spin.stop();
@@ -363,7 +457,7 @@ export const auditVetokenHandler = {
         const toBlock = argv['to-block'] ?? latestBlock;
         const fromBlock =
           argv['from-block'] ?? Math.max(0, latestBlock - DEFAULT_ENUMERATE_LOOKBACK_BLOCKS);
-        const chunk = argv.chunk ?? DEFAULT_ENUMERATE_CHUNK_BLOCKS;
+        const chunk = argv.chunk ?? chainDefaultChunk;
 
         spin.stop();
         output.info(
@@ -387,7 +481,7 @@ export const auditVetokenHandler = {
         const toBlock = argv['to-block'] ?? latestBlock;
         const fromBlock =
           argv['from-block'] ?? Math.max(0, latestBlock - DEFAULT_ENUMERATE_LOOKBACK_BLOCKS);
-        const chunk = argv.chunk ?? DEFAULT_ENUMERATE_CHUNK_BLOCKS;
+        const chunk = argv.chunk ?? chainDefaultChunk;
 
         // Resolve underlying token address: explicit --underlying flag wins,
         // else fall back to VotingEscrow.token() which we already read above.
