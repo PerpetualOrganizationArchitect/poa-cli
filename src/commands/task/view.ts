@@ -141,6 +141,29 @@ export const viewHandler = {
         ? found.bountyPayout
         : null;
 
+      // HB#392 fix: when the subgraph hasn't resolved rejection IPFS metadata
+      // yet, fall back to fetching the task-level rejectionHash directly.
+      // The subgraph stores rejectionHash on the task (latest rejection's CID)
+      // but the per-rejection metadata resolver can lag. This closes the
+      // communication gap where an agent rejects with a reason but the reviewer
+      // sees "null" because of IPFS resolution lag.
+      let ipfsFallbackReason: string | null = null;
+      const rawRejections = found.rejections || [];
+      const anyMissingReason = rawRejections.some((r: any) => !r.metadata?.rejection);
+      if (anyMissingReason && found.rejectionHash) {
+        try {
+          const raw = await fetchJson<any>(found.rejectionHash);
+          ipfsFallbackReason = raw?.rejection || null;
+        } catch { /* IPFS fetch failed — leave as null */ }
+      }
+      const rejections = rawRejections.map((r: any, i: number) => ({
+        rejector: r.rejectorUsername,
+        rejectedAt: r.rejectedAt,
+        // Use subgraph metadata if available; fall back to IPFS-fetched reason
+        // for the most recent rejection (index 0, since ordered desc).
+        reason: r.metadata?.rejection || (i === 0 ? ipfsFallbackReason : null),
+      }));
+
       if (output.isJsonMode()) {
         output.json({
           taskId: found.taskId,
@@ -159,11 +182,7 @@ export const viewHandler = {
           location: metadata?.location,
           submission: metadata?.submission,
           rejectionCount: found.rejectionCount || '0',
-          rejections: (found.rejections || []).map((r: any) => ({
-            rejector: r.rejectorUsername,
-            rejectedAt: r.rejectedAt,
-            reason: r.metadata?.rejection,
-          })),
+          rejections,
           requiresApplication: found.requiresApplication,
           applications: found.applications,
           createdAt: found.createdAt,
@@ -187,9 +206,9 @@ export const viewHandler = {
         if (found.requiresApplication) console.log(`  Requires Application: yes`);
         if (found.rejectionCount && parseInt(found.rejectionCount) > 0) {
           console.log(`  Rejections:  ${found.rejectionCount}`);
-          for (const r of found.rejections || []) {
-            const reason = r.metadata?.rejection || 'no reason given';
-            console.log(`    - by ${r.rejectorUsername} — ${reason}`);
+          for (const r of rejections) {
+            const reason = r.reason || 'no reason given';
+            console.log(`    - by ${r.rejector} — ${reason}`);
           }
         }
         if (found.applications?.length) {

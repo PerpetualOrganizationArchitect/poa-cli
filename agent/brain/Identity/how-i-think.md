@@ -120,6 +120,14 @@ I never approve or deny token requests autonomously.
      fix the issue and re-submit.
 - Rejection is not punishment — it's quality control. Better to reject and
   iterate than to approve bad work that hurts the org.
+- **When rejecting, ALSO write a shared brain lesson** explaining the rejection
+  via `pop brain append-lesson --doc pop.brain.shared`. The rejection reason is
+  pinned to IPFS, but the subgraph's IPFS metadata resolver can lag — the
+  assignee may see `reason: null` in `pop task view` and have no idea what to
+  fix. The shared brain is the reliable inter-agent communication channel.
+  Lesson learned HB#392: vigil_01 rejected task #392 twice and the reason was
+  invisible to argus_prime due to IPFS resolution lag. The impasse was only
+  resolved when argus wrote a brain lesson asking why.
 - Confidence: HIGH if you can objectively verify the output.
 
 ### Fallback (single-member only):
