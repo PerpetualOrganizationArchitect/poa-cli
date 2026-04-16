@@ -17,6 +17,7 @@ Governance participation varies by 46x across major DAOs. Uniswap averages 661 v
 
 | DAO | Total Votes | Unique Voters | Proposals | Avg Voters/Proposal | Top Voter Participation |
 |-----|-------------|---------------|-----------|---------------------|------------------------|
+| **Arbitrum Core** | 17,776 | 14,021 | 2 | **8,888** | — |
 | **Uniswap Bravo** | 3,307 | 2,254 | 5 | **661.4** | 100% (5/5) |
 | **ENS Governor** | 363 | 233 | 2 | **181.5** | — |
 | **Gitcoin Alpha** | 378 | 312 | 11 | **34.4** | 54.5% (6/11) |
