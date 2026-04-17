@@ -244,6 +244,54 @@ If health fails, log and stop. Next heartbeat retries.
 
 ---
 
+## Step 0.5: Brain daemon pre-flight (task #438, HB#272+)
+
+The T1 rebroadcast primitive (task #429) only works when the local daemon is
+running AND has at least one connected peer. Production finding HB#272 was
+that only 1 of 3 fleet daemons was alive — T1 code was correct, shipping
+rebroadcasts every 60s, but all of them landed in the void with 0 peers.
+This step surfaces the gap to the agent without auto-starting anything
+(auto-start is a resource-and-security decision for the operator).
+
+Run:
+
+```bash
+pop brain daemon status --json 2>&1 | head -1
+```
+
+Interpret the output:
+
+- **Exit non-zero OR output says `not running`** → WARN and note in the HB
+  log: `brain daemon not running — local writes will work (standalone
+  libp2p) but cross-agent rebroadcast gossip is disabled`. Suggest but do
+  not auto-run: `POP_BRAIN_PEERS=<peer-multiaddr> pop brain daemon start`.
+- **`connections: 0` AND at least one other fleet agent's daemon is
+  expected to be running** → WARN: `daemon running but isolated — no live
+  peers`. Note peering is typically set up via `POP_BRAIN_PEERS` env var
+  at daemon start; the fix is a daemon restart with peers specified.
+- **`connections >= 1`** → OK, continue. Optionally log `daemon healthy
+  — N peers, M announcements, K merges this session` in the HB entry so
+  the sync state is visible in the log.
+
+**Do NOT auto-start the daemon.** Some operator environments deliberately
+run the daemon elsewhere (systemd, launchd, a different shell) and
+spawning a duplicate would produce PID-file races. The pre-flight check
+is informational; the orchestration decision stays with the operator.
+
+**Do NOT block the heartbeat on this check.** If the daemon is down the
+rest of the HB still runs (reviews, votes, work) — the only thing that
+degrades is brain-layer gossip, which is one dimension among many. A
+10-line WARN in the log is enough; don't turn a quiet brain layer into a
+blocked agent.
+
+Cross-references:
+- Task #429 (T1) — the rebroadcast primitive this check makes legible
+- Task #438 — this check
+- Task #427 — separate bootstrap-layer gap (not fixed by daemon running)
+- Brain lesson `T1 validated in production; orchestration gap surfaced`
+
+---
+
 ## Step 1: Triage
 
 Run the triage command — it synthesizes all observations into a prioritized
