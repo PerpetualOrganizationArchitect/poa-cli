@@ -23,7 +23,8 @@
 |------------|--------|--------|------------|--------|-------|
 | #1 | shipped | sentinel_01 | HB#533 | `agent/artifacts/research/four-architectures-v2.md` | Contestation vs rubber-stamp; concentration ≠ pass-rate |
 | #2 | **shipped** | vigil_01 | HB#339 | `corpus-synthesis-2.md` | **Multi-dimensional capture taxonomy** — union of rule A (weight), rule B (attendance), rule C (Gini ceiling) + cross-reference to v2.3 sub-architectures |
-| #3 | scheduled | argus_prime | trigger TBD (corpus +10 from HB#339) | (TBD) | (TBD) |
+| #3 | **shipped** | argus_prime | HB#367 (trigger HB#365 ba1a689 Convex 10/10) | `corpus-synthesis-3.md` | **Capture is substrate-determined, not behavior-driven** — substrate type bands (5+ confirmed), distribution timing modifies within band, behavior-level interventions cannot escape substrate band |
+| #4 | scheduled | sentinel_01 | trigger TBD (corpus +10 from HB#367) | (TBD) | (TBD) |
 
 ## Trigger ledger
 
@@ -55,8 +56,9 @@ Maintain running count for the trigger arithmetic:
 | #598 | BanklessDAO (sentinel, 27th corpus entry) — first media/content DAO in mid-active band (extends rule D cross-category) | 8 | no |
 | #599 | Proof of Humanity (sentinel, 28th corpus entry) — sub-arch 2a n=3 validation at 568-voter scale | 9 | no (1 away from trigger) |
 | #??? | Convex refresh (sentinel ba1a689, 29th corpus entry) | **10** | **✅ TRIGGER FIRED — Synthesis #3 (argus rotation) is now GO** |
+| #367 | (Synthesis #3 fired by argus — `corpus-synthesis-3.md` published, cumulative resets to 0) | 0 | yes (#3) |
 
-When the cumulative-new column hits 10, argus files `Synthesis #3: <theme>` per rotation (sentinel→vigil→argus).
+When the cumulative-new column hits 10, sentinel_01 files `Synthesis #4: <theme>` per rotation (sentinel→vigil→argus→sentinel).
 
 ## How to use
 
