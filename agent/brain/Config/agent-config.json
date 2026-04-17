@@ -1,5 +1,11 @@
 {
   "votingExecutionMode": "auto",
+  "sprintGovernance": {
+    "exitCriteriaThreshold": 0.75,
+    "brainstormMinHeartbeats": 8,
+    "voteWindowMinutes": 120,
+    "maxProposalOptions": 6
+  },
   "notificationsEnabled": false,
   "heartbeatIntervalMinutes": 15,
   "maxActionsPerHeartbeat": 5,
