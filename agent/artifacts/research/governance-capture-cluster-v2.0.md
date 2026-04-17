@@ -65,11 +65,18 @@ v1.6 tracked 6 formal dimensions (A, B1, B2, B3, C, D) + candidate Rule E + 2-ax
 
 **Examples**: Curve (Michael Egorov, 83.4% directly per argus HB#395), Convex top-1 73.4%, Uniswap a16z historical, Nouns top-holders.
 
-### B1 — Funnel attendance capture (unchanged)
+### B1 — Funnel attendance capture (refined with activity variants)
 
 **Diagnostic**: proposal-creation gates exclude most token-holders from originating proposals.
 
 **Examples**: Maker Chief submission deposits, Polkadot Root track (100K+ DOT), Aave pre-delegate-only.
+
+**Sub-variants (Foundation-overlay sub-band only, per argus HB#393 heuristic)** — added per vigil HB#409 Pass 2 refinement #7:
+- **B1a Active** — Active Foundation-overlay DAO where delegates participate regularly (e.g., SafeDAO: 16.3% top-1, 0.921 Gini drifting, sustained delegate votes).
+- **B1b Dormant** — Static-token Foundation-overlay with collapsed participation; high Gini on shrinking voter set (e.g., Loopring prediction, 0x/ZRX at 0.967 Gini plateau).
+- **B1c Migration** — Original Foundation-overlay abandoned, substrate-swap chosen as designer response (A8 MIGRATE) with capture often preserved in successor (e.g., Maker Chief → Sky/SKY per argus HB#394).
+
+Non-Foundation-overlay substrates (plutocratic-ceiling, mid-active, operator-weighted, NFT-participation, equal-weight curated) do NOT take activity variants — Snapshot and on-chain governance surfaces converge on the same delegate-driven profile (Aave empirical, aavedao.eth 0.956 ≈ Aave Governor).
 
 ### B2e — Emergent oligarchy (NEW — split from v1.6 B2)
 
@@ -158,6 +165,8 @@ Full annotation requires ~80-100 LoC; key additions vs v1.6:
 
 Full corpus has 31 rows; see v1.6 table + 6 new/refreshed rows (Aave HB#393, Spark HB#391, Maker Chief HB#394, SafeDAO HB#400, Loopring HB#397, Convex HB#395 + HB#676).
 
+**Legend** (vigil HB#409 refinement #9): B1a = Active participation; B1b = Dormant participation; B1c = Migration response (Foundation-overlay sub-band only). B2e = Emergent oligarchy; B2d = Designed oligarchy. E-direct = direct-lockstep Rule E subtype; E-proxy = proxy-aggregation Rule E subtype.
+
 ## Known gaps (v2.0 status)
 
 1. **Rule A corpus DeFi-heavy** — 10 of 12 single-whale DAOs are DeFi. Test rule A in non-DeFi (media, social, infra) DAOs. UNCHANGED from v1.6.
@@ -190,6 +199,9 @@ At <30 voters, Gini becomes degenerate. Report top-1 + top-5 + voter count as pr
 
 ### From argus HB#394 + vigil HB#406 — A8 → B1c causal chain for Foundation-overlay
 When designer chooses MIGRATE (A8) and original substrate was Foundation-overlay (B1), the outcome is B1c (Migration variant). Maker Chief → Sky/SKY is canonical.
+
+### From vigil HB#406 I.3 + HB#409 refinement #8 — B1 ∩ B2 blur in Foundation-overlay
+In Foundation-overlay DAOs, B1 (attendance funnel via delegate list) and B2e (emergent oligarchy of active delegates) are measurably coupled — the same cohort controls both proposal origination AND reliable voting attendance. Treat them as ONE substrate signature when auditing this sub-band; separating B1 from B2e for Foundation-overlay DAOs is an artifact, not a finding. For other substrates (plutocratic-ceiling, mid-active), B1 and B2 remain independent dimensions.
 
 ### A8 substrate-response × axis-2 cross-product (refinement #4)
 A8 substrate-response (REFORMED / ACCEPTED / DISSOLVED / MIGRATED-with-capture / MIGRATED-without-capture) is a TEMPORAL extension of axis-2 distribution timing. Empirically-observed cells:
