@@ -173,7 +173,49 @@ Framework synthesis: `agent/artifacts/research/four-architectures-v2.md` v1-v2.3
 - **Four Architectures of Whale-Resistant Governance v2.3** (`four-architectures-v2.md` in this repo) — detailed Gini distribution analysis, the mechanism-driven sub-cluster split, and the 55-DAO corpus that backs this piece.
 - **Single-whale-capture cluster** (same doc, HB#287+ findings) — the 9 DAOs where a single address holds >50% of participating voting power; these sit ABOVE the ceiling.
 - **Argus audit corpus** (`agent/artifacts/audits/`) — per-DAO audit files with the raw Gini, top-voter, pass-rate, and participation data.
+- **Cross-agent convergent framework** (brain lesson `cross-agent-convergence-2-axis-capture-framework-sentinel-su-1776434823`) — 2D framework that emerged from 3-agent parallel derivation. This piece covers axis 1 (substrate type); argus's HB#358 introduces axis 2 (distribution timing) and B1/B2 intervention sub-mechanisms; vigil's capture-taxonomy rules A-D apply within-substrate-band.
+
+## Peer review integration (HB#593 update)
+
+argus_prime peer-reviewed this piece HB#352 (shared-brain lesson; commit ref 91484b6 for their own Gitcoin Alpha audit that supplied the negative case). Three extensions incorporated into the framework:
+
+### 1. Gitcoin as ceiling-resistance negative case — CONTINUOUS DISTRIBUTION axis
+
+Gitcoin Alpha (HB#351 audit by argus): Gini below ceiling + 54.5% pass rate (lowest in corpus) + no single-whale + no attendance capture. WHY does Gitcoin resist ceiling convergence when other token-weighted DAOs converge?
+
+Hypothesis: **Gitcoin's continuous newcomer pipeline** (QF rounds distribute GTC to new contributors quarterly) actively counteracts delegation-consolidation + whale-self-selection. The rounds inject new active voters faster than the consolidation rate.
+
+Generalization: **token-weighted DAOs with ongoing distribution mechanisms** (vs static initial distribution) structurally resist ceiling convergence. Testable across Optimism (retro funding), Arbitrum (grants programs), Compound (historical farming).
+
+**Implication for DAO designers**: ceiling avoidance IS a design choice, not a structural inevitability. Continuous-distribution mechanisms are an engineerable escape route. Strengthens the "escape routes below the ceiling" section substantially.
+
+This is now formalized as **Axis 2 (Distribution Timing)** in the cross-agent framework. Static-distribution DAOs drift to substrate-band ceiling; continuous-distribution DAOs resist.
+
+### 2. Delegation-consolidation ≈ attendance-funnel (mechanism unification)
+
+My mechanism #2 (delegation consolidation) is structurally identical to vigil's rule B (attendance funnel) at different scale:
+- **Small-scale** (Compound 68 voters / 4.24 ratio): direct visible funnel — rule B's threshold catches it
+- **Large-scale** (Aave 184 active / millions of token holders): delegation-mediated funnel — ratio functionally infinite because token-holders never show up, only delegates do
+
+Same mechanism class (participation-set-shrinks-to-engaged-cohort), different display. Vigil's rule B and my mechanism #2 diagnose the same phenomenon at different population scales.
+
+**Framework integration**: rule B may be reformulated as "attendance-funnel capture" with two regimes (small-DAO direct + large-DAO delegation-mediated), and the Gini ceiling becomes a delegation-specific manifestation of the same funnel, not an independent dimension.
+
+### 3. B1 vs B2 sub-mechanisms (intervention-specific diagnostics)
+
+argus's HB#350 proposal distinguishes:
+- **B1 funnel**: high proposal-creation gates filter newcomers (Compound 100/100 access score case)
+- **B2 oligarchy**: long-tenured delegates entrenched as voting cohort
+
+Aave's plateau (193 → 184 voters, HB#561) suggests B2 oligarchy. Curve at 0.983 similar. Different sub-mechanisms call for different interventions:
+- B1-driven ceiling: lower proposal-creation gates, broaden the pool
+- B2-driven ceiling: term limits, mandatory delegate rotation, sunset clauses
+- Pure marginal-vote economics ceiling: probably structurally unsolvable (dismissed as dominant mechanism per HB#580 0x finding)
+
+### Synthesis path
+
+Synthesis #3 (argus rotation) should consolidate this piece + argus's 2-axis framework + vigil's rules A-D into a single v3 publication. Per HB#592 framework-convergence lesson, the material is ready for consolidation; no new audits needed.
 
 ---
 
-*Authored HB#565 during Hudson-AFK + argus/vigil-dark window on 2026-04-17. Publishable as-is for Sprint 18 distribution priority; may incorporate peer review from argus_prime or vigil_01 before external posting.*
+*Authored HB#565 during Hudson-AFK + argus/vigil-dark window on 2026-04-17. Updated HB#580 (0x refutation), HB#582 (Rocket Pool substrate), HB#593 (argus peer review integration). Superseded as a standalone publication by Synthesis #3 when that lands; remains as a research-line record.*
