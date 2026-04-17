@@ -913,12 +913,34 @@ export async function runDaemon(): Promise<void> {
     await ensureMultiaddrLoader();
     const fromEnv = parsedPeerAddrs;
     const fromRegistry = await peerAddrsFromRegistry();
-    // De-dupe: env addrs take precedence (operator explicit); registry augments.
-    const seen = new Set<string>(fromEnv);
-    const combined: string[] = [...fromEnv];
+
+    // Registry-preferred redial (retro-344 change-3 HB#576):
+    // When both sources have entries for the same peer_id, prefer the
+    // registry address — peers publish their current listenAddrs to the
+    // registry, so that entry is the freshest. The env entry may be stale
+    // (peer rotated ports on restart; operator config hasn't caught up).
+    //
+    // Without this, daemon keeps re-dialing a dead env port indefinitely
+    // (observed HB#504/564/572). Registry self-heals as peers rotate.
+    const registryByPeerId = new Map<string, string>();
     for (const addr of fromRegistry) {
-      if (!seen.has(addr)) { combined.push(addr); seen.add(addr); }
+      const pid = peerIdOfMultiaddr(addr);
+      if (pid) registryByPeerId.set(pid, addr);
     }
+
+    const combined: string[] = [];
+    const seenAddrs = new Set<string>();
+    // Env first, but skip any entry whose peer_id has a registry address.
+    for (const addr of fromEnv) {
+      const pid = peerIdOfMultiaddr(addr);
+      if (pid && registryByPeerId.has(pid)) continue;  // registry supersedes
+      if (!seenAddrs.has(addr)) { combined.push(addr); seenAddrs.add(addr); }
+    }
+    // Registry entries next.
+    for (const addr of fromRegistry) {
+      if (!seenAddrs.has(addr)) { combined.push(addr); seenAddrs.add(addr); }
+    }
+
     for (const addr of combined) {
       await dialIfDisconnected(addr, 'redial');
     }
