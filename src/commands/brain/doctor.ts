@@ -418,6 +418,137 @@ async function checkPeerSyncOverlap(): Promise<CheckResult> {
   }
 }
 
+/**
+ * T6 (task #434) pt1: per-peer head divergence check.
+ *
+ * Compares our local doc-heads.json against per-peer head CIDs collected
+ * from gossipsub announcements (daemon's IPC 'peer-heads' op).
+ *
+ * For each (peerId, docId) the daemon has heard about:
+ *   - If peer's CID == local CID: converged, OK
+ *   - If different AND last-seen < FAIL_AGE: WARN (in-flight propagation)
+ *   - If different AND last-seen >= FAIL_AGE: FAIL (stuck divergence)
+ *
+ * INFO when: no peers heard yet (can't compare). PASS when: every (peer,
+ * doc) pair where the peer reported a head matches our local head.
+ *
+ * This is the MVP via passive announcement tracking. pt2 will add an
+ * active probe protocol (pop/brain/probe/v1) for explicit query.
+ */
+async function checkPeerHeadsDivergence(): Promise<CheckResult> {
+  const FAIL_AGE_MS = parseInt(
+    process.env.POP_BRAIN_DIVERGENCE_FAIL_AGE_MS || '600000', // 10 min
+    10,
+  );
+
+  // Daemon-only check — local fallback can't see peer announcements.
+  let daemonRunning = false;
+  try {
+    const pidStr = readFileSync(getDaemonPidPath(), 'utf8').trim();
+    const pid = parseInt(pidStr, 10);
+    if (pid > 0) { process.kill(pid, 0); daemonRunning = true; }
+  } catch { /* no PID file or process gone */ }
+
+  if (!daemonRunning) {
+    return {
+      name: 'peer heads divergence',
+      status: 'warn',
+      detail: 'daemon not running — start with pop brain daemon start',
+    };
+  }
+
+  let peerHeadsSnap: { peerHeads: Record<string, Record<string, { cid: string; ts: number }>>; capturedAt: number };
+  try {
+    peerHeadsSnap = await sendIpcRequest('peer-heads', {}, 3000);
+  } catch (err: any) {
+    return {
+      name: 'peer heads divergence',
+      status: 'warn',
+      detail: `daemon IPC failed — ${err.message}`,
+    };
+  }
+
+  const peers = Object.keys(peerHeadsSnap.peerHeads);
+  if (peers.length === 0) {
+    return {
+      name: 'peer heads divergence',
+      status: 'info',
+      detail: 'no peer announcements heard yet — cannot compare (T1 rebroadcast not started or no peers)',
+    };
+  }
+
+  // Read local heads via the same path the doctor uses elsewhere.
+  // doc-heads.json lives in the brain home; format: {docId: cid}.
+  let localHeads: Record<string, string> = {};
+  try {
+    const headsPath = join(getBrainHome(), 'doc-heads.json');
+    if (existsSync(headsPath)) {
+      localHeads = JSON.parse(readFileSync(headsPath, 'utf8'));
+    }
+  } catch (err: any) {
+    return {
+      name: 'peer heads divergence',
+      status: 'warn',
+      detail: `cannot read local doc-heads.json: ${err.message}`,
+    };
+  }
+
+  const now = Date.now();
+  let totalCompared = 0;
+  let converged = 0;
+  let staleDivergent: Array<{ peer: string; doc: string; localCid: string; peerCid: string; ageMs: number }> = [];
+  let recentDivergent = 0;
+
+  for (const peerId of peers) {
+    for (const [docId, entry] of Object.entries(peerHeadsSnap.peerHeads[peerId])) {
+      totalCompared += 1;
+      const localCid = localHeads[docId];
+      if (!localCid) continue; // we don't have this doc yet — not divergence
+      if (localCid === entry.cid) {
+        converged += 1;
+      } else {
+        const ageMs = now - entry.ts;
+        if (ageMs >= FAIL_AGE_MS) {
+          staleDivergent.push({ peer: peerId.slice(0, 12) + '...', doc: docId, localCid: localCid.slice(0, 16) + '...', peerCid: entry.cid.slice(0, 16) + '...', ageMs });
+        } else {
+          recentDivergent += 1;
+        }
+      }
+    }
+  }
+
+  if (staleDivergent.length > 0) {
+    const sample = staleDivergent[0];
+    return {
+      name: 'peer heads divergence',
+      status: 'fail',
+      detail: `${staleDivergent.length} stuck divergent (peer/doc pair age >= ${Math.floor(FAIL_AGE_MS / 60000)}min). Sample: peer ${sample.peer} doc=${sample.doc} local=${sample.localCid} peer=${sample.peerCid} age=${Math.floor(sample.ageMs / 1000)}s`,
+    };
+  }
+
+  if (recentDivergent > 0) {
+    return {
+      name: 'peer heads divergence',
+      status: 'warn',
+      detail: `${recentDivergent} in-flight divergent (peer/doc pairs <${Math.floor(FAIL_AGE_MS / 60000)}min old). ${converged}/${totalCompared} converged.`,
+    };
+  }
+
+  if (converged === 0) {
+    return {
+      name: 'peer heads divergence',
+      status: 'info',
+      detail: `${peers.length} peer(s) heard, ${totalCompared} (peer, doc) pairs, but none overlap with local docs yet.`,
+    };
+  }
+
+  return {
+    name: 'peer heads divergence',
+    status: 'pass',
+    detail: `${converged}/${totalCompared} (peer, doc) pairs converged across ${peers.length} peer(s).`,
+  };
+}
+
 export const doctorHandler = {
   builder: (yargs: Argv) => yargs,
   handler: async (_argv: ArgumentsCamelCase<{}>) => {
@@ -448,6 +579,12 @@ export const doctorHandler = {
       // confirming history overlap). If daemon isn't running, warn that
       // overlap can't be verified.
       checks.push(await checkPeerSyncOverlap());
+
+      // T6 (task #434) pt1: per-peer head divergence. Compares local
+      // doc-heads.json to per-peer heads gathered from gossipsub
+      // announcements. Detects stuck divergence vs in-flight propagation
+      // via FAIL_AGE_MS threshold (default 10 min).
+      checks.push(await checkPeerHeadsDivergence());
 
       spin?.stop();
 

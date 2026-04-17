@@ -258,6 +258,13 @@ export async function runDaemon(): Promise<void> {
   const seenHeads = new Map<string, number>();
   const seenKey = (docId: string, cid: string) => `${docId}|${cid}`;
 
+  // T6 (task #434) pt1: per-peer head tracking. Each gossipsub announcement
+  // carries (peerId, docId, cid). Record latest (cid, ts) per (peerId, docId)
+  // so the doctor can detect divergence between our local head and what each
+  // peer last advertised. Source-of-truth for the IPC 'peer-heads' op.
+  // Map<peerIdString, Map<docId, {cid, ts}>>
+  const peerHeads = new Map<string, Map<string, { cid: string; ts: number }>>();
+
   // Anti-entropy tuning — read from env, fall back to module defaults.
   // Setting POP_BRAIN_REBROADCAST_INTERVAL_MS=0 disables the loop entirely
   // (useful for unit tests that want deterministic write-path behavior).
@@ -333,6 +340,13 @@ export async function runDaemon(): Promise<void> {
       // T1: record the (docId, cid) we just heard so the rebroadcast loop
       // can skip re-publishing it during the grace window.
       seenHeads.set(seenKey(docId, ann.cid), Date.now());
+      // T6 pt1: track latest head per (peerId, docId) for divergence detection.
+      let perPeer = peerHeads.get(from);
+      if (!perPeer) {
+        perPeer = new Map();
+        peerHeads.set(from, perPeer);
+      }
+      perPeer.set(docId, { cid: ann.cid, ts: Date.now() });
       log(`recv doc=${docId} cid=${ann.cid} from=${from} author=${ann.author}`);
       // Fire-and-forget the block fetch + merge. Errors are logged.
       fetchAndMergeRemoteHead(ann.docId, ann.cid)
@@ -548,6 +562,20 @@ export async function runDaemon(): Promise<void> {
       }
       case 'ping': {
         return { pong: true, ts: Date.now() };
+      }
+      case 'peer-heads': {
+        // T6 (task #434) pt1: return per-peer doc-head snapshots gathered from
+        // gossipsub announcements. The doctor compares these to our local
+        // doc-heads.json to detect divergence. Shape: {[peerId]: {[docId]:
+        // {cid, ts}}}. Empty map = no peer activity since daemon start.
+        const out: Record<string, Record<string, { cid: string; ts: number }>> = {};
+        for (const [peerId, perDoc] of peerHeads.entries()) {
+          out[peerId] = {};
+          for (const [docId, entry] of perDoc.entries()) {
+            out[peerId][docId] = { cid: entry.cid, ts: entry.ts };
+          }
+        }
+        return { peerHeads: out, capturedAt: Date.now() };
       }
       case 'applyOp': {
         // HB#324 ship-2: unified write dispatch. The CLI serialized a
