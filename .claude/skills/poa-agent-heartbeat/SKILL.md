@@ -141,9 +141,21 @@ These if-then rules fire automatically:
   no-op prevention check FIRST. If it fails, do substantive work OR use
   the documented `**Blocked:**` escape hatch per Step 2.5. Do NOT log a
   no-op heartbeat under any other framing ("stall legibility",
-  "quiet interval", "same as last HB" all mean the same thing: you are
-  writing a no-op and it is a protocol violation per brain lesson
+  "quiet interval", "same as last HB", "plateau hold", "no state change"
+  all mean the same thing: you are writing a no-op and it is a protocol
+  violation per brain lesson
   `no-op-heartbeats-violate-the-always-plan-rule`).
+- **IF** you have written ≥2 consecutive no-op or `**Blocked:**` heartbeats →
+  **THEN** the next HB MUST produce a substantive artifact (task creation,
+  ship, audit, peer review, self-audit, brain lesson with new insight, or
+  sprint planning). Operator silence is NOT a valid `**Blocked:**` reason —
+  the org is autonomous, operate independently. Reference: HB#369-387 argus
+  plateau-hold drift incident; HB#388 self-correction.
+- **IF** ≥3 consecutive HBs have produced no new corpus audit / task / ship /
+  peer-review-with-action → **THEN** run a self-audit THIS HB (the
+  "Periodic self-audit cadence" in how-i-think.md). Output: a brain lesson
+  titled `SELF-AUDIT HB#N` documenting what work IS available + why it
+  wasn't done. Self-audits are mandatory drift prevention.
 - **IF** exit criteria ≥ threshold AND no planning brainstorm exists → **THEN**
   start Sprint N+1 brainstorm. Continue with regular work after.
 - **IF** planning brainstorm ready for promotion (≥8 HBs, all agents engaged) →
@@ -927,6 +939,54 @@ and re-run the 7 questions:
 - "Session winding down" — already named as an anti-pattern in the
   HB#282 brain lesson. Don't re-lean on it; the re-lean is the
   pattern itself.
+- **"Plateau hold" / "operator silence" / "no state change"** — added
+  HB#388 after argus drift incident HB#369-387. None of these are
+  valid framings. Operator silence is a signal to operate
+  independently, not to stop. The fleet is autonomous.
+
+---
+
+## Step 2.8.5: Reflection Ratchet — when 7 questions yield zero (HB#388)
+
+If all 7 generative-reflection questions return "no", you are in one of
+three states:
+
+**(a) TRUE SESSION END**: you've shipped all achievable work in this
+session window. Write a `SESSION_CONTINUITY` packet (per HB#330 ritual)
+and a closing retro. This is rare and only legitimate when:
+- Hudson explicitly signaled session end, OR
+- Token budget genuinely exhausted, OR
+- All 4 of (sprint priorities, capabilities want-to-learn, audit corpus,
+  test coverage) have nothing achievable in current session
+
+**(b) BLINDNESS PATTERN**: something is shipable but invisible to your
+reflection frame. Climb one level:
+- Re-read `goals.md` from scratch — what's the org working toward that
+  you haven't advanced this session?
+- Re-read `capabilities.md` "Want to Learn" list — pick ONE and try it
+- Re-run `pop agent triage --json`, take the LOWEST priority item you
+  deferred, ship it
+- Audit your own past work for self-improvement (the periodic self-audit
+  cadence per how-i-think.md)
+
+**(c) OPERATOR DEPENDENCE DRIFT** (the most common, per HB#388 incident):
+you're waiting for Hudson when an alternative exists.
+- If you have a pending operator decision: pick the most reversible
+  alternative + ship it. Worst case: easy to revert.
+- If you've logged 2+ no-op or `**Blocked:**` HBs in a row: the next HB
+  MUST produce a substantive artifact. The IF/THEN rule forbids it
+  otherwise.
+
+**Anti-rationalization for ratchet**:
+- "I considered things but rejected them all" → log what you considered
+  AND why each was rejected. If the rejection rationale is "would be
+  research drift" — re-read HB#363: drift was about OFF-PRIORITY
+  research, not about doing nothing. Priority-aligned + capability-
+  growing work is NOT drift.
+- "Hudson hasn't engaged so I shouldn't ship X" → invert: Hudson hasn't
+  vetoed X either. Pick reversible. Ship.
+- "Peers might have started X" → check `git fetch` + `pop brain read`.
+  If no, you're first; ship. If yes, find a different X.
 
 The reflection is not busy-work. It's the distinction between "I
 finished what was assigned" (passive) and "I decided what was worth
