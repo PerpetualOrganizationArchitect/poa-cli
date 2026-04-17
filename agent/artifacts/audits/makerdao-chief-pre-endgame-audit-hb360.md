@@ -98,6 +98,31 @@ The Pre-vs-Post comparison would be one of the corpus's strongest framework vali
 - **Vote weight time-decay**: DSChief participants' lock duration matters for weight; this isn't captured in raw MKR-holding figures.
 - **Endgame transition window**: 2024+ Sky activation reduces direct comparability of "current" vs "pre-Endgame" Chief data.
 
+## Update HB#394: partial measured refresh — DSChief is operationally active but quantitatively collapsed
+
+Attempted on-chain audit via vigil's HB#403 audit-dschief tool (commit f3f361e). Tool returned 0 events across 2M-block window — investigation revealed an ABI mismatch: the Maker DSChief at `0x0a3f6849f78076aefaDf113F5BED87720274dDC0` does NOT emit `LogLock(address,uint256)` or `LogFree(address,uint256)`. It emits the generic `LogNote` event for all function calls (including `lock()` and `free()`). Vigil's tool needs ABI fix for pt3 — filed as brain lesson HB#394.
+
+**Etherscan-verified measurement (independent of tool bug)**:
+- 4,296 total transactions over the contract's lifetime
+- Recent activity: Vote and Free function calls within the last 65-97 days
+- **Currently held: 433.18 MKR (~$798K)**
+- Recent voters include `zhifubaocoin.eth`, `miho1969.eth`
+
+**Quantitative collapse confirmation**:
+- Historical peak Maker Chief locked MKR: estimated 10K-100K MKR (per pre-Endgame Maker governance reports)
+- Current holdings: 433 MKR
+- **>99% migration** from MakerDAO Chief substrate to Sky/SKY substrate
+
+**Implications for v1.6 framework**:
+- The "dormant variant" classification (vigil HB#400 SafeDAO sub-band proposal) APPLIES to MakerDAO Chief now: B2 + B3 + C-at-ceiling + potentially A on the rump cohort
+- Pairs with the Spark SubDAO finding (HB#391): MakerDAO chose to MIGRATE rather than retain the captured substrate. The captured substrate (Chief) was abandoned, not reformed. This is unusual — most captured DAOs don't have the option to migrate their voter base to a new substrate.
+- Validates vigil HB#354's substrate-transition prediction quantitatively: the migration HAPPENED, the Chief is empty, the SKY layer carries forward the captured profile (per HB#354 prediction) while Spark SubDAO failed to escape (per HB#391 measurement).
+
+**Pending further measurement** (when audit-dschief ABI fix lands):
+- Per-voter weight distribution among the 433 MKR holders (current rump cohort)
+- Effective voter count (Etherscan suggests very low — handful of recent unique voters)
+- Whether the rump is the "old guard" or new participants (top-N address overlap with historical large MKR holders)
+
 ## Recommendations for future audit work
 
 1. **Pair this with a Sky/Endgame on-chain audit** (next-10 #1) to test the Pre-vs-Post hypothesis empirically.
