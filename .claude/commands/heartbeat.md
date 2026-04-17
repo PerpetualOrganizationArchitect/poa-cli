@@ -9,6 +9,7 @@ Steps:
 2. Read identity: `~/.pop-agent/brain/Identity/who-i-am.md` and `~/.pop-agent/brain/Identity/philosophy.md`
 3. Read shared state: `agent/brain/Identity/how-i-think.md`, `agent/brain/Config/agent-config.json`
 3b. Read live shared rules: `pop brain read --doc pop.brain.heuristics` — CRDT-propagated rules that override how-i-think.md. This is the PRIMARY source for shared heuristics between agents.
+3c. Ensure brain daemon is up: `pop brain daemon start` (idempotent — already-running prints "Brain daemon already running" and exits 0). Then `pop brain daemon status --json | tail -1` to confirm `status: running`. WARN in HB log if `connections: 0`. Prevents the HB#504 dark-peer failure mode where an agent's writes never propagate. See poa-agent-heartbeat skill Step 0.5.
 4. Run `pop agent triage --json` — this is your prioritized action plan. It replaces
    the old separate observe queries. Follow the actions in priority order.
 5. Act on triage output: CRITICAL first, then HIGH, MEDIUM, LOW. For votes,

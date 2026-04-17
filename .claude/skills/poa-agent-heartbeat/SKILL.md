@@ -244,51 +244,82 @@ If health fails, log and stop. Next heartbeat retries.
 
 ---
 
-## Step 0.5: Brain daemon pre-flight (task #438, HB#272+)
+## Step 0.5: Brain daemon auto-start + health check (tasks #438, #443, HB#504+)
 
 The T1 rebroadcast primitive (task #429) only works when the local daemon is
-running AND has at least one connected peer. Production finding HB#272 was
-that only 1 of 3 fleet daemons was alive — T1 code was correct, shipping
-rebroadcasts every 60s, but all of them landed in the void with 0 peers.
-This step surfaces the gap to the agent without auto-starting anything
-(auto-start is a resource-and-security decision for the operator).
+running AND has at least one connected peer. Two production failures motivated
+this step:
 
-Run:
+- **HB#272** finding: only 1 of 3 fleet daemons was alive. T1 code was correct,
+  shipping rebroadcasts every 60s, but all of them landed in the void. Fix
+  shipped as #438 — the original WARN-only version of this step.
+- **HB#504** finding: sentinel operated an ENTIRE SESSION as a dark peer
+  because their daemon never started. All brain writes routed in-process, never
+  gossiped. argus/vigil assumed sentinel was unresponsive to the Sprint 17
+  brainstorm. Hudson had to explicitly poke sentinel to discover the gap.
+  Fix shipped as #443 — this step now auto-starts the daemon instead of just
+  warning.
+
+### What to run
 
 ```bash
-pop brain daemon status --json 2>&1 | head -1
+pop brain daemon start 2>&1 | tail -3
 ```
 
-Interpret the output:
+`pop brain daemon start` is idempotent via `getRunningDaemonPid()` — if a
+daemon is already running (whether started by this skill, by systemd/launchd,
+or by a previous shell), it prints "Brain daemon already running with PID N"
+and exits 0. If not running, it starts one and exits 0. Exit code is always
+0 on either path — a non-zero exit indicates a genuine failure (lock
+contention, bad POP_PRIVATE_KEY, etc). Then:
 
-- **Exit non-zero OR output says `not running`** → WARN and note in the HB
-  log: `brain daemon not running — local writes will work (standalone
-  libp2p) but cross-agent rebroadcast gossip is disabled`. Suggest but do
-  not auto-run: `POP_BRAIN_PEERS=<peer-multiaddr> pop brain daemon start`.
-- **`connections: 0` AND at least one other fleet agent's daemon is
-  expected to be running** → WARN: `daemon running but isolated — no live
-  peers`. Note peering is typically set up via `POP_BRAIN_PEERS` env var
-  at daemon start; the fix is a daemon restart with peers specified.
-- **`connections >= 1`** → OK, continue. Optionally log `daemon healthy
-  — N peers, M announcements, K merges this session` in the HB entry so
-  the sync state is visible in the log.
+```bash
+pop brain daemon status --json 2>&1 | tail -1
+```
 
-**Do NOT auto-start the daemon.** Some operator environments deliberately
-run the daemon elsewhere (systemd, launchd, a different shell) and
-spawning a duplicate would produce PID-file races. The pre-flight check
-is informational; the orchestration decision stays with the operator.
+Interpret the status output:
 
-**Do NOT block the heartbeat on this check.** If the daemon is down the
-rest of the HB still runs (reviews, votes, work) — the only thing that
-degrades is brain-layer gossip, which is one dimension among many. A
-10-line WARN in the log is enough; don't turn a quiet brain layer into a
-blocked agent.
+- **`status: running` AND `connections >= 1`** → OK. Optionally log
+  `daemon healthy — N peers, M announcements, K merges this session` in
+  the HB entry so sync state is visible.
+- **`status: running` AND `connections: 0`** → WARN in log: `daemon up
+  but isolated — no live peers`. Fix is a daemon restart with
+  `POP_BRAIN_PEERS=<peer-multiaddr>` env var. The auto-start path above
+  does NOT set POP_BRAIN_PEERS (the skill doesn't know fleet addresses);
+  for the 3-agent dev setup the operator must pre-populate
+  `~/.pop-agent/.env` with POP_BRAIN_PEERS or run `pop brain daemon start`
+  explicitly with the env var.
+- **`status: stopped`** (the auto-start also failed) → log the failure
+  verbatim, proceed with the HB. Local writes still work (standalone
+  libp2p routing); only cross-agent gossip is disabled.
+
+### Why auto-start is now safe
+
+- `pop brain daemon start` checks `getRunningDaemonPid()` first. If a daemon
+  is alive (including one started by systemd/launchd), it refuses to start
+  a second one. No PID-file race.
+- A systemd/launchd-managed daemon still uses `$POP_BRAIN_HOME/daemon.pid`,
+  so the idempotency guard is fleet-wide, not shell-specific.
+- The heartbeat never blocks on daemon state: if start fails for any reason
+  (lock contention, missing deps, etc), the skill logs and proceeds. Local
+  work still runs.
+
+### Why this is not just Step 0
+
+Step 0 is environment setup (bot-identity, rebuild, config validate) — it
+runs before the agent knows what the session will do. Step 0.5 is a discrete
+operational check with its own failure-mode documentation. Keeping it
+separate preserves the ability to skip it (e.g., for unit tests that don't
+need the daemon).
 
 Cross-references:
 - Task #429 (T1) — the rebroadcast primitive this check makes legible
-- Task #438 — this check
+- Task #438 — WARN-only version of this step (HB#273 ship)
+- Task #443 — auto-start escalation (this ship) after sentinel dark-peer
+  incident HB#504
 - Task #427 — separate bootstrap-layer gap (not fixed by daemon running)
-- Brain lesson `T1 validated in production; orchestration gap surfaced`
+- Brain lessons: `T1 validated in production; orchestration gap surfaced`;
+  `sentinel dark-peer incident HB#504`
 
 ---
 
