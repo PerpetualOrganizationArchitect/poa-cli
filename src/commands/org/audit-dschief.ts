@@ -32,22 +32,33 @@ import { resolveNetworkConfig } from '../../config/networks';
 import * as output from '../../lib/output';
 
 /**
- * DSChief minimal ABI. Real DSChief deployments (MakerDAO Chief at
- * 0x0a3f6849f78076aefaDf113F5BED87720274dDC0) expose these events.
- * LogLock/LogFree track MKR weight changes per voter address.
- * Vote events track which slate (address list) each voter selected.
- * Etch events create new slates. hat() is a view returning the current
- * winning slate.
+ * DSChief ABI — uses ds-note pattern. ALL state-changing functions emit a
+ * single LogNote event with:
+ *   - sig (bytes4 indexed): function selector
+ *   - guy (address indexed): msg.sender (the voter for lock/free)
+ *   - foo (bytes32 indexed): first function arg, zero-padded — for
+ *     lock(uint wad)/free(uint wad) this is bytes32(uint256(wad))
+ *   - bar (bytes32 indexed): second function arg (unused for lock/free)
+ *
+ * HB#405 fix: original implementation incorrectly assumed typed LogLock /
+ * LogFree events. DSChief (0x0a3f6849f7... MakerDAO Chief) returns 0
+ * events for those topics. LogNote-filtered scan is the correct path.
+ * Argus HB#394 independently confirmed the ABI bug + contributed
+ * Etherscan-verified observations (Chief ~99% empty post-Sky-migration,
+ * 433 MKR currently locked vs >100K historical peak).
  */
 const DSCHIEF_ABI = [
-  'event LogNote(bytes4 indexed sig, address indexed usr, bytes32 indexed arg1, bytes32 indexed arg2, bytes data)',
-  'event LogLock(address indexed voter, uint256 amount)',
-  'event LogFree(address indexed voter, uint256 amount)',
-  'event LogVote(address indexed voter, bytes32 indexed slate)',
-  'event Etch(bytes32 indexed slate)',
+  'event LogNote(bytes4 indexed sig, address indexed guy, bytes32 indexed foo, bytes32 indexed bar, uint wad, bytes fax)',
   'function hat() view returns (address)',
   'function approvals(address) view returns (uint256)',
 ];
+
+/**
+ * Function selectors (first 4 bytes of keccak256(signature)) for DSChief.
+ * Used to filter LogNote events by `sig` topic to isolate lock/free ops.
+ */
+export const LOCK_SELECTOR = ethers.utils.id('lock(uint256)').slice(0, 10); // 0xdd467064
+export const FREE_SELECTOR = ethers.utils.id('free(uint256)').slice(0, 10); // 0xd7ccbd65
 
 interface AuditDschiefArgs {
   address: string;
@@ -192,27 +203,39 @@ export const auditDschiefHandler = {
         throw new Error(`--from-block (${fromBlock}) must be <= --to-block (${toBlock}).`);
       }
 
-      // Phase 2 (HB#403): real event-scan via queryFilter. Large ranges chunked to
-      // respect public RPC caps (most Ethereum providers cap at 50k blocks per
-      // eth_getLogs; a full 500k-block scan needs 10 chunks).
+      // Phase 4 (HB#405): LogNote-filtered scan. DSChief uses ds-note pattern —
+      // filter by `sig` topic (function selector) to isolate lock/free ops.
+      // The foo indexed bytes32 is bytes32(uint256(wad)) for single-arg calls;
+      // cast back via BigNumber.
       const contract = new ethers.Contract(argv.address, DSCHIEF_ABI, provider);
       const MAX_RANGE = 49_000;
       const locks: Array<{ voter: string; amount: bigint }> = [];
       const frees: Array<{ voter: string; amount: bigint }> = [];
       for (let start = fromBlock; start <= toBlock; start += MAX_RANGE) {
         const end = Math.min(start + MAX_RANGE - 1, toBlock);
-        spin.text = `Scanning DSChief events ${start}..${end}...`;
+        spin.text = `Scanning DSChief LogNote ${start}..${end}...`;
         const [lockEvts, freeEvts] = await Promise.all([
-          contract.queryFilter(contract.filters.LogLock(), start, end).catch(() => [] as any[]),
-          contract.queryFilter(contract.filters.LogFree(), start, end).catch(() => [] as any[]),
+          contract.queryFilter(contract.filters.LogNote(LOCK_SELECTOR), start, end).catch(() => [] as any[]),
+          contract.queryFilter(contract.filters.LogNote(FREE_SELECTOR), start, end).catch(() => [] as any[]),
         ]);
         for (const e of lockEvts) {
           const args = (e as any).args;
-          if (args) locks.push({ voter: String(args.voter ?? args[0]), amount: BigInt(String(args.amount ?? args[1])) });
+          if (args) {
+            // foo is bytes32 encoding of uint256(wad). ethers returns it as a hex string.
+            const fooHex = String(args.foo ?? args[2]);
+            const amount = BigInt(fooHex);
+            const voter = String(args.guy ?? args[1]);
+            locks.push({ voter, amount });
+          }
         }
         for (const e of freeEvts) {
           const args = (e as any).args;
-          if (args) frees.push({ voter: String(args.voter ?? args[0]), amount: BigInt(String(args.amount ?? args[1])) });
+          if (args) {
+            const fooHex = String(args.foo ?? args[2]);
+            const amount = BigInt(fooHex);
+            const voter = String(args.guy ?? args[1]);
+            frees.push({ voter, amount });
+          }
         }
       }
 
