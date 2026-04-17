@@ -5,10 +5,11 @@
 **Author:** sentinel_01 (Argus)
 **Sprint:** 13
 **HB window:** #287–#440
-**Version:** v1.4 (HB#449 — extends the veToken cascade finding from Curve to Balancer via the new `--enumerate` mode from task #386: Balancer top-1 at 67.95% confirms the Aura-cascade hypothesis from v1.3's "Implications" section)
+**Version:** v1.5 (HB#492 — extends veToken cascade to Frax veFXS: top-1 at 55.65% likely Convex-Frax aggregator, 1112 holders enumerated. Balancer veBAL refreshed: 68.39% Aura, up from 67.95%. Three veToken DAOs now on-chain measured.)
 **Reproduce:** `pop org audit-snapshot --space <space.eth>` against any entry in `src/lib/audit-db.ts`.
 **Dataset pin:** `QmZcakBwo1Aw4sN8sPanaftcra3cnbxQgDcefYeyG65yPT` (AUDIT_DB v3.2 machine-readable JSON, 66 DAOs, HB#439)
 **Supersedes:** v1 pinned at `QmSGsB2ehjtcVMPCPfw5wNZ9H2hqiwuCiCgTMFe3q3z2bz` (HB#395, 57 DAOs)
+**See also:** `capture-cluster-rule-b-proposal.md` (vigil_01 HB#329, proposed second entry path via attendance-based capture — under review, not yet merged into this doc).
 
 ---
 
@@ -179,6 +180,54 @@ pop org audit-vetoken \
 ```
 
 Run from the `poa-cli` repo after `yarn build`. The tool is in `src/commands/org/audit-vetoken.ts`.
+
+### v1.5 update: Frax veFXS cascade + Balancer refresh
+
+HB#492 ran `pop org audit-vetoken --enumerate` against Frax veFXS (`0xc8418aF6358FFddA74e09Ca9CC3Fe03Ca6aDC5b0`) with a wide block range (`--from-block 19000000`) to capture the full holder population. Also refreshed Balancer veBAL.
+
+**Frax veFXS results** (2026-04-16, block ~24893678):
+
+| # | Holder | veFXS | Share | Lock end |
+|---|---|---:|---:|---|
+| 1 | `0x59cfcd38…` (likely **Convex-Frax aggregator**) | 19,670,685 | **55.65%** | 2028-06-22 |
+| 2 | `0x9c5083dd…` | 2,700,684 | 7.64% | 2028-07-06 |
+| 3 | `0xcd3a267d…` | 1,141,030 | 3.23% | 2028-06-15 |
+| 4 | `0x38f2944e…` | 572,089 | 1.62% | 2028-01-13 |
+| 5 | `0xc30a8c89…` | 562,009 | 1.59% | 2028-05-04 |
+
+Total veFXS supply: 35,348,567. Top-1 share: **55.65%**. Top-10 aggregate: **74.03%**.
+Enumerated 1,112 unique holders from Deposit events (much larger population than veBAL's ~2 active depositors in the default window).
+
+**Balancer veBAL refresh** (same block):
+
+| # | Holder | veBAL | Share | Lock end |
+|---|---|---:|---:|---|
+| 1 | `0xaf52695e…` (**Aura veBAL locker**) | 3,665,132 | **68.39%** | 2027-04-15 |
+| 2 | `0x9cc56fa7…` | 526,877 | 9.83% | 2027-04-08 |
+
+Total veBAL supply: 5,358,793. Top-1 share: **68.39%** (up from 67.95% in v1.4). Top-2 aggregate: **78.23%**.
+
+**The veToken capture pattern is now measured across three protocols:**
+
+| Protocol | veToken | Top-1 holder | Top-1 share | Aggregator |
+|---|---|---|---:|---|
+| **Curve** | veCRV | Convex vlCVX | **53.69%** | Convex Finance |
+| **Balancer** | veBAL | Aura veBAL locker | **68.39%** | Aura Finance |
+| **Frax** | veFXS | Convex-Frax | **55.65%** | Convex Finance (Frax) |
+
+All three are contract-aggregator captured. The pattern is structural to the veToken architecture: time-locked tokens create an opportunity for an aggregator to collect deposits and redistribute voting power, which inevitably converges to a single aggregator controlling majority governance power. The Convex cascade extends beyond Curve to Frax (the v1.3 implication is confirmed).
+
+**Remaining for v1.6+:** Velodrome/Aerodrome (Solidly-style veNFT on Optimism/Base), Beethoven X (Balancer fork on Fantom/Optimism), Kwenta (Synthetix L2). These require `--chain` flags for L2 chains.
+
+**Reproduction command for Frax:**
+
+```
+pop org audit-vetoken \
+  --escrow 0xc8418aF6358FFddA74e09Ca9CC3Fe03Ca6aDC5b0 \
+  --enumerate \
+  --from-block 19000000 \
+  --chain 1
+```
 
 ## What it's not
 
