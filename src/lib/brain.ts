@@ -648,6 +648,87 @@ function saveHeadsManifest(manifest: Record<string, string>): void {
 }
 
 /**
+ * T4 (task #432) — Heads-frontier tracking. Stage 1 (HB#511): schema helpers
+ * only, no behavior change.
+ *
+ * The v1 shape Record<string,string> collapses to a single head per doc at
+ * every merge. v2 is Record<string,string[]> so the daemon can track and
+ * broadcast the full frontier. Stage 1 always stores single-element arrays
+ * so no existing caller observes a behavior change.
+ *
+ * On-disk:
+ *   doc-heads.json       — v1, Record<string, string>. Still written for
+ *                          back-compat with every existing loadHeadsManifest
+ *                          callsite. Deprecated; removed in Stage 3.
+ *   doc-heads-v2.json    — v2, Record<string, string[]>. New canonical file.
+ *
+ * Migration semantics (first call on an agent with only v1 on disk):
+ *   loadHeadsManifestV2() sees v1 but not v2, wraps each value in a
+ *   single-element array, returns the wrapped shape. Does NOT write v2 on
+ *   read — writes only happen via saveHeadsManifestV2.
+ *
+ * Callsites migrate gradually in Stages 2 and 3.
+ */
+const HEADS_V2_FILENAME = 'doc-heads-v2.json';
+
+function getHeadsV2ManifestPath(): string {
+  return join(getBrainHome(), HEADS_V2_FILENAME);
+}
+
+export function loadHeadsManifestV2(): Record<string, string[]> {
+  const v2Path = getHeadsV2ManifestPath();
+  if (existsSync(v2Path)) {
+    try {
+      const raw = JSON.parse(readFileSync(v2Path, 'utf8'));
+      // Defensive: coerce any stray scalar entries into arrays.
+      const out: Record<string, string[]> = {};
+      for (const [docId, value] of Object.entries(raw)) {
+        if (Array.isArray(value)) {
+          out[docId] = value.filter((x): x is string => typeof x === 'string');
+        } else if (typeof value === 'string') {
+          out[docId] = [value];
+        }
+      }
+      return out;
+    } catch {
+      // Fall through to v1 below if v2 is corrupt.
+    }
+  }
+  // No v2 file (or corrupt) — fall back to v1, wrap each scalar in single-elem array.
+  const v1 = loadHeadsManifest();
+  const wrapped: Record<string, string[]> = {};
+  for (const [docId, cid] of Object.entries(v1)) {
+    wrapped[docId] = [cid];
+  }
+  return wrapped;
+}
+
+export function saveHeadsManifestV2(manifest: Record<string, string[]>): void {
+  // Atomic write-tmp-then-rename, same pattern as saveHeadsManifest.
+  const finalPath = getHeadsV2ManifestPath();
+  const tmpPath = `${finalPath}.tmp.${process.pid}.${Date.now()}`;
+  writeFileSync(tmpPath, JSON.stringify(manifest, null, 2));
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    require('fs').renameSync(tmpPath, finalPath);
+  } catch (err) {
+    try { require('fs').unlinkSync(tmpPath); } catch {}
+    throw err;
+  }
+
+  // Stage 1 back-compat: also maintain doc-heads.json with one CID per doc
+  // (the first element) so unchanged callers keep working. The choice of
+  // "first" is arbitrary during Stage 1 because every array is single-elem.
+  // Stage 2 (which introduces multi-elem frontiers) will pick the "canonical"
+  // head — likely the highest-priority / most-recent — per task #432 spec.
+  const v1: Record<string, string> = {};
+  for (const [docId, cids] of Object.entries(manifest)) {
+    if (cids.length > 0) v1[docId] = cids[0];
+  }
+  saveHeadsManifest(v1);
+}
+
+/**
  * Load the genesis bytes for a canonical brain doc if a
  * `<docId>.genesis.bin` file exists in the repo's
  * `agent/brain/Knowledge/` directory.
