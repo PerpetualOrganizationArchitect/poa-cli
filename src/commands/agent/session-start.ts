@@ -21,6 +21,7 @@ import {
   getDaemonPidPath,
   getDaemonSockPath,
   sendIpcRequest,
+  CANONICAL_BRAIN_DOCS,
 } from '../../lib/brain-daemon';
 import { cacheList, cacheStats, getCachePath } from '../../lib/subgraph-cache';
 import { readBrainDoc, stopBrainNode } from '../../lib/brain';
@@ -41,6 +42,8 @@ interface DaemonReport {
   knownPeerCount: number;
   topics: number;
   uptimeSec: number;
+  /** HB#348: list of CANONICAL_BRAIN_DOCS the running daemon is NOT subscribed to. Empty = OK. */
+  missingCanonicalSubs: string[];
   warning?: string;
 }
 
@@ -73,6 +76,12 @@ async function ensureDaemon(waitMs: number): Promise<DaemonReport> {
   if (existingPid !== null) {
     try {
       const status = await sendIpcRequest('status', {}, 3000);
+      const subscribedDocs = (status.subscribedDocs ?? []) as string[];
+      const missingCanonicalSubs = CANONICAL_BRAIN_DOCS.filter((doc) => !subscribedDocs.includes(doc));
+      const driftWarning = missingCanonicalSubs.length > 0
+        ? `daemon (uptime ${Math.floor((status.uptime ?? 0) / 3600)}h) missing ${missingCanonicalSubs.length} canonical subscription(s): ${missingCanonicalSubs.join(', ')} — restart needed (pop brain daemon stop && pop brain daemon start)`
+        : undefined;
+      const connWarning = (status.connections ?? 0) === 0 ? 'daemon up but connections=0 — peers unreachable' : undefined;
       return {
         status: 'running',
         pid: existingPid,
@@ -80,13 +89,15 @@ async function ensureDaemon(waitMs: number): Promise<DaemonReport> {
         knownPeerCount: status.knownPeerCount ?? 0,
         topics: (status.topics ?? []).length,
         uptimeSec: status.uptime ?? 0,
-        warning: (status.connections ?? 0) === 0 ? 'daemon up but connections=0 — peers unreachable' : undefined,
+        missingCanonicalSubs,
+        warning: driftWarning ?? connWarning,
       };
     } catch (err: any) {
       return {
         status: 'failed',
         pid: existingPid,
         connections: 0, knownPeerCount: 0, topics: 0, uptimeSec: 0,
+        missingCanonicalSubs: [],
         warning: `daemon pid ${existingPid} but IPC failed: ${err.message}`,
       };
     }
@@ -110,6 +121,7 @@ async function ensureDaemon(waitMs: number): Promise<DaemonReport> {
           knownPeerCount: status.knownPeerCount ?? 0,
           topics: (status.topics ?? []).length,
           uptimeSec: status.uptime ?? 0,
+          missingCanonicalSubs: [],  // freshly started — subscribes to all CANONICAL_BRAIN_DOCS by definition
           warning: (status.connections ?? 0) === 0 ? 'daemon just started — peers may take 30-60s to dial' : undefined,
         };
       } catch {
@@ -121,6 +133,7 @@ async function ensureDaemon(waitMs: number): Promise<DaemonReport> {
     status: 'failed',
     pid: null,
     connections: 0, knownPeerCount: 0, topics: 0, uptimeSec: 0,
+    missingCanonicalSubs: [],
     warning: `daemon did not come up within ${waitMs}ms`,
   };
 }
