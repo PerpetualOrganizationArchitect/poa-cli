@@ -316,6 +316,59 @@ function validateBrainstormsDoc(doc: any, errors: string[]): void {
 }
 
 /**
+ * Task #448 pt1 — pop.brain.peers shape:
+ *   { peers: { [peerIdBase58: string]: {
+ *       multiaddrs: string[],    // at least one entry
+ *       lastSeen: number,        // unix seconds
+ *       username?: string        // optional operator tag
+ *   } } }
+ * PeerId keys are libp2p base58 strings; we don't validate their exact
+ * format here (libp2p parses on dial and rejects malformed).
+ */
+function validatePeersDoc(doc: any, errors: string[]): void {
+  if (!doc || typeof doc !== 'object') {
+    errors.push('pop.brain.peers: root must be an object');
+    return;
+  }
+  if (doc.peers === undefined) {
+    // Empty-on-first-write is fine — doc.peers gets populated lazily.
+    return;
+  }
+  if (typeof doc.peers !== 'object' || Array.isArray(doc.peers)) {
+    errors.push('pop.brain.peers: peers must be a keyed object');
+    return;
+  }
+  for (const [peerId, entry] of Object.entries(doc.peers)) {
+    if (typeof peerId !== 'string' || peerId.length === 0) {
+      errors.push(`pop.brain.peers: empty peerId key`);
+      continue;
+    }
+    if (!entry || typeof entry !== 'object') {
+      errors.push(`pop.brain.peers[${peerId}]: entry must be an object`);
+      continue;
+    }
+    const e: any = entry;
+    if (!Array.isArray(e.multiaddrs)) {
+      errors.push(`pop.brain.peers[${peerId}]: multiaddrs must be an array`);
+    } else if (e.multiaddrs.length === 0) {
+      errors.push(`pop.brain.peers[${peerId}]: multiaddrs must not be empty`);
+    } else {
+      for (let i = 0; i < e.multiaddrs.length; i++) {
+        if (typeof e.multiaddrs[i] !== 'string') {
+          errors.push(`pop.brain.peers[${peerId}].multiaddrs[${i}]: not a string`);
+        }
+      }
+    }
+    if (typeof e.lastSeen !== 'number' || !Number.isFinite(e.lastSeen)) {
+      errors.push(`pop.brain.peers[${peerId}]: lastSeen must be a number`);
+    }
+    if (e.username !== undefined && typeof e.username !== 'string') {
+      errors.push(`pop.brain.peers[${peerId}]: username must be a string if present`);
+    }
+  }
+}
+
+/**
  * Dispatch entry point. Returns { ok, errors, warnings }. Unknown doc ids
  * are permitted (schema evolution) with a warning, not an error.
  */
@@ -336,6 +389,9 @@ export function validateBrainDocShape(docId: string, doc: any): ValidationResult
       break;
     case 'pop.brain.brainstorms':
       validateBrainstormsDoc(doc, errors);
+      break;
+    case 'pop.brain.peers':
+      validatePeersDoc(doc, errors);
       break;
     default:
       warnings.push(

@@ -86,6 +86,7 @@ import {
   topicForDoc,
   loadDocDirty,
   loadHeadsManifestV2,
+  applyBrainChange,
 } from './brain';
 
 export const REBROADCAST_INTERVAL_MS = 60_000;
@@ -188,6 +189,7 @@ interface DaemonStats {
   startedAt: number;
   rebroadcastCount: number;
   rebroadcastsSuppressedBySeen: number;
+  peersWritesEmitted?: number;
   keepaliveCount: number;
   lastRebroadcastAt: number | null;
   lastKeepaliveAt: number | null;
@@ -417,6 +419,67 @@ export async function runDaemon(): Promise<void> {
       log(`subscribe err ${docId}: ${err.message}`);
     }
   }
+
+  // --- Peer registry write (T4-class, task #448 pt2) ---
+  //
+  // On daemon start and every POP_BRAIN_PEERS_REFRESH_MS (default 5 min),
+  // publish our own entry to pop.brain.peers. Peers read this doc (Stage 3
+  // ships the auto-dial path) to discover us without operator-managed
+  // POP_BRAIN_PEERS env vars.
+  //
+  // Disabled if POP_BRAIN_PEERS_REFRESH_MS=0.
+  const PEERS_REFRESH_MS_DEFAULT = 5 * 60 * 1000;
+  const peersRefreshMs = (() => {
+    const raw = process.env.POP_BRAIN_PEERS_REFRESH_MS;
+    if (raw === undefined) return PEERS_REFRESH_MS_DEFAULT;
+    const n = parseInt(raw, 10);
+    return Number.isFinite(n) && n >= 0 ? n : PEERS_REFRESH_MS_DEFAULT;
+  })();
+  const peersUsername = process.env.POP_BRAIN_PEERS_USERNAME || undefined;
+
+  async function peersWriteTick(): Promise<void> {
+    // Build own entry from the libp2p listen addrs — only include
+    // loopback + LAN-style addrs (skip circuit relay / other exotic
+    // transports that won't resolve for local peers).
+    const helia = await initBrainNode();
+    const listenAddrs: string[] = helia.libp2p.getMultiaddrs().map((m: any) => m.toString());
+    const ownPeerId = helia.libp2p.peerId.toString();
+    const multiaddrs = listenAddrs.filter((a: string) => a.startsWith('/ip4/') || a.startsWith('/ip6/'));
+    if (multiaddrs.length === 0) {
+      log('peers-write: no usable listen multiaddrs yet — skipping tick');
+      return;
+    }
+    const lastSeen = Math.floor(Date.now() / 1000);
+    try {
+      await applyBrainChange('pop.brain.peers', (doc: any) => {
+        if (!doc.peers) doc.peers = {};
+        doc.peers[ownPeerId] = {
+          multiaddrs,
+          lastSeen,
+          ...(peersUsername ? { username: peersUsername } : {}),
+        };
+      });
+      stats.peersWritesEmitted = (stats.peersWritesEmitted ?? 0) + 1;
+      log(`peers-write: published own entry (${multiaddrs.length} multiaddrs, username=${peersUsername ?? '-'})`);
+    } catch (err: any) {
+      log(`peers-write err: ${err.message}`);
+    }
+  }
+  // Fire once at startup (best-effort; don't await), then on an interval.
+  if (peersRefreshMs > 0) {
+    peersWriteTick().catch(err => log(`peers-write startup err: ${err.message}`));
+  }
+  let peersTimer: NodeJS.Timeout | null = null;
+  function schedulePeersWrite(): void {
+    if (peersRefreshMs === 0) return;
+    peersTimer = setTimeout(async () => {
+      try { await peersWriteTick(); } catch (err: any) {
+        log(`peers-write tick err: ${err.message}`);
+      }
+      schedulePeersWrite();
+    }, peersRefreshMs);
+  }
+  schedulePeersWrite();
 
   // --- Rebroadcast loop (T1, task #429) ---
   //
@@ -830,6 +893,7 @@ export async function runDaemon(): Promise<void> {
     shuttingDown = true;
     log(`shutdown signal ${sig}`);
     if (rebroadcastTimer !== null) clearTimeout(rebroadcastTimer);
+    if (peersTimer !== null) clearTimeout(peersTimer);
     if (repairTimer !== null) clearInterval(repairTimer);
     clearInterval(keepaliveTimer);
     if (redialTimer) clearInterval(redialTimer);
