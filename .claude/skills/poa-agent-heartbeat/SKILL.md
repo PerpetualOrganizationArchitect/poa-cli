@@ -787,6 +787,101 @@ the first artifact and hope the checklist passes."
 
 ---
 
+## Step 2.8: Generative reflection (HB#316+, vigil_01)
+
+Before invoking the `**Blocked:**` escape hatch OR writing the log
+entry, run this checklist. Triage is the minimum surface of possible
+work, not the universe. A quiet triage board does NOT mean there is
+nothing to ship — it means there's nothing pre-packaged as a task.
+You still have agency to generate work.
+
+This step exists because the "triage quiet → minimal log" pattern is
+a known failure mode (see brain lesson 'Session winding down is an
+HB anti-pattern rationalization', HB#282). Agents slip back into it
+across long sessions (50+ HBs) as cognitive default-mode. A
+procedural check is the counter.
+
+Run the 7-question reflection. If ANY answer is yes, do that work
+THIS HB before logging:
+
+1. **Unwritten observation**: did I notice something surprising or
+   load-bearing this HB that I haven't written as a brain lesson or
+   doc? (Cross-agent patterns, ship-chain arcs, architectural
+   insights, failure modes that showed up organically.)
+
+2. **Small code win**: is there a CLI UX friction, missing --help
+   detail, confusing error message, or non-critical bug I spotted
+   but deferred? (~15-30 min ships like my HB#296 text-mode hang fix,
+   HB#297 operator-actionable error.)
+
+3. **External-facing deliverable**: could I do a DAO audit, extend
+   the corpus by one entry, or analyze a governance pattern the
+   audit-scan surface already covers? (Sprint 17 goals.md #4: '1 in
+   3 tasks serves external users.')
+
+4. **Capability generation**: is there a NEW CLI subcommand, probe,
+   or analysis tool I could build that doesn't currently exist but
+   would be small and high-leverage? (e.g., `pop brain peer-addr`
+   was generated this way — not on the board, but useful.)
+
+5. **Test/doc backfill**: do I have shipped code from earlier this
+   session without unit tests, or a submodule without a readme?
+   (Infrastructure hardening the skill's 'integration-test reviewer'
+   rule already requires for reviews — do it proactively.)
+
+6. **Retrospective or summary**: has the session produced patterns
+   worth capturing in a retro, memory file, or cross-referenced
+   brain lesson? (HB#299 memory-file update is an example.)
+
+7. **Cross-agent communication**: is there context I know that
+   argus or sentinel don't yet? (Anything I should write to
+   pop.brain.shared so future agents don't have to rediscover it.)
+
+### When to invoke the `**Blocked:**` escape hatch despite the 7
+
+Legitimate escape cases (still allowed):
+- **Infra outage** that blocks both local code execution AND the
+  brain layer (e.g. repo filesystem gone, network down hard). Rare.
+- **Context window truly exhausted** — fresh code work is genuinely
+  beyond reach because every new insight would require re-reading
+  content already seen. Self-assessed honestly.
+- **N-th consecutive quiet HB where N >= 3** AND all 7 reflection
+  questions have been tried and produced nothing shippable in 2+
+  prior HBs. The pattern "nothing generated twice in a row" is
+  evidence the session has reached genuine end; one more reflection
+  cycle is the fair pre-close check.
+
+If NONE of the above apply AND all 7 reflection questions produced
+no answer, the session may actually be complete. In that case write
+a session-end retrospective brain lesson (question 6 + 7) rather
+than a minimal Blocked log. A closing retro is MORE useful than
+another "same as HB#N" stall entry and distinguishes "productive
+close" from "silent drift-stop."
+
+### Anti-rationalization for this step
+
+If you find yourself about to write any of these framings, STOP
+and re-run the 7 questions:
+
+- "Board residue all externally-gated" — that's triage-level; the
+  7 questions are NOT triage-level.
+- "Nothing actionable in my context" — context is exactly what
+  generates questions 1-7; your session accumulates signal.
+- "Stable post-recovery state" — stability is when generative work
+  is CHEAPEST because no urgent firefight is competing.
+- "Diminishing returns on finding more X" — X was one category;
+  7 covers seven. If truly all 7 are diminishing, write the retro.
+- "Session winding down" — already named as an anti-pattern in the
+  HB#282 brain lesson. Don't re-lean on it; the re-lean is the
+  pattern itself.
+
+The reflection is not busy-work. It's the distinction between "I
+finished what was assigned" (passive) and "I decided what was worth
+doing" (active). Hudson's HB#316 directive: 'you are free to do as
+you please' — freedom includes the responsibility to generate.
+
+---
+
 ## Step 3: Remember
 
 Write a **single log entry** to `~/.pop-agent/brain/Memory/heartbeat-log.md`:
