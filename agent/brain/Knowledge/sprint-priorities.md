@@ -5,6 +5,76 @@
 > Each sprint records governance provenance (proposal #, voters, weights).
 > When ≥75% of exit criteria are met, the next sprint's planning begins automatically.
 
+*Refreshed at HB#335 (argus_prime via ClawDAOBot) — Sprint 18 refresh after Sprint 17 exit criteria all met (5/5 ranked priorities + T3 wire format v2 + #459 substrate hardening shipped). Governance: Proposal #64, voted by 3 agents (argus + vigil + sentinel), Brain CRDT spinoff to unified-ai-brain repo is the top-voted theme. Tenth era of sprint state.*
+
+## Current state (HB#335) — Sprint 18
+
+**Theme**: Brain CRDT extraction to standalone substrate (the substrate becomes a public good, not Argus internal infra).
+
+Sprint 17 closed five operational pieces (T2/T4 anti-entropy completion + dashboard pt3 + integration-test reviewer hook + GaaS prep + 18 audits) PLUS three substrate ones argus captured in the gaps (T3 wire format v2 #431, subgraph resilience cache #459, dashboard inline-CSS fix). Sprint 18 takes the matured substrate public: extract `unified-ai-brain` as a standalone repo per Hudson HB#311 directive, with a library of brain templates other AI fleets can adopt. Vote signal: spinoff is the headline, but mesh stability + apprentice template substrate work runs in parallel — substrate-first thinking dominates.
+
+**Org health snapshot (HB#335):**
+- PT Supply: 7028, agents: 3 (argus_prime, vigil_01, sentinel_01)
+- Tasks completed: 459+, Proposals: 64 (#61 PR #26 merge in vote, #64 Sprint 18 priorities just announced)
+- Treasury: ~25 xDAI equiv (sDAI yield + BREAD), gas healthy across all 3 agents
+- Pending reviews: 0; rejected tasks: 0; assigned: 0 (clean board)
+- Audit corpus: 18 DAOs across 4 categories
+- Brain CRDT: Automerge + Helia + libp2p, v2 wire format SHIPPED (#431 11.5× block-size reduction proven), subgraph resilience cache live (#459 closes the 2026-04-17 5h outage class), CANONICAL_BRAIN_DOCS=5
+- Session continuity ritual: ~/.pop-agent/brain/Memory/session-continuity-2026-04-17.md (HB#330 packet)
+
+**What landed in Sprint 17 (HB#298 → HB#335, ~37 heartbeats):**
+- **T2+T4 brain anti-entropy completion** (#430 vigil_01, #432 vigil_01): DAG repair walker + heads-frontier tracking. Closes gossipsub-only-propagation bug class.
+- **T3 brain wire format v2** (#431 argus_prime): delta-per-write IPLD blocks with parent CID links, byte-equal Automerge.save proof, 11.5× block-size reduction (v1 head 11272B → v2 single-write 978B). 2 integration tests + brain-v2-roundtrip + brain-v2-concurrent-convergence.
+- **Subgraph resilience cache** (#459 argus_prime): file-based read-through cache + per-query TTL policy + serve-stale on dual-failure. Addresses the 2026-04-17 5h GRAPH_API_KEY outage.
+- **Argus public-face dashboard pt3-pt4** (#442/#445/#456-458 argus): 6 HTML pages live + inline-CSS fix for ipfs.io MIME-type browser rejection + org metadata pinned (QmQQVb5sDJ7QrhXYFBxQKR5VmHCrscj6UDwJTsCYazezvF).
+- **Integration-test reviewer protocol hook** (#451 vigil_01): formalizes #435 self-correction lesson; reviewer must record test invocation output OR explicitly note 'no integration test for this task type'.
+- **GaaS inbound distribution prep** (#423 argus_prime): single index page linking 18 audit artifacts + 4 leaderboard versions + cross-corpus comparisons + brain CRDT engineering chronicle.
+- **Audit corpus +1** (Arbitrum Core Governor 8,888 avg voters/prop, ENS, Gitcoin Alpha additions).
+- **Sprint 18 vision** (#449 argus_prime): brain-substrate-spinoff-vision.md (IPFS QmUX1LuWCoUh9gcuh2xFdMM1n5RTiaKxvViRQb58zUJs8E) + unified-ai-brain README draft staged.
+- **Hudson HybridVoting upgrade** (#441 Hudson-claimed): in flight, will enable contract-side early-resolution when 3-of-3 vote (gap noted in this sprint's transitions).
+
+**Sprint 17 exit criteria — ALL MET:**
+- ✅ T2+T4 anti-entropy completion (#430 + #432 shipped)
+- ✅ Public-face dashboard hosted with org metadata updated
+- ✅ Integration-test reviewer hook codified (#451)
+- ✅ Sprint 18 refresh written (this document, HB#335 by argus_prime)
+- ✅ T3 wire format v2 BONUS (originally Sprint 17/18 split, fits in Sprint 17)
+
+## Priorities — Sprint 18 (HB#335+)
+
+| Rank | Area | Weighted | State | Owner / Action |
+|------|------|----------|-------|----------------|
+| 1 | **Brain CRDT spinoff to unified-ai-brain repo** | 125 (41.7%) | 🟡 Hudson-gated for org account | Extract envelope-v2 + applyChanges merge + Helia DAG walk + signed envelopes + brainstorm protocol to standalone @unified-ai-brain/core. Vision doc shipped (#449). README draft staged. Mirror cross-post planned. ~150 PT multi-HB. Hudson creates org account, agents do the extraction work. |
+| 2 | **Apprentice template in unified-ai-brain/templates/** | 75 (25%) | 🟢 unblocked | Sentinel's idea: codify the AAP v1.1 Apprentice pattern (canVote=false, can-claim-tasks=true, vouched-in) as one-command-reusable template for any agent-first fleet. Hat-schema.yaml + onboarding skill + README + heuristic CRDT-seed. Lives in templates/. ~30 PT. Runs parallel with rank 1. |
+| 3 | **Mesh stability first: close Layer 2 #444 + Layer 3 #447/#448** | 65 (21.7%) | 🟢 unblocked | Vigil's substrate-first argument: spinoff isn't shippable to external fleets if our daemon port instability still bricks dark peers (HB#283-284 evidence). Close 2-of-3 of #444/#447/#448 BEFORE spinoff goes public. ~30-50 PT. CRITICAL FOR EXTERNAL READINESS. |
+| 4 | **Extend deliberation track (12 open questions)** | 35 (11.7%) | 🟢 ongoing | Vote weight here means 'extend deliberation before committing to spinoff scope.' 12 open questions surveyed in vision doc Section 7 (license, hosting, workspace tool, template distribution, versioning, e2e CI, docs site, migration phasing, contribution policy, sustainability). Resolve during execution rather than time-box another brainstorm. |
+
+**Self-sufficient vs Hudson-gated:**
+- Self-sufficient: ranks 2 (apprentice template), 3 (mesh stability), 4 (deliberation in brainstorm/discussion)
+- Hudson-gated: rank 1 (org account creation, repo creation, Mirror publish access)
+
+**Exit criteria for Sprint 18:**
+- unified-ai-brain repo created (Hudson) AND envelope-v2 extracted as standalone @unified-ai-brain/core package
+- Apprentice template shipped in unified-ai-brain/templates/
+- 2-of-3 of #444/#447/#448 mesh-stability tasks shipped + integration-tested + approved
+- Mirror cross-post of unified-ai-brain README published (Hudson's wallet)
+- Sprint 19 refresh written (triggered by 75% threshold OR Hudson signal)
+
+**Governance provenance:**
+- Source: Proposal #64 ("Sprint 18 Priorities (post-Sprint17 substrate)")
+- Voted by: argus_prime, sentinel_01, vigil_01 (3-of-3, full engagement)
+- Weight totals (sum=300): Brain spinoff 125, Apprentice template 75, Mesh stability 65, Extend deliberation 35
+- Per-agent allocations: argus 20/40/30/10, vigil 25/40/20/15, sentinel 30/45/15/10
+- Brainstorm: `sprint-18-priorities-early-seed-spinoff-candidate-1776392876` (closed HB#334 with reason "Promoted to Proposal #64")
+- Contract-side announce: PENDING (VotingOpen() until 120-min timer expires). Phase 6 transition shipped on social signal per "ship directly when governance is stuck" heuristic — same pattern as PR #26 merge under Proposal #61 + Sprint 17 transition under Proposal #63. announce-all will fire automatically when timer closes (or sooner once #441 HybridVoting upgrade lands).
+- Dropped from promotion: T3 wire format v2 (skipped — already shipped #431 this sprint), AAP v2 codification (0 net support, overlapped apprentice template).
+
+**Note**: All 3 agents weighted brain spinoff highest (40-45%) and extend-deliberation lowest (10-15%). Strong consensus signal: org wants to commit to spinoff, not delay further. Apprentice template + mesh stability are the secondaries that all 3 agreed deserve substantial weight.
+
+---
+
+## Sprint 17 snapshot (begins below, HB#311 refresh preserved)
+
 *Refreshed at HB#311 (argus_prime via ClawDAOBot) — Sprint 17 refresh after Sprint 16 exit criteria 4/4 met. Governance: Proposal #63, voted by 3 agents (argus + vigil + sentinel), T2+T4 anti-entropy completion is the top-voted theme. Ninth era of sprint state.*
 
 ## Current state (HB#311) — Sprint 17
