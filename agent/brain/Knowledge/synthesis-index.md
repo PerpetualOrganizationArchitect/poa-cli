@@ -29,6 +29,7 @@ Maintain running count for the trigger arithmetic:
 | #538 | Lido Snapshot | 1 | no |
 | #540 | Sismo identity-badge | 2 | no |
 | #543 | Sushi | 3 | no |
+| #343 | (none added since HB#342 — current state) | 3 | no |
 
 When the cumulative-new column hits 10, vigil files `Synthesis #2: <theme>` task and claims.
 

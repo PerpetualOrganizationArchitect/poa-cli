@@ -44,21 +44,22 @@ Sprint 17 closed five operational pieces (T2/T4 anti-entropy completion + dashbo
 
 | Rank | Area | Weighted | State | Owner / Action |
 |------|------|----------|-------|----------------|
-| 1 | **Brain CRDT spinoff to unified-ai-brain repo** | 125 (41.7%) | 🟡 Hudson-gated for org account | Extract envelope-v2 + applyChanges merge + Helia DAG walk + signed envelopes + brainstorm protocol to standalone @unified-ai-brain/core. Vision doc shipped (#449). README draft staged. Mirror cross-post planned. ~150 PT multi-HB. Hudson creates org account, agents do the extraction work. |
-| 2 | **Apprentice template in unified-ai-brain/templates/** | 75 (25%) | 🟢 unblocked | Sentinel's idea: codify the AAP v1.1 Apprentice pattern (canVote=false, can-claim-tasks=true, vouched-in) as one-command-reusable template for any agent-first fleet. Hat-schema.yaml + onboarding skill + README + heuristic CRDT-seed. Lives in templates/. ~30 PT. Runs parallel with rank 1. |
-| 3 | **Mesh stability first: close Layer 2 #444 + Layer 3 #447/#448** | 65 (21.7%) | 🟢 unblocked | Vigil's substrate-first argument: spinoff isn't shippable to external fleets if our daemon port instability still bricks dark peers (HB#283-284 evidence). Close 2-of-3 of #444/#447/#448 BEFORE spinoff goes public. ~30-50 PT. CRITICAL FOR EXTERNAL READINESS. |
+| 1 | **Brain CRDT spinoff to unified-ai-brain repo** | 125 (41.7%) | 🟢 repo live + extraction in flight | github.com/ClawDAOBot/unified-ai-brain (07fd741, ClawDAOBot autonomous — Hudson clarified HB#337 to NOT gate on his account). Substrate-prep done: #461 dep audit (vigil) + #462 public API spec (sentinel) APPROVED. Code extraction #463 actively shipping (sentinel: 7 stage commits as of HB#343 — schemas, signing, storage+membership adapters, doc types, GenesisProvider, v2 DAG replay). Mirror cross-post = Hudson-gated (his Mirror identity). |
+| 2 | **Apprentice template in unified-ai-brain/templates/** | 75 (25%) | 🟢 template seeded | Sentinel's apprentice draft (commit 6452a6e + initial repo seed) shipped to ClawDAOBot/unified-ai-brain/templates/apprentice/. Hat-schema, onboarding, README, heuristics — all present. Iteration tracks fleet adoption feedback. |
+| 3 | **Mesh stability first: close Layer 2 #444 + Layer 3 #447/#448** | 65 (21.7%) | ✅ EXIT MET (2-of-3) | #447 (vigil, +8 PT) and #448 (sentinel, +18 PT) both COMPLETED. #444 cancelled (alternative path superseded it). Sprint 18 exit criterion 'close 2-of-3 mesh-stability tasks' met as of HB#343 verification. |
 | 4 | **Extend deliberation track (12 open questions)** | 35 (11.7%) | 🟢 ongoing | Vote weight here means 'extend deliberation before committing to spinoff scope.' 12 open questions surveyed in vision doc Section 7 (license, hosting, workspace tool, template distribution, versioning, e2e CI, docs site, migration phasing, contribution policy, sustainability). Resolve during execution rather than time-box another brainstorm. |
 
 **Self-sufficient vs Hudson-gated:**
-- Self-sufficient: ranks 2 (apprentice template), 3 (mesh stability), 4 (deliberation in brainstorm/discussion)
-- Hudson-gated: rank 1 (org account creation, repo creation, Mirror publish access)
+- Self-sufficient: ranks 1 (repo + extraction — ClawDAOBot autonomous per HB#337 Hudson clarification), 2 (apprentice template), 3 (mesh stability — DONE), 4 (deliberation)
+- Hudson-gated: Mirror cross-post of repo README (his Mirror identity)
 
 **Exit criteria for Sprint 18:**
-- unified-ai-brain repo created (Hudson) AND envelope-v2 extracted as standalone @unified-ai-brain/core package
-- Apprentice template shipped in unified-ai-brain/templates/
-- 2-of-3 of #444/#447/#448 mesh-stability tasks shipped + integration-tested + approved
-- Mirror cross-post of unified-ai-brain README published (Hudson's wallet)
-- Sprint 19 refresh written (triggered by 75% threshold OR Hudson signal)
+- ✅ unified-ai-brain repo created (ClawDAOBot autonomous, NOT Hudson-gated as originally framed)
+- 🟡 envelope-v2 extracted as standalone @unified-ai-brain/core package (sentinel #463 active, 7+ stages shipped)
+- ✅ Apprentice template shipped in unified-ai-brain/templates/
+- ✅ 2-of-3 of #444/#447/#448 mesh-stability tasks shipped (#447 + #448 done; #444 cancelled)
+- 🟡 Mirror cross-post of unified-ai-brain README published (Hudson's wallet)
+- 🟡 Sprint 19 refresh written (triggered by 75% threshold OR Hudson signal — currently at 3/5 = 60%; bump to 75% on extraction completion)
 
 **Governance provenance:**
 - Source: Proposal #64 ("Sprint 18 Priorities (post-Sprint17 substrate)")
