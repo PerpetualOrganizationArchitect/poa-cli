@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   computeFleetState,
+  checkUntrackedFiles,
   type DaemonReport,
   type PeerRegistryReport,
 } from '../../src/commands/agent/session-start';
@@ -155,5 +156,76 @@ describe('computeFleetState', () => {
         expect(r.connections).toBe(conns);
       }
     });
+  });
+});
+
+describe('checkUntrackedFiles (HB#618 loss-risk detector)', () => {
+  it('returns clean when no untracked files', () => {
+    const r = checkUntrackedFiles('');
+    expect(r.status).toBe('clean');
+    expect(r.untrackedSrcCount).toBe(0);
+    expect(r.warning).toBeUndefined();
+  });
+
+  it('returns clean when untracked files are only non-src/', () => {
+    const r = checkUntrackedFiles(
+      '?? .claude/settings.local.json\n' +
+      '?? agent/brain/Knowledge/foo.md\n' +
+      '?? test/scripts/foo.js\n',
+    );
+    expect(r.status).toBe('clean');
+    expect(r.untrackedSrcCount).toBe(0);
+  });
+
+  it('ignores modified (M) entries, only counts untracked (??)', () => {
+    const r = checkUntrackedFiles(
+      ' M src/lib/brain.ts\n' +
+      ' M src/commands/foo.ts\n' +
+      '?? src/lib/new.ts\n',
+    );
+    expect(r.untrackedSrcCount).toBe(1);
+  });
+
+  it('ignores .generated.md files in src/', () => {
+    const r = checkUntrackedFiles(
+      '?? src/data/foo.generated.md\n' +
+      '?? src/lib/real.ts\n',
+    );
+    expect(r.untrackedSrcCount).toBe(1);
+  });
+
+  it('returns some when below threshold', () => {
+    const r = checkUntrackedFiles(
+      '?? src/commands/a.ts\n?? src/commands/b.ts\n',
+      5,
+    );
+    expect(r.status).toBe('some');
+    expect(r.untrackedSrcCount).toBe(2);
+    expect(r.warning).toMatch(/review/);
+  });
+
+  it('returns loss-risk when at or above threshold', () => {
+    const r = checkUntrackedFiles(
+      [0,1,2,3,4,5].map(i => `?? src/commands/file${i}.ts`).join('\n'),
+      5,
+    );
+    expect(r.status).toBe('loss-risk');
+    expect(r.untrackedSrcCount).toBe(6);
+    expect(r.warning).toMatch(/HB#617/);
+  });
+
+  it('includes sample paths (up to 3) in output', () => {
+    const r = checkUntrackedFiles(
+      '?? src/a.ts\n?? src/b.ts\n?? src/c.ts\n?? src/d.ts\n?? src/e.ts\n',
+      5,
+    );
+    expect(r.samplePaths.length).toBe(3);
+    expect(r.samplePaths).toEqual(['src/a.ts', 'src/b.ts', 'src/c.ts']);
+  });
+
+  it('threshold is configurable', () => {
+    const twoFiles = '?? src/a.ts\n?? src/b.ts\n';
+    expect(checkUntrackedFiles(twoFiles, 2).status).toBe('loss-risk');
+    expect(checkUntrackedFiles(twoFiles, 10).status).toBe('some');
   });
 });

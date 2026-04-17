@@ -80,16 +80,32 @@ export interface FleetReport {
   hint?: string;
 }
 
+/**
+ * HB#618 (per brain lesson bafkreic5ufg6bn2aqwclh7iz6kxp5wyi2g5v4z7ispnlemxg7yiqaowroq):
+ * session-start git-status check catches the HB#520 loss-risk pattern
+ * (untracked production files sitting in working tree across sessions).
+ */
+export interface UntrackedReport {
+  status: 'clean' | 'some' | 'loss-risk' | 'unavailable';
+  /** Count of untracked files under src/ (production code). */
+  untrackedSrcCount: number;
+  /** Sample of up to 3 untracked src/ paths (for quick operator glance). */
+  samplePaths: string[];
+  warning?: string;
+}
+
 interface SessionStartReport {
   ok: boolean;
   daemon: DaemonReport;
   cache: CacheReport;
   peers: PeerRegistryReport;
   fleet: FleetReport;
+  untracked: UntrackedReport;
   durationMs: number;
 }
 
 const PEER_REGISTRY_STALE_SEC = 5 * 60;
+const UNTRACKED_SRC_LOSS_RISK_THRESHOLD = 5;
 
 /**
  * Classify fleet state from daemon + registry reports.
@@ -287,6 +303,63 @@ async function checkPeerRegistry(skip: boolean): Promise<PeerRegistryReport> {
   }
 }
 
+/**
+ * Scan `git status --short` for untracked files under src/. Threshold-based
+ * loss-risk warning per HB#617 brain lesson. Quick + local + no-network.
+ */
+export function checkUntrackedFiles(
+  gitStatusOutput: string,
+  threshold: number = UNTRACKED_SRC_LOSS_RISK_THRESHOLD,
+): UntrackedReport {
+  // `git status --short` format: 2 chars status + 1 space + path.
+  // Untracked lines start with '??'.
+  const lines = gitStatusOutput.split('\n');
+  const untrackedSrc: string[] = [];
+  for (const line of lines) {
+    if (!line.startsWith('?? ')) continue;
+    const path = line.slice(3).trim();
+    // Production-code gate — only src/ files count. Exclude .generated, test/, etc.
+    if (path.startsWith('src/') && !path.includes('.generated.')) {
+      untrackedSrc.push(path);
+    }
+  }
+
+  if (untrackedSrc.length === 0) {
+    return { status: 'clean', untrackedSrcCount: 0, samplePaths: [] };
+  }
+
+  const samplePaths = untrackedSrc.slice(0, 3);
+  if (untrackedSrc.length >= threshold) {
+    return {
+      status: 'loss-risk',
+      untrackedSrcCount: untrackedSrc.length,
+      samplePaths,
+      warning: `${untrackedSrc.length} untracked src/ files — loss-risk per HB#617. If authored, commit; else rm. Sample: ${samplePaths.join(', ')}`,
+    };
+  }
+  return {
+    status: 'some',
+    untrackedSrcCount: untrackedSrc.length,
+    samplePaths,
+    warning: `${untrackedSrc.length} untracked src/ file(s) — review before session-end. Sample: ${samplePaths.join(', ')}`,
+  };
+}
+
+async function runGitStatusAsync(): Promise<UntrackedReport> {
+  try {
+    const { execFileSync } = await import('child_process');
+    const stdout = execFileSync('git', ['status', '--short'], { encoding: 'utf8', timeout: 5000 });
+    return checkUntrackedFiles(stdout);
+  } catch (err: any) {
+    return {
+      status: 'unavailable',
+      untrackedSrcCount: 0,
+      samplePaths: [],
+      warning: `git status failed: ${err?.message?.slice(0, 80) ?? 'unknown'}`,
+    };
+  }
+}
+
 async function sessionStartHandler(argv: ArgumentsCamelCase<SessionStartArgs>): Promise<void> {
   const start = Date.now();
   const waitMs = argv['daemon-wait-ms'] ?? 5000;
@@ -295,6 +368,7 @@ async function sessionStartHandler(argv: ArgumentsCamelCase<SessionStartArgs>): 
   const cache = await warmupSubgraphCache(!!argv['skip-cache-warmup']);
   const peers = await checkPeerRegistry(!!argv['skip-peer-refresh']);
   const fleet = computeFleetState(daemon, peers);
+  const untracked = await runGitStatusAsync();
 
   const ok = daemon.status !== 'failed';
   const report: SessionStartReport = {
@@ -303,6 +377,7 @@ async function sessionStartHandler(argv: ArgumentsCamelCase<SessionStartArgs>): 
     cache,
     peers,
     fleet,
+    untracked,
     durationMs: Date.now() - start,
   };
 
@@ -321,6 +396,9 @@ async function sessionStartHandler(argv: ArgumentsCamelCase<SessionStartArgs>): 
     const fleetIcon = fleet.state === 'healthy' ? '✓' : (fleet.state === 'partial' ? '~' : (fleet.state === 'isolated' ? '○' : '⚠'));
     console.log(`  fleet:     ${fleet.state.padEnd(10)} ${fleetIcon} others=${fleet.otherPeersInRegistry} conns=${fleet.connections}`);
     if (fleet.hint) console.log(`             ⚠ ${fleet.hint}`);
+    const untrackedIcon = untracked.status === 'clean' ? '✓' : (untracked.status === 'some' ? '~' : '⚠');
+    console.log(`  untracked: ${untracked.status.padEnd(10)} ${untrackedIcon} src-files=${untracked.untrackedSrcCount}`);
+    if (untracked.warning) console.log(`             ⚠ ${untracked.warning}`);
     console.log('');
     if (!ok) console.log(`  ✗ Session start CRITICAL: daemon failed. Brain writes will not propagate.`);
     else console.log(`  ✓ Session ready.`);
