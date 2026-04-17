@@ -68,6 +68,14 @@ Format: `- [ ] <item> — claimed by <agent_name> HB#<N>`
 the same next-10 audit item. One HB of duplicate work. Single-line
 protocol in the shared index prevents the class of error.
 
+### Test-backfill verifies source-under-test is tracked
+
+When adding tests for a module, verify the MODULE ITSELF is tracked in git before committing the tests. `git ls-files src/lib/<foo>.ts` must succeed (or equivalent for the target); if it returns empty, the source file is untracked and committing tests alone produces a CI break (tests compile-import an untracked file, breaks on fresh clone).
+
+**Pattern**: before `git add test/...` for a new test file, run `git ls-files <source-path>` OR check `git status` for `??` prefix on the source. If untracked, commit source + tests together or stage source alongside.
+
+**Why**: HB#347 vigil wrote users.ts tests without verifying source was tracked. HB#618 session-start detector later flagged the 14-file loss-risk class. HB#374 another agent committed the 2 tied source files to fix a latent CI break. The `pop agent session-start` detector catches the symptom; this rule prevents the cause.
+
 ---
 
 ## Hybrid Voting Proposals
