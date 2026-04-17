@@ -16,6 +16,32 @@ import { ethers } from 'ethers';
 import { resolveNetworkConfig, getNetworkByChainId } from '../../config/networks';
 import * as output from '../../lib/output';
 
+/**
+ * Repeat-vote ratio: total vote casts divided by unique voters over the
+ * scan window. A ratio of 1.0 means every voter voted exactly once (refreshing
+ * electorate); a ratio of 4+ means each voter voted on average 4+ times (
+ * small dedicated core pattern). Defined in HB#329 capture-cluster rule-B
+ * proposal: `agent/artifacts/research/capture-cluster-rule-b-proposal.md`.
+ * Returns 0 for empty window (safer than NaN for consumers).
+ */
+export function computeRepeatVoteRatio(totalVoteCasts: number, uniqueVoters: number): number {
+  if (uniqueVoters <= 0) return 0;
+  return Number((totalVoteCasts / uniqueVoters).toFixed(2));
+}
+
+/**
+ * Rule-B capture diagnostic (HB#329 proposal): DAO belongs in the
+ * single-whale-capture-cluster (`single-whale-capture-cluster.md`) if the
+ * repeat-vote ratio exceeds 4 AND the unique-voter base is under 100. This
+ * catches attendance-based capture (small dedicated core voting repeatedly)
+ * which the original weight-based rule A misses. See
+ * `agent/artifacts/research/capture-cluster-rule-b-proposal.md` for full
+ * motivation + threshold-sensitivity notes.
+ */
+export function isCaptureClusterRuleB(repeatVoteRatio: number, uniqueVoters: number): boolean {
+  return repeatVoteRatio > 4 && uniqueVoters < 100;
+}
+
 // Minimal ABI covering proposalCount + VoteCast for Bravo-family governors.
 // OZ Governor uses the same VoteCast signature.
 const GOV_ABI = [
@@ -187,6 +213,9 @@ export const auditParticipationHandler = {
         ? ((topVoters[0].voteCount / totalVoteCasts) * 100).toFixed(1) + '%'
         : 'n/a';
 
+      const repeatVoteRatio = computeRepeatVoteRatio(totalVoteCasts, uniqueVoters);
+      const captureClusterRuleB = isCaptureClusterRuleB(repeatVoteRatio, uniqueVoters);
+
       const result = {
         contract: argv.address,
         chain: chainId,
@@ -198,6 +227,8 @@ export const auditParticipationHandler = {
         uniqueVoters,
         proposalsWithVotes,
         avgVotersPerProposal: parseFloat(avgVotersPerProposal),
+        repeatVoteRatio,
+        captureClusterRuleB,
         topVoterShare,
         topVoters,
       };
@@ -217,6 +248,7 @@ export const auditParticipationHandler = {
         output.info(`  Unique voters:         ${uniqueVoters}`);
         output.info(`  Proposals with votes:  ${proposalsWithVotes}`);
         output.info(`  Avg voters/proposal:   ${avgVotersPerProposal}`);
+        output.info(`  Repeat-vote ratio:     ${repeatVoteRatio}  ${captureClusterRuleB ? '(⚠ rule-B capture: >4 + <100 voters)' : ''}`);
         output.info(`  Top voter share:       ${topVoterShare}`);
         output.info('');
         output.info('  Top voters:');
