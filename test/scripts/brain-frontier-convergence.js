@@ -76,6 +76,13 @@ const HOMES = {
   B: '/tmp/pop-brain-t4-b',
   C: '/tmp/pop-brain-t4-c',
 };
+// Fixed ports outside task #447's derivation range (34000-34999).
+// Pinning avoids the phase-1 probe/phase-2 restart mismatch that occurs
+// when random ports are used (address captured in probe doesn't match
+// the port selected on restart). Using 35xxx keeps us clear of #447's
+// hash-derived range so there's no collision with any agent's real daemon
+// that happens to share these offsets.
+const PORTS = { A: 35051, B: 35052, C: 35053 };
 const WAIT_MS = parseInt(process.env.WAIT_MS || '60000', 10);
 const REBROADCAST_MS = '3000'; // short for test speed; production default 60000
 
@@ -99,6 +106,9 @@ function cli(home, args, extraEnv = {}) {
       POP_BRAIN_HOME: home,
       POP_BRAIN_REBROADCAST_INTERVAL_MS: REBROADCAST_MS,
       POP_BRAIN_REBROADCAST_GRACE_MS: '500',
+      // POP_BRAIN_LISTEN_PORT is set per-daemon by caller (see daemonStart)
+      // to a fixed test port (35051/52/53), avoiding task #447's hash-derived
+      // range (34000-34999) and its collision-on-same-offset risk.
       ...extraEnv,
     },
     encoding: 'utf8',
@@ -182,26 +192,32 @@ async function main() {
 
   let failed = false;
   try {
-    // Phase 1: start each daemon once to learn its listen multiaddr,
-    // then stop. Collect loopback addrs.
-    const addrs = {};
+    // Phase 1: start each daemon briefly on its fixed port to learn its
+    // persistent peerId (derived from the auto-generated peer-key.json on
+    // first start). Then stop. Fixed ports mean we can build full multiaddrs
+    // ahead of time without a probe/restart-port mismatch.
+    const peerIds = {};
     for (const [label, home] of Object.entries(HOMES)) {
-      await daemonStart(home, label);
+      await daemonStart(home, label, { POP_BRAIN_LISTEN_PORT: String(PORTS[label]) });
       await sleep(1500);
       const status = await ipc(home, 'status');
-      const addr = (status.listenAddrs || [])
-        .find(a => a.startsWith('/ip4/127.0.0.1/'));
-      if (!addr) throw new Error(`${label} has no loopback addr: ${status.listenAddrs}`);
-      addrs[label] = addr;
-      log(label, `peerId=${status.peerId} addr=${addr}`);
+      peerIds[label] = status.peerId;
+      log(label, `peerId=${status.peerId} port=${PORTS[label]}`);
       await daemonStop(home, label);
       await sleep(500);
     }
 
-    // Phase 2: restart each with POP_BRAIN_PEERS = other two's addrs.
-    await daemonStart(HOMES.A, 'A', { POP_BRAIN_PEERS: `${addrs.B},${addrs.C}` });
-    await daemonStart(HOMES.B, 'B', { POP_BRAIN_PEERS: `${addrs.A},${addrs.C}` });
-    await daemonStart(HOMES.C, 'C', { POP_BRAIN_PEERS: `${addrs.A},${addrs.B}` });
+    const addrs = {
+      A: `/ip4/127.0.0.1/tcp/${PORTS.A}/p2p/${peerIds.A}`,
+      B: `/ip4/127.0.0.1/tcp/${PORTS.B}/p2p/${peerIds.B}`,
+      C: `/ip4/127.0.0.1/tcp/${PORTS.C}/p2p/${peerIds.C}`,
+    };
+
+    // Phase 2: restart each with the same fixed port + POP_BRAIN_PEERS =
+    // other two's multiaddrs. Fixed ports match phase-1 peer IDs deterministically.
+    await daemonStart(HOMES.A, 'A', { POP_BRAIN_LISTEN_PORT: String(PORTS.A), POP_BRAIN_PEERS: `${addrs.B},${addrs.C}` });
+    await daemonStart(HOMES.B, 'B', { POP_BRAIN_LISTEN_PORT: String(PORTS.B), POP_BRAIN_PEERS: `${addrs.A},${addrs.C}` });
+    await daemonStart(HOMES.C, 'C', { POP_BRAIN_LISTEN_PORT: String(PORTS.C), POP_BRAIN_PEERS: `${addrs.A},${addrs.B}` });
     await sleep(5000); // 3-way mesh form window
 
     for (const label of ['A', 'B', 'C']) {
