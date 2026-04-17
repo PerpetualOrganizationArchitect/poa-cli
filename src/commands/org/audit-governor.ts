@@ -1,7 +1,9 @@
 import type { Argv, ArgumentsCamelCase } from 'yargs';
 import { ethers } from 'ethers';
+import { readFileSync, existsSync } from 'fs';
 import { resolveNetworkConfig } from '../../config/networks';
 import * as output from '../../lib/output';
+import { queryUrl } from '../../lib/subgraph';
 
 // Standard Governor ABI fragments
 const GOVERNOR_ABI = [
@@ -23,6 +25,8 @@ interface AuditGovernorArgs {
   blocks?: number;
   fromBlock?: number;
   toBlock?: number;
+  subgraphUrl?: string;
+  subgraphQueryFile?: string;
   pin?: boolean;
   rpc?: string;
 }
@@ -33,6 +37,8 @@ export const auditGovernorHandler = {
     .option('blocks', { type: 'number', default: 500000, describe: 'Number of blocks to scan back from head (ignored if --from-block is set)' })
     .option('from-block', { type: 'number', describe: 'Explicit start block (overrides --blocks). Useful on high-throughput L2s where "last N blocks" is a short time window.' })
     .option('to-block', { type: 'number', describe: 'Explicit end block (defaults to current head). Pair with --from-block for a specific historical range.' })
+    .option('subgraph-url', { type: 'string', describe: 'Task #467 option (b) — subgraph-backed scan. Provide a GraphQL endpoint URL; tool queries it instead of scanning RPC events. Bypasses L2 RPC rate limits. Requires --subgraph-query-file.' })
+    .option('subgraph-query-file', { type: 'string', describe: 'Path to .graphql file containing the query. Query must return { proposalsCreated, proposalsExecuted, proposalsCanceled, voteCasts } shape or a compatible variant.' })
     .option('pin', { type: 'boolean', default: false, describe: 'Pin report to IPFS' }),
 
   handler: async (argv: ArgumentsCamelCase<AuditGovernorArgs>) => {
@@ -115,12 +121,48 @@ export const auditGovernorHandler = {
         return results;
       }
 
-      const [createdEvents, executedEvents, canceledEvents, voteEvents] = await Promise.all([
-        chunkedQuery(governor.filters.ProposalCreated(), fromBlock, toBlock),
-        chunkedQuery(governor.filters.ProposalExecuted(), fromBlock, toBlock),
-        chunkedQuery(governor.filters.ProposalCanceled(), fromBlock, toBlock),
-        chunkedQuery(governor.filters.VoteCast(), fromBlock, toBlock),
-      ]);
+      // Task #467 option (b) — subgraph-backed event fetch (sentinel HB#632).
+      // Bypasses RPC rate limits on L2s. Requires caller to supply the
+      // GraphQL query matching their subgraph's schema (schemas vary —
+      // no universal OZ Governor subgraph exists).
+      let createdEvents: any[], executedEvents: any[], canceledEvents: any[], voteEvents: any[];
+
+      if (argv.subgraphUrl) {
+        if (!argv.subgraphQueryFile) {
+          throw new Error('--subgraph-url requires --subgraph-query-file. Provide a .graphql file with a query returning { proposalsCreated, proposalsExecuted, proposalsCanceled, voteCasts } or a variant your subgraph supports.');
+        }
+        if (!existsSync(argv.subgraphQueryFile)) {
+          throw new Error(`--subgraph-query-file not found: ${argv.subgraphQueryFile}`);
+        }
+        spin.text = `Querying subgraph: ${argv.subgraphUrl}...`;
+        const gqlQuery = readFileSync(argv.subgraphQueryFile, 'utf8');
+        const data: any = await queryUrl(argv.subgraphUrl, gqlQuery, {
+          governor: argv.address.toLowerCase(),
+        });
+
+        // Expected shape: { proposalsCreated: [...], proposalsExecuted: [...],
+        //                   proposalsCanceled: [...], voteCasts: [...] }
+        // Each event object should have fields matching ethers event.args shape.
+        createdEvents = (data.proposalsCreated ?? []).map((e: any) => ({ args: e }));
+        executedEvents = (data.proposalsExecuted ?? []).map((e: any) => ({ args: e }));
+        canceledEvents = (data.proposalsCanceled ?? []).map((e: any) => ({ args: e }));
+        voteEvents = (data.voteCasts ?? []).map((e: any) => ({
+          args: {
+            voter: e.voter,
+            proposalId: e.proposalId,
+            support: typeof e.support === 'string' ? Number(e.support) : e.support,
+            weight: { toString: () => String(e.weight) },
+            reason: e.reason || '',
+          },
+        }));
+      } else {
+        [createdEvents, executedEvents, canceledEvents, voteEvents] = await Promise.all([
+          chunkedQuery(governor.filters.ProposalCreated(), fromBlock, toBlock),
+          chunkedQuery(governor.filters.ProposalExecuted(), fromBlock, toBlock),
+          chunkedQuery(governor.filters.ProposalCanceled(), fromBlock, toBlock),
+          chunkedQuery(governor.filters.VoteCast(), fromBlock, toBlock),
+        ]);
+      }
 
       const totalProposals = createdEvents.length;
       const executedCount = executedEvents.length;
