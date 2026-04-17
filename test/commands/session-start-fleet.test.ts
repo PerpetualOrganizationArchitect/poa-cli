@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   computeFleetState,
   checkUntrackedFiles,
+  checkUnpushedCommits,
   type DaemonReport,
   type PeerRegistryReport,
 } from '../../src/commands/agent/session-start';
@@ -227,5 +228,86 @@ describe('checkUntrackedFiles (HB#618 loss-risk detector)', () => {
     const twoFiles = '?? src/a.ts\n?? src/b.ts\n';
     expect(checkUntrackedFiles(twoFiles, 2).status).toBe('loss-risk');
     expect(checkUntrackedFiles(twoFiles, 10).status).toBe('some');
+  });
+});
+
+describe('checkUnpushedCommits (HB#373 commit-level loss-risk detector)', () => {
+  it('returns clean when git log output is empty', () => {
+    const r = checkUnpushedCommits('');
+    expect(r.status).toBe('clean');
+    expect(r.unpushedCount).toBe(0);
+    expect(r.warning).toBeUndefined();
+  });
+
+  it('returns clean when output is just whitespace', () => {
+    expect(checkUnpushedCommits('   \n  \n').status).toBe('clean');
+  });
+
+  it('counts each non-empty line as one unpushed commit', () => {
+    const out = 'abc1234 First commit\ndef5678 Second commit\n';
+    const r = checkUnpushedCommits(out, 10);
+    expect(r.unpushedCount).toBe(2);
+    expect(r.status).toBe('some');
+  });
+
+  it('returns loss-risk when count >= threshold', () => {
+    const out = [0, 1, 2, 3, 4].map((i) => `abc${i} Commit ${i}`).join('\n');
+    const r = checkUnpushedCommits(out, 3);
+    expect(r.status).toBe('loss-risk');
+    expect(r.unpushedCount).toBe(5);
+    expect(r.warning).toMatch(/HB#373/);
+  });
+
+  it('returns some when below threshold', () => {
+    const out = 'abc1 One\nabc2 Two\n';
+    const r = checkUnpushedCommits(out, 5);
+    expect(r.status).toBe('some');
+    expect(r.warning).toMatch(/push before session-end/);
+  });
+
+  it('samples up to 3 commit subjects, strips sha prefix', () => {
+    const out = [
+      'abc1234 First thing',
+      'def5678 Second thing',
+      'ghi9abc Third thing',
+      'jkl0123 Fourth thing',
+    ].join('\n');
+    const r = checkUnpushedCommits(out, 10);
+    expect(r.sampleCommits.length).toBe(3);
+    expect(r.sampleCommits[0]).toBe('First thing');
+    expect(r.sampleCommits[1]).toBe('Second thing');
+    expect(r.sampleCommits[2]).toBe('Third thing');
+  });
+
+  it('truncates long commit subjects to 80 chars', () => {
+    const longSubject = 'x'.repeat(200);
+    const r = checkUnpushedCommits(`abc1234 ${longSubject}`, 10);
+    expect(r.sampleCommits[0].length).toBeLessThanOrEqual(80);
+  });
+
+  it('handles commits with no subject gracefully (unlikely but defensive)', () => {
+    // `git log --oneline` always produces sha + subject; this guards a pathological case
+    const r = checkUnpushedCommits('abc1234', 10);
+    expect(r.unpushedCount).toBe(1);
+    expect(r.sampleCommits[0]).toBe('abc1234');
+  });
+
+  it('threshold is configurable', () => {
+    const out = 'a b\nc d\nd e\n';
+    expect(checkUnpushedCommits(out, 2).status).toBe('loss-risk');
+    expect(checkUnpushedCommits(out, 10).status).toBe('some');
+  });
+
+  it('real-world pattern: reproduces this session HB#348 unpushed-commit loss-risk scenario', () => {
+    // Simulates the HB#348 state: 2 unpushed commits that had sat locally.
+    const out = [
+      '16ed90c how-i-think.md: Operational Discipline section (retro-344 change-1 + change-2)',
+      '35076c4 session-start: fleet-state diagnostic (retro-344 change-4)',
+    ].join('\n');
+    // With default threshold of 3, 2 unpushed is 'some' — accurate for that HB.
+    const r = checkUnpushedCommits(out);
+    expect(r.status).toBe('some');
+    expect(r.unpushedCount).toBe(2);
+    expect(r.sampleCommits[0]).toMatch(/Operational Discipline/);
   });
 });

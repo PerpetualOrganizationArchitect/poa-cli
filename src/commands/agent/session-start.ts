@@ -94,6 +94,24 @@ export interface UntrackedReport {
   warning?: string;
 }
 
+/**
+ * HB#373 (vigil): parallel loss-risk detector for commit-level divergence.
+ * Observed 5 times this session (HB#348/355/357/369/372): another agent
+ * commits locally but doesn't push. Commits are COMPLETE work units (more
+ * severe than single untracked files), so the threshold is lower.
+ *
+ * Complements HB#618's file-level check. Both detectors share the pattern:
+ * session state diverges silently from origin/remote until an agent notices.
+ */
+export interface UnpushedReport {
+  status: 'clean' | 'some' | 'loss-risk' | 'unavailable';
+  /** Count of commits on HEAD not yet on origin/<branch>. */
+  unpushedCount: number;
+  /** Sample of up to 3 unpushed commit short-messages. */
+  sampleCommits: string[];
+  warning?: string;
+}
+
 interface SessionStartReport {
   ok: boolean;
   daemon: DaemonReport;
@@ -101,11 +119,13 @@ interface SessionStartReport {
   peers: PeerRegistryReport;
   fleet: FleetReport;
   untracked: UntrackedReport;
+  unpushed: UnpushedReport;
   durationMs: number;
 }
 
 const PEER_REGISTRY_STALE_SEC = 5 * 60;
 const UNTRACKED_SRC_LOSS_RISK_THRESHOLD = 5;
+const UNPUSHED_LOSS_RISK_THRESHOLD = 3;
 
 /**
  * Classify fleet state from daemon + registry reports.
@@ -360,6 +380,63 @@ async function runGitStatusAsync(): Promise<UntrackedReport> {
   }
 }
 
+/**
+ * Parse `git log @{u}..HEAD --oneline` output (or equivalent) into an
+ * UnpushedReport. Pure function — same testability pattern as
+ * checkUntrackedFiles. Each non-empty line = one unpushed commit.
+ */
+export function checkUnpushedCommits(
+  gitLogOutput: string,
+  threshold: number = UNPUSHED_LOSS_RISK_THRESHOLD,
+): UnpushedReport {
+  const lines = gitLogOutput.split('\n').map((l) => l.trim()).filter(Boolean);
+  const unpushedCount = lines.length;
+
+  if (unpushedCount === 0) {
+    return { status: 'clean', unpushedCount: 0, sampleCommits: [] };
+  }
+
+  // Each line is `<sha> <subject>`. Trim the sha prefix for display.
+  const sampleCommits = lines.slice(0, 3).map((line) => {
+    const parts = line.split(/\s+/);
+    return parts.length > 1 ? parts.slice(1).join(' ').slice(0, 80) : line;
+  });
+
+  if (unpushedCount >= threshold) {
+    return {
+      status: 'loss-risk',
+      unpushedCount,
+      sampleCommits,
+      warning: `${unpushedCount} unpushed commit(s) — loss-risk per HB#373 (parallel to HB#617 untracked-files). Push with 'git push'. Sample: ${sampleCommits.join(' | ')}`,
+    };
+  }
+  return {
+    status: 'some',
+    unpushedCount,
+    sampleCommits,
+    warning: `${unpushedCount} unpushed commit(s) — push before session-end. Sample: ${sampleCommits.join(' | ')}`,
+  };
+}
+
+async function runGitUnpushedAsync(): Promise<UnpushedReport> {
+  try {
+    const { execFileSync } = await import('child_process');
+    // `git log @{u}..HEAD --oneline` fails if no upstream is configured.
+    const stdout = execFileSync('git', ['log', '@{u}..HEAD', '--oneline'], { encoding: 'utf8', timeout: 5000 });
+    return checkUnpushedCommits(stdout);
+  } catch (err: any) {
+    const msg = err?.message ?? String(err);
+    // Common: no upstream configured (detached HEAD, freshly-cloned branch without -u push).
+    // Treat as 'unavailable' rather than 'clean' — we genuinely don't know.
+    return {
+      status: 'unavailable',
+      unpushedCount: 0,
+      sampleCommits: [],
+      warning: `git unpushed check failed: ${msg.slice(0, 80)}`,
+    };
+  }
+}
+
 async function sessionStartHandler(argv: ArgumentsCamelCase<SessionStartArgs>): Promise<void> {
   const start = Date.now();
   const waitMs = argv['daemon-wait-ms'] ?? 5000;
@@ -369,6 +446,7 @@ async function sessionStartHandler(argv: ArgumentsCamelCase<SessionStartArgs>): 
   const peers = await checkPeerRegistry(!!argv['skip-peer-refresh']);
   const fleet = computeFleetState(daemon, peers);
   const untracked = await runGitStatusAsync();
+  const unpushed = await runGitUnpushedAsync();
 
   const ok = daemon.status !== 'failed';
   const report: SessionStartReport = {
@@ -378,6 +456,7 @@ async function sessionStartHandler(argv: ArgumentsCamelCase<SessionStartArgs>): 
     peers,
     fleet,
     untracked,
+    unpushed,
     durationMs: Date.now() - start,
   };
 
@@ -399,6 +478,9 @@ async function sessionStartHandler(argv: ArgumentsCamelCase<SessionStartArgs>): 
     const untrackedIcon = untracked.status === 'clean' ? '✓' : (untracked.status === 'some' ? '~' : '⚠');
     console.log(`  untracked: ${untracked.status.padEnd(10)} ${untrackedIcon} src-files=${untracked.untrackedSrcCount}`);
     if (untracked.warning) console.log(`             ⚠ ${untracked.warning}`);
+    const unpushedIcon = unpushed.status === 'clean' ? '✓' : (unpushed.status === 'some' ? '~' : '⚠');
+    console.log(`  unpushed:  ${unpushed.status.padEnd(10)} ${unpushedIcon} commits=${unpushed.unpushedCount}`);
+    if (unpushed.warning) console.log(`             ⚠ ${unpushed.warning}`);
     console.log('');
     if (!ok) console.log(`  ✗ Session start CRITICAL: daemon failed. Brain writes will not propagate.`);
     else console.log(`  ✓ Session ready.`);
