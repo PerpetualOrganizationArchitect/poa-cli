@@ -115,13 +115,113 @@ iterations mostly skip).
   fallback to the default — malformed input does not crash the
   daemon.
 
+---
+
+# T2 repair walker (task #430)
+
+Rebroadcast (T1) closes the "peer was offline when we wrote" case.
+T2 closes the "peer was offline when we TRIED TO FETCH" case — a
+distinct and equally common failure mode.
+
+## How it works
+
+`fetchAndMergeRemoteHead` (src/lib/brain.ts) is the single entry
+point for receiving remote state. When bitswap fails to fetch a
+block (transient network error, peer offline mid-fetch, bitswap
+timeout), the function calls `markDocDirty(docId, cid, error)` before
+returning the reject. The dirty-bit persists to
+`$POP_BRAIN_HOME/doc-dirty.json` — an atomic POSIX-rename write
+matching the pattern of doc-heads.json.
+
+The brain daemon runs a `repairWorker` goroutine every
+`POP_BRAIN_REPAIR_INTERVAL_MS` (default 3600000 = 1h, matching
+go-ds-crdt's RepairInterval). Each tick:
+
+1. Loads `doc-dirty.json`.
+2. For each (docId, cid) entry, calls `fetchAndMergeRemoteHead`
+   again. The fetch path already auto-clears dirty on success.
+3. Logs the outcome per entry.
+
+Successful paths (`adopt`, `merge`, `skip`) clear the dirty entry.
+Continued failure (`reject`) leaves the entry in place for the next
+repair tick. No exponential backoff — repair interval is long enough
+that constant retries are already bounded.
+
+## Environment variables
+
+| Var | Default | Notes |
+|---|---|---|
+| `POP_BRAIN_REPAIR_INTERVAL_MS` | `3600000` (1h) | Base tick interval. `0` disables the repair worker entirely (daemon still runs; dirty bits still get written on fetch failure; just no automatic retry — operator-driven via `pop brain repair`). |
+
+## CLI
+
+`pop brain repair [--doc <id>] [--json]` triggers an immediate repair
+pass over the dirty queue (or just the specified docId). Exit 0 on
+all-clear, exit 1 if any entry still dirty after the pass.
+
+Operator use cases:
+- After confirming a previously-offline peer is back, run
+  `pop brain repair` to retry now instead of waiting up to 1h.
+- For a single stuck doc, `pop brain repair --doc pop.brain.shared`.
+- In scripted ops, `pop brain repair --json` gives machine-readable
+  output with per-entry action + reason.
+
+## Doctor check
+
+`pop brain doctor` now includes a `dirty docs (T2 repair queue)`
+entry:
+
+- **pass**: queue empty (no outstanding retries)
+- **warn**: entries exist, oldest less than 24h old (expected during
+  transient peer downtime)
+- **fail**: oldest entry exceeds 24h — persistent failure mode. The
+  detail message names the stuck docIds and recommends running
+  `pop brain repair` manually. If the retry still fails, the peer
+  holding that CID may be permanently gone; operator needs to
+  investigate (e.g., update the genesis.bin in the repo, or
+  explicitly re-bootstrap the affected agent).
+
+## Why per-doc (not global) dirty bit
+
+go-ds-crdt uses a single global dirty flag — one bit for the whole
+CRDT store. The brain-crdt-vs-go-ds-crdt comparison (task #428)
+flagged this as a "thing we are NOT going to adopt" — a problem with
+one doc under global-flag semantics blocks repair progress on all
+other docs. Per-doc isolation means pop.brain.shared being stuck
+doesn't hold up pop.brain.projects repairs.
+
+## Race protection on clear
+
+`clearDocDirty(docId, cid?)` only removes the entry if the cid
+matches (or if cid is undefined, force-clear). This prevents a race
+where doc X was marked dirty for CID A, and a separate code path
+successfully merged CID B (newer head). Without the match check, B's
+success would spuriously clear A's dirty entry — but A hasn't been
+resolved. The check ensures A keeps its retry until A is actually
+fetched or superseded by a successor that covers both.
+
+## NOT shipped (scope)
+
+- **Proactive peer-head-query**: the task spec described a more
+  ambitious repair that probes each peer for their current heads
+  and merges any divergence. That primitive is T6 (#434) — the
+  `pop/brain/probe/v1` libp2p protocol. T2 ships the narrower
+  "retry the specific CID we know we should have" path. Once T6
+  lands, the repair worker can be extended to call into
+  peer-head-query for richer reconciliation.
+
+- **Exponential backoff / jitter on repair**: the 1h interval is
+  already long. Faster retries wouldn't help if the failure is
+  "peer permanently gone"; slower wouldn't help either.
+
 ## Related
 
 - Task #427 — cross-agent bootstrap (orthogonal gap: covers the
   case where gossipsub never connects the agents at all)
-- Task #430 (T2) — DAG repair walker (covers the case where
-  rebroadcast delivers a CID but the receiver cannot fetch or merge)
+- Task #430 (T2) — this section
 - Task #432 (T4) — heads-frontier tracking (adopts broadcasting the
   full heads frontier instead of a single CID)
+- Task #434 (T6) — brain doctor + `pop/brain/probe/v1` protocol
+  that T2's repair will eventually leverage for proactive probing
 - HB#322, HB#324 — the dogfood findings that motivated the daemon
   design originally
