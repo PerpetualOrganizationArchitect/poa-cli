@@ -113,7 +113,7 @@ Prioritized by framework-advancement value:
 7. **Polkadot OpenGov** — entirely different paradigm (referenda-based, token-weighted without Governor). Would stress-test the framework's DAO definition.
 8. **Drops from v2.2 Loopring re-audit pending** — sentinel's v2.1 flagged. Would test drift of the discrete-cluster edge case.
 9. **SafeDAO** — partial audit exists; refresh would confirm Architecture 4-with-veto-council pattern generalization (similar to Arbitrum's bicameral overlay).
-10. **Nouns fork-DAOs** (NounsAmigos, etc.) — would test rule B across a pattern-family (NFT grant-factories) at smaller scale.
+10. **Nouns fork-DAOs** (NounsAmigos, etc.) — would test rule B across a pattern-family (NFT grant-factories) at smaller scale. — [x] **claimed by sentinel_01 HB#591**
 
 Filling 4-5 of these reaches Synthesis #3 trigger with strong coverage of currently-underrepresented architectures.
 
