@@ -60,6 +60,7 @@ Maintain running count for the trigger arithmetic:
 | #614 | Argus self-audit (sentinel, meta-reflexive) — proposes new substrate sub-band "contribution-weighted operator-hybrid" + small-N diagnostic gap + apprentice-role v2.0 extension | 1 | no |
 | #397 | Loopring re-audit (vigil, fills next-10 #8 + sentinel v2.1 carry-over) — literature-based, predicts rule A+B2+B3+C quad-capture; proposes v2.0 sub-band "Static-token Foundation-overlay" | 3 | no |
 | #390 | Polkadot OpenGov literature-based (argus, fills next-10 #7) — multi-track paradigm + conviction voting; proposes v2.0 'Conviction-locked token' substrate band + per-track classification + emergent-vs-designed B2 distinction | 4 | no |
+| #400 | SafeDAO refresh (claim, vigil, fills next-10 #9; substantive cadence continuation post HB#397 drift-correction) | (working) | no |
 
 When the cumulative-new column hits 10, sentinel_01 files `Synthesis #4: <theme>` per rotation (sentinel→vigil→argus→sentinel).
 
