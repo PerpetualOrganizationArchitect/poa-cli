@@ -30,9 +30,11 @@ import {
 } from './brain-signing';
 import {
   signBrainChangeV2,
+  verifyBrainChangeV2,
   extractDeltaChanges,
   snapshotChangeHashes,
   packChanges,
+  unpackChanges,
   type BrainChangeEnvelopeV2,
 } from './brain-envelope-v2';
 
@@ -895,10 +897,19 @@ export async function openBrainDoc<T = any>(docId: string): Promise<{ doc: any; 
   try {
     const cid = CID.parse(headCidStr);
     const envelopeBytes = await bs.get(cid);
-    // Step 4: block is now a signed envelope, not raw Automerge bytes.
-    // Unwrap, verify, check allowlist, then load the inner Automerge.
-    const envelope = JSON.parse(new TextDecoder().decode(envelopeBytes)) as BrainChangeEnvelope;
-    const author = verifyBrainChange(envelope);
+    // Block can be a v1 or v2 envelope. Peek at `v` field before unwrapping.
+    const envelope = JSON.parse(new TextDecoder().decode(envelopeBytes)) as
+      BrainChangeEnvelope | BrainChangeEnvelopeV2;
+    if (envelope.v === 2) {
+      // pt3 v2 read path: walk the parent-CID DAG, replay changes via
+      // Automerge.applyChanges in priority order. Genesis doc starts from
+      // the same loadGenesisBytes seed v1 uses, so v2 chains over a
+      // committed genesis stay merge-compatible with v1 chains.
+      const doc = await loadDocFromV2Chain(headCidStr, bs, Automerge, docId);
+      return { doc, headCid: headCidStr };
+    }
+    // v1 read path (snapshot-per-write): unwrap full state, Automerge.load.
+    const author = verifyBrainChange(envelope as BrainChangeEnvelope);
     const authz = await isAuthorizedAuthor(author);
     if (!authz.allowed) {
       throw new Error(
@@ -912,12 +923,108 @@ export async function openBrainDoc<T = any>(docId: string): Promise<{ doc: any; 
       // Surface the fallback path so operators can see when dynamic is down.
       console.error(`[brain] ${authz.fallbackReason}`);
     }
-    const automergeBytes = unwrapAutomergeBytes(envelope);
+    const automergeBytes = unwrapAutomergeBytes(envelope as BrainChangeEnvelope);
     const doc = Automerge.load(automergeBytes);
     return { doc, headCid: headCidStr };
   } finally {
     await bs.close();
   }
+}
+
+/**
+ * Reconstruct an Automerge doc by walking a v2 envelope chain from a head
+ * CID back through parent CIDs (BFS), then replaying changes in priority
+ * order via Automerge.applyChanges.
+ *
+ * Per agent/artifacts/research/brain-wire-format-v2-design.md Section 4
+ * (Decoder + DAG walk). Idempotent + order-independent merge — replaces
+ * Automerge.merge which silently drops content across disjoint histories.
+ *
+ * Bootstrap: starts from loadGenesisBytes(docId) if a canonical genesis
+ * exists for this docId; otherwise Automerge.init(). This means v2 chains
+ * over a committed genesis stay merge-compatible with concurrent v1 chains
+ * over the same genesis.
+ *
+ * Each fetched envelope is sig-verified + allowlist-checked. A bad envelope
+ * anywhere in the chain throws and aborts the load — the caller's manifest
+ * stays at the prior head.
+ */
+async function loadDocFromV2Chain(
+  headCidStr: string,
+  bs: any,
+  Automerge: any,
+  docId: string,
+): Promise<any> {
+  const { CID } = await esmImport<any>('multiformats/cid');
+
+  // BFS: collect all envelopes from headCid back to genesis (or the deepest
+  // ancestor in the local blockstore).
+  const queue: string[] = [headCidStr];
+  const collected = new Map<string, BrainChangeEnvelopeV2>();
+  while (queue.length > 0) {
+    const cidStr = queue.shift()!;
+    if (collected.has(cidStr)) continue;
+    const cid = CID.parse(cidStr);
+    let envelopeBytes: Uint8Array;
+    try {
+      envelopeBytes = await bs.get(cid);
+    } catch (err: any) {
+      throw new Error(
+        `loadDocFromV2Chain: missing block ${cidStr.slice(0, 16)}... — ` +
+        `peer fetch not yet wired (pt3-followup) or chain genuinely broken. ` +
+        `Underlying error: ${err.message}`,
+      );
+    }
+    const envelope = JSON.parse(new TextDecoder().decode(envelopeBytes)) as BrainChangeEnvelopeV2;
+    if (envelope.v !== 2) {
+      throw new Error(
+        `loadDocFromV2Chain: walked into non-v2 envelope at ${cidStr.slice(0, 16)}... — ` +
+        `mixed v1/v2 chains require a v1-base + v2-tail bootstrap (not in pt3 scope). ` +
+        `Doc: ${docId}`,
+      );
+    }
+    const author = verifyBrainChangeV2(envelope);
+    const authz = await isAuthorizedAuthor(author);
+    if (!authz.allowed) {
+      throw new Error(
+        `loadDocFromV2Chain: envelope at ${cidStr.slice(0, 16)}... signed by ` +
+        `${author}, not authorized. ${authz.fallbackReason}.`,
+      );
+    }
+    collected.set(cidStr, envelope);
+    for (const parentCid of envelope.parentCids) {
+      if (!collected.has(parentCid)) queue.push(parentCid);
+    }
+  }
+
+  // Sort envelopes by priority (lowest first = oldest first = topological order).
+  const sorted = [...collected.values()].sort((a, b) => a.priority - b.priority);
+
+  // Bootstrap doc state from genesis (same seed v1 uses) or Automerge.init().
+  let doc: any;
+  const genesisBytes = loadGenesisBytes(docId);
+  if (genesisBytes) {
+    try {
+      doc = Automerge.load(genesisBytes);
+    } catch {
+      doc = Automerge.init();
+    }
+  } else {
+    doc = Automerge.init();
+  }
+
+  // Replay changes from each envelope in priority order. applyChanges is
+  // idempotent + order-independent for any set of changes whose dependencies
+  // are present — the priority sort + DAG walk guarantee dependencies-first.
+  for (const env of sorted) {
+    const packed = new Uint8Array(Buffer.from(env.changes.slice(2), 'hex'));
+    const changes = unpackChanges(packed);
+    if (changes.length === 0) continue;
+    const [next] = Automerge.applyChanges(doc, changes);
+    doc = next;
+  }
+
+  return doc;
 }
 
 /**
@@ -1063,14 +1170,34 @@ export async function applyBrainChangeV2<T = any>(
   }
   const packed = packChanges(deltaChanges);
 
-  // Parent CIDs come from the current frontier; priority is a placeholder
-  // until pt3 loads parent envelopes for true max(parent.priority)+1. For
-  // now: genesis=1, otherwise frontier.length+1 (monotonic increasing per
-  // local writer; cross-writer comparisons handled by Automerge change-DAG
-  // in the merge path).
+  // Parent CIDs come from the current frontier. Priority = max(parent.priority)+1.
+  // Load each parent envelope to get its priority field. For genesis case
+  // (no parents) priority = 1.
   const manifestV2 = loadHeadsManifestV2();
   const parentCids = manifestV2[docId] || [];
-  const priority = parentCids.length === 0 ? 1 : parentCids.length + 1;
+  let priority = 1;
+  if (parentCids.length > 0) {
+    const { CID } = await esmImport<any>('multiformats/cid');
+    const { FsBlockstore } = await esmImport<any>('blockstore-fs');
+    const bsPriority = new FsBlockstore(join(getBrainHome(), 'helia-blocks'));
+    await bsPriority.open();
+    try {
+      let maxParentPriority = 0;
+      for (const pCidStr of parentCids) {
+        const bytes = await bsPriority.get(CID.parse(pCidStr));
+        const env = JSON.parse(new TextDecoder().decode(bytes)) as BrainChangeEnvelopeV2;
+        // Defensively coerce: a v1 envelope in the frontier (mixed-fleet
+        // edge case) has no `priority` field; treat as 0 so v2 chain still
+        // moves forward monotonically.
+        if (env.v === 2 && typeof env.priority === 'number') {
+          if (env.priority > maxParentPriority) maxParentPriority = env.priority;
+        }
+      }
+      priority = maxParentPriority + 1;
+    } finally {
+      await bsPriority.close();
+    }
+  }
 
   // Sign + persist as IPLD block. CID is over the envelope JSON, so the
   // sig + payload are content-addressed together.
