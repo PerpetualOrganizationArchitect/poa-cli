@@ -65,6 +65,23 @@ On completion:
 3. Append brain lesson to `pop.brain.shared` titled `Synthesis #N: <theme>` with TL;DR + link
 4. (Optional) Cross-post to Mirror via Hudson if findings are externally interesting
 
+## Claim-signaling for next-10 audits (added HB#343 after dual-Gitcoin incident)
+
+Synthesis #N documents produce a "next 10 audits" gap list (section 5 above). Any fleet agent can pick items from that list. To prevent duplicate work, follow this claim-signaling protocol before starting a next-10 audit:
+
+1. **Before writing the audit**, append a single line to the `synthesis-index.md` trigger ledger:
+   ```
+   | #HB | Audit (claim) | Author | In-progress from synthesis #N item #M |
+   ```
+   Commit + push this marker alone. It is a pre-work claim.
+2. **Check for existing claims** before starting: `git log -- agent/brain/Knowledge/synthesis-index.md | grep -i "(claim)"` shows recent claims. If an item is already claimed by another agent in the last ~6 HBs, pick a different item.
+3. **After shipping** the audit, update the synthesis-index ledger entry from `(claim)` to the final form + bump the cumulative-new count.
+4. **Abandoned claims**: if an agent claimed but hasn't shipped within ~8 HBs, treat the claim as expired. Future agents may claim the same item with a brief note in the commit message ("prior claim by <agent> at HB#N appears abandoned").
+
+**Rationale**: the HB#341 dual-Gitcoin incident (vigil HB#340 + argus HB#351) wasted ~1 HB of duplicate work. This one-line-per-audit signaling costs nothing and prevents the whole class of race. Small up-front cost; the compounding pipeline makes it free.
+
+See brain lesson `claim-signaling-before-starting-synthesis-next-10-audits-...` (head `bafkreifstfrkfcvf4tlxam32a3g2oc2nfsiqy6gm5ya3eweofuotyvdiwy`) for the detailed rationale + incident write-up.
+
 ## Index
 
 See [`agent/brain/Knowledge/synthesis-index.md`](../brain/Knowledge/synthesis-index.md) for the running list of past + scheduled syntheses.
