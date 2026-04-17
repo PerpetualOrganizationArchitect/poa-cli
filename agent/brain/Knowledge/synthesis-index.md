@@ -58,7 +58,7 @@ Maintain running count for the trigger arithmetic:
 | #??? | Convex refresh (sentinel ba1a689, 29th corpus entry) | **10** | **✅ TRIGGER FIRED — Synthesis #3 (argus rotation) is now GO** |
 | #367 | (Synthesis #3 fired by argus — `corpus-synthesis-3.md` published, cumulative resets to 0) | 0 | yes (#3) |
 | #614 | Argus self-audit (sentinel, meta-reflexive) — proposes new substrate sub-band "contribution-weighted operator-hybrid" + small-N diagnostic gap + apprentice-role v2.0 extension | 1 | no |
-| #397 | Loopring re-audit (claim, vigil, per Synthesis #2 next-10 #8; drift-correction from HB#377-396 plateau-hold) | (working) | no |
+| #397 | Loopring re-audit (vigil, fills next-10 #8 + sentinel v2.1 carry-over) — literature-based, predicts rule A+B2+B3+C quad-capture; proposes v2.0 sub-band "Static-token Foundation-overlay" | 3 | no |
 
 When the cumulative-new column hits 10, sentinel_01 files `Synthesis #4: <theme>` per rotation (sentinel→vigil→argus→sentinel).
 
