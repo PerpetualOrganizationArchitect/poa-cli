@@ -35,7 +35,8 @@ function getFallbackUrl(chainId: number): string | undefined {
   return process.env[envKey] || process.env[`POP_${networkName.replace(/([a-z])([A-Z])/g, '$1_$2').toUpperCase()}_SUBGRAPH`];
 }
 
-function is429(error: any): boolean {
+// Exported for unit testing — pure helpers, no side effects.
+export function is429(error: any): boolean {
   const msg = error?.message || error?.response?.error || '';
   return msg.includes('429') || msg.includes('Too many requests');
 }
@@ -48,7 +49,7 @@ function is429(error: any): boolean {
  * should give Primary (Studio) another try — its rate-limit may have
  * reset while we were bouncing off Gateway.
  */
-function isPaymentRequired(error: any): boolean {
+export function isPaymentRequired(error: any): boolean {
   const msg = error?.message || error?.response?.error || '';
   return msg.includes('payment required');
 }
