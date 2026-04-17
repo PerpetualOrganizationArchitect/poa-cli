@@ -304,7 +304,16 @@ export async function initBrainNode(): Promise<any> {
   //   POP_BRAIN_LISTEN_PORT=N explicitly set → N
   //   POP_BRAIN_LISTEN_PORT=0 → 0 (random; opt-out of stable port)
   //   unset + daemon running → 0 (avoid collision)
-  //   unset + no daemon → derived from privateKey hash (34000–34999)
+  //   unset + no daemon → derived from privateKey hash (34000–43999)
+  //
+  // HB#290 widen: range was 34000-34999 (1000 slots, 1-in-1000
+  // collision). T4 #432 test at HB#289 hit a collision between two
+  // tmp-home private keys (both hashed to offset 393 → port 34393).
+  // Widened to 10000 slots to cut collision probability 10x for the
+  // fresh-key test-home case. Production agents with stable keys are
+  // still unaffected — a vigil-specific port change is the only fleet
+  // impact (34407 → different value in 34000-43999 range, a one-time
+  // shift then stable forever).
   const rawListenPort = process.env.POP_BRAIN_LISTEN_PORT?.trim();
   let listenPort: number;
   if (rawListenPort !== undefined && rawListenPort !== '' && /^\d+$/.test(rawListenPort)) {
@@ -319,7 +328,9 @@ export async function initBrainNode(): Promise<any> {
       const pkBytes: Uint8Array = privateKeyToProtobuf(privateKey);
       const nodeCrypto = await esmImport<any>('node:crypto');
       const hash = nodeCrypto.createHash('sha256').update(Buffer.from(pkBytes)).digest();
-      const offset = ((hash[0] << 8) | hash[1]) % 1000;
+      // Two-byte window × 10,000 slots. Top bytes of sha256 are
+      // well-distributed enough that simple modulo works.
+      const offset = ((hash[0] << 8) | hash[1]) % 10000;
       listenPort = 34000 + offset;
     } catch (err: any) {
       if (process.env.POP_BRAIN_DEBUG) {
