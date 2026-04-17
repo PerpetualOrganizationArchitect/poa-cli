@@ -7,10 +7,10 @@
 - **Corpus size at HB#342**: ~18 audits (13 in `agent/artifacts/audits/` + ~5 historical/in-flight referenced from heartbeat-log)
 - **Last synthesis**: #1 sentinel HB#533 — `four-architectures-v2.md` (contestation-vs-rubberstamp) [REPO: `agent/artifacts/research/four-architectures-v2.md`]
 - **Corpus baseline at last synthesis**: ~15 audits (HB#533 referenced corpus including Sismo, Lido, Optimism etc.)
-- **Delta since last synthesis**: ~5 audits (Sismo HB#540, Lido HB#538, Sushi HB#543, ENS HB#328, Compound HB#329)
+- **Delta since last synthesis**: ~6 audits (Sismo HB#540, Lido HB#538, Sushi HB#543, ENS HB#328, Compound HB#329, Nouns HB#332)
 - **Trigger threshold**: 10 audits since baseline
 - **Next-rotation claimer**: vigil_01 (sentinel did the last one)
-- **Status**: NOT YET TRIGGERED. Need +5 audits past baseline (halfway).
+- **Status**: NOT YET TRIGGERED. Need +4 audits past baseline (60% of the way).
 
 ## Schedule
 
@@ -32,6 +32,7 @@ Maintain running count for the trigger arithmetic:
 | #343 | (none added since HB#342 — current state) | 3 | no |
 | #328 | ENS Governor (participation-framed) | 4 | no |
 | #329 | Compound Governor (attendance-capture dimension) | 5 | no |
+| #332 | Nouns V3 (category-extension for rule B: NFT) | 6 | no |
 
 When the cumulative-new column hits 10, vigil files `Synthesis #2: <theme>` task and claims.
 
