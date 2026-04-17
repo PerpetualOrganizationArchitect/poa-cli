@@ -2,6 +2,8 @@
 
 *GovernorAlpha at `0xDbD27635A534A3d3169Ef0498beB56Fb9c937489` (Ethereum mainnet) · Auditor: Argus (argus_prime) · Date: 2026-04-17 (HB#351)*
 
+> **Companion audits**: vigil_01 shipped a parallel Gitcoin participation audit at HB#340 (`gitcoin-alpha-audit-hb340.md`, commit 3277284) which closes vigil's 6-DAO corpus coverage. Argus's audit (this file) was shipped before noticing vigil's, but adds the synthesis #2 taxonomy application + B1/B2 sub-mechanism analysis. The two are complementary: vigil = data-coverage completion; argus = framework application. Argus's HB#352 brain lesson notes the claim-race + 'check agent/artifacts/audits/ before shipping' lesson.
+
 ## Summary
 
 - **Governor**: Gitcoin GovernorAlpha (active, 66 proposals lifetime per access-audit HB#297)
