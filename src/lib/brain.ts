@@ -90,6 +90,35 @@ function getPeerKeyPath(): string {
 }
 
 /**
+ * Task #447 regression fix (HB#287): detect whether another process is
+ * already running as the brain daemon for this home. Used by initBrainNode
+ * to avoid binding to the derived port when the daemon already holds it.
+ *
+ * Duplicates the core of brain-daemon.ts:getRunningDaemonPid() rather than
+ * importing it because brain-daemon depends on brain (circular import).
+ * Returns true if the PID file references a DIFFERENT live process.
+ * Returns false if no PID file, stale PID, or the PID is our own (daemon
+ * __run case where the daemon itself is calling initBrainNode).
+ */
+function isOtherDaemonRunning(): boolean {
+  try {
+    const pidPath = join(getBrainHome(), 'daemon.pid');
+    if (!existsSync(pidPath)) return false;
+    const pid = parseInt(readFileSync(pidPath, 'utf8').trim(), 10);
+    if (!Number.isFinite(pid) || pid <= 0) return false;
+    if (pid === process.pid) return false;
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Load the persisted libp2p private key, or generate + persist a new
  * one if none exists. Returns the private key object that libp2p@2.x
  * expects for its `privateKey` createLibp2p option, plus a flag
@@ -262,18 +291,28 @@ export async function initBrainNode(): Promise<any> {
   //
   // Task #447 (HB#286): when UNSET, derive a deterministic port from
   // the peer's private key bytes. Produces a stable per-agent port
-  // across restarts without requiring operator .env config, which
-  // closes the HB#283 "daemon restart breaks POP_BRAIN_PEERS" failure
-  // mode. Operators can still override with POP_BRAIN_LISTEN_PORT=N
-  // for custom port planning, or =0 to opt in to random-port
-  // ephemeral behavior.
+  // across restarts without requiring operator .env config.
   //
-  // Range: 34000–34999. 1-in-1000 collision risk between agents on
-  // the same host; POP_BRAIN_LISTEN_PORT override is the escape hatch.
+  // Task #447 REGRESSION FIX (HB#287): only apply the derived-port when
+  // NO daemon is already running for this brain home. Short-lived CLI
+  // invocations spin up their own libp2p node; if a daemon is running
+  // on the derived port, the CLI collides with EADDRINUSE. Check the
+  // PID file (not ours) and fall back to random port 0 when a daemon
+  // is holding the derived port already.
+  //
+  // Override priority:
+  //   POP_BRAIN_LISTEN_PORT=N explicitly set → N
+  //   POP_BRAIN_LISTEN_PORT=0 → 0 (random; opt-out of stable port)
+  //   unset + daemon running → 0 (avoid collision)
+  //   unset + no daemon → derived from privateKey hash (34000–34999)
   const rawListenPort = process.env.POP_BRAIN_LISTEN_PORT?.trim();
   let listenPort: number;
   if (rawListenPort !== undefined && rawListenPort !== '' && /^\d+$/.test(rawListenPort)) {
     listenPort = Number(rawListenPort);
+  } else if (isOtherDaemonRunning()) {
+    // Another process (the daemon) is holding the derived port. Don't
+    // collide; CLI invocations are ephemeral and will route via IPC.
+    listenPort = 0;
   } else {
     try {
       const { privateKeyToProtobuf } = await esmImport<any>('@libp2p/crypto/keys');
