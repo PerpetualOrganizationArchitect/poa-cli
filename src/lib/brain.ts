@@ -888,8 +888,15 @@ export function saveHeadsManifestV2(manifest: Record<string, string[]>): void {
  * (falls through to `Automerge.init()` for non-canonical docs or
  * for agents without the genesis files available).
  */
-function loadGenesisBytes(docId: string): Uint8Array | null {
-  const genesisPath = join(process.cwd(), 'agent', 'brain', 'Knowledge', `${docId}.genesis.bin`);
+/**
+ * HB#588 pattern (task #468): optional baseDir argument for testability.
+ * Defaults to process.cwd() to preserve existing caller behavior.
+ * Test code passes a temp dir explicitly, bypassing vitest chdir
+ * restrictions. See brain lesson
+ * bafkreif3yvh54lynlxoy73w7fadkh5atl6geqjkg7fp5blnjwtoft5wism.
+ */
+function loadGenesisBytes(docId: string, baseDir: string = process.cwd()): Uint8Array | null {
+  const genesisPath = join(baseDir, 'agent', 'brain', 'Knowledge', `${docId}.genesis.bin`);
   if (!existsSync(genesisPath)) return null;
   try {
     const bytes = readFileSync(genesisPath);
