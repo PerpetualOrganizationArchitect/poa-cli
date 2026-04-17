@@ -84,6 +84,7 @@ import {
   fetchAndMergeRemoteHead,
   listBrainDocs,
   topicForDoc,
+  loadDocDirty,
 } from './brain';
 
 export const REBROADCAST_INTERVAL_MS = 60_000;
@@ -94,6 +95,14 @@ export const REBROADCAST_INTERVAL_MS = 60_000;
 // identical state.
 export const REBROADCAST_JITTER = 0.3;
 export const REBROADCAST_GRACE_MS = 5_000;
+// T2 (task #430): repair interval for the dirty-bit retry walker. 1h is
+// go-ds-crdt's default RepairInterval. Repair retries previously-failed
+// CID fetches — fetchAndMergeRemoteHead already handles both the success
+// path (clears dirty) and the failure path (re-marks dirty), so the
+// worker is a thin retry loop. The spec's proactive peer-head-query is
+// DEFERRED to T6 (#434), which owns the pop/brain/probe/v1 primitive.
+// Override with POP_BRAIN_REPAIR_INTERVAL_MS. Set to 0 to disable.
+export const REPAIR_INTERVAL_MS = 3_600_000;
 export const KEEPALIVE_INTERVAL_MS = 20_000;
 // HB#365: default peer redial interval. Daemon periodically checks each
 // POP_BRAIN_PEERS entry and re-dials any that are not currently in the
@@ -179,6 +188,11 @@ interface DaemonStats {
   incomingAnnouncements: number;
   incomingMerges: number;
   incomingRejects: number;
+  // T2 (task #430):
+  repairAttempts: number;
+  repairSuccesses: number;
+  repairFailures: number;
+  lastRepairAt: number | null;
 }
 
 /**
@@ -247,6 +261,10 @@ export async function runDaemon(): Promise<void> {
     incomingAnnouncements: 0,
     incomingMerges: 0,
     incomingRejects: 0,
+    repairAttempts: 0,
+    repairSuccesses: 0,
+    repairFailures: 0,
+    lastRepairAt: null,
   };
 
   // T1 (task #429): seen-heads tracking for anti-entropy suppression.
@@ -437,6 +455,61 @@ export async function runDaemon(): Promise<void> {
   }
   scheduleRebroadcast();
 
+  // --- Repair loop (T2, task #430) ---
+  //
+  // Periodically retry any (docId, cid) pair that a prior fetchAndMergeRemoteHead
+  // marked dirty due to a bitswap fetch failure. Simple retry — the fetch
+  // path already handles success (clears dirty) and failure (re-marks).
+  //
+  // NOT a proactive peer-head probe (that's T6 #434 via pop/brain/probe/v1).
+  // Just retries the CIDs we already know we should have. Sufficient for the
+  // 'peer was offline when we first tried to fetch' case which is the primary
+  // T2 motivation.
+  //
+  // Disabled if POP_BRAIN_REPAIR_INTERVAL_MS=0.
+  const repairIntervalMs = (() => {
+    const raw = process.env.POP_BRAIN_REPAIR_INTERVAL_MS;
+    if (raw === undefined) return REPAIR_INTERVAL_MS;
+    const n = parseInt(raw, 10);
+    return Number.isFinite(n) && n >= 0 ? n : REPAIR_INTERVAL_MS;
+  })();
+  async function repairTick(): Promise<void> {
+    const dirty = loadDocDirty();
+    const entries = Object.entries(dirty);
+    if (entries.length === 0) return;
+    stats.lastRepairAt = Date.now();
+    for (const [docId, entry] of entries) {
+      stats.repairAttempts += 1;
+      try {
+        const result = await fetchAndMergeRemoteHead(docId, entry.cid);
+        if (result.action === 'adopt' || result.action === 'merge') {
+          stats.repairSuccesses += 1;
+          log(`repair success doc=${docId} cid=${entry.cid} action=${result.action}`);
+        } else if (result.action === 'skip') {
+          // Already at head — dirty entry was stale. Clear it.
+          stats.repairSuccesses += 1;
+          try {
+            const { clearDocDirty } = require('./brain');
+            clearDocDirty(docId, entry.cid);
+          } catch {}
+          log(`repair cleared-stale doc=${docId} cid=${entry.cid}`);
+        } else {
+          stats.repairFailures += 1;
+          log(`repair still-failing doc=${docId} cid=${entry.cid} reason=${result.reason}`);
+        }
+      } catch (err: any) {
+        stats.repairFailures += 1;
+        log(`repair err doc=${docId} cid=${entry.cid}: ${err.message}`);
+      }
+    }
+  }
+  const repairTimer: NodeJS.Timeout | null =
+    repairIntervalMs > 0
+      ? setInterval(() => {
+          repairTick().catch(err => log(`repair tick err: ${err.message}`));
+        }, repairIntervalMs)
+      : null;
+
   // --- Keepalive loop ---
   //
   // Publish "alive" to the net topic every 20s. This both tags peers and
@@ -529,6 +602,13 @@ export async function runDaemon(): Promise<void> {
           rebroadcastJitter,
           rebroadcastGraceMs,
           lastRebroadcastAt: stats.lastRebroadcastAt,
+          // T2 (task #430) repair stats
+          repairAttempts: stats.repairAttempts,
+          repairSuccesses: stats.repairSuccesses,
+          repairFailures: stats.repairFailures,
+          lastRepairAt: stats.lastRepairAt,
+          repairIntervalMs,
+          dirtyDocs: Object.keys(loadDocDirty()),
           keepaliveCount: stats.keepaliveCount,
           lastKeepaliveAt: stats.lastKeepaliveAt,
           incomingAnnouncements: stats.incomingAnnouncements,
@@ -723,6 +803,7 @@ export async function runDaemon(): Promise<void> {
     shuttingDown = true;
     log(`shutdown signal ${sig}`);
     if (rebroadcastTimer !== null) clearTimeout(rebroadcastTimer);
+    if (repairTimer !== null) clearInterval(repairTimer);
     clearInterval(keepaliveTimer);
     if (redialTimer) clearInterval(redialTimer);
     try { pubsub.removeEventListener('message', keepaliveListener); } catch {}
@@ -749,6 +830,7 @@ export async function runDaemon(): Promise<void> {
 
   log(
     `daemon ready — rebroadcast=${rebroadcastIntervalMs === 0 ? 'disabled' : `${rebroadcastIntervalMs}ms±${Math.round(rebroadcastJitter*100)}% grace=${rebroadcastGraceMs}ms`} ` +
+    `repair=${repairIntervalMs === 0 ? 'disabled' : `${repairIntervalMs}ms`} ` +
     `keepalive=${KEEPALIVE_INTERVAL_MS}ms ` +
     (redialTimer ? `redial=${redialInterval}ms ` : '') +
     `subscribed=${subscribedDocs.size} docs`,
