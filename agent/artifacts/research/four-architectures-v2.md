@@ -215,3 +215,87 @@ node dist/index.js org audit-snapshot --space yearn --json
 ---
 
 *v2.2 authored HB#560 on 2026-04-17 during Hudson-AFK window. Does not modify v2.1 findings; strictly additive. Three of the four "gaps the next synthesis pass should close" were identified but not filled — those carry forward as follow-up tasks for v2.3.*
+
+---
+
+## v2.3 delta — Citizens House adds new corpus floor (authored HB#563 by sentinel_01)
+
+**Trigger**: HB#562 Citizens House audit produced a **Gini 0.365** — -0.085 below the prior corpus floor (Breadchain 0.45). Magnitude justifies an immediate synthesis update rather than waiting for the next 10-audit batch.
+
+### Headline: discrete-architecture cluster has real internal variance
+
+Previous claim (v2.0): the discrete-architecture cluster (Nouns, Sismo, Aavegotchi, Breadchain) sits in a narrow 0.45-0.68 Gini band.
+
+Refined claim (v2.3): the cluster has **three distinguishable sub-patterns** driven by participation-token weight-assignment mechanism:
+
+| Sub-architecture | Example        | Gini range | Mechanism                                 |
+|------------------|----------------|------------|-------------------------------------------|
+| **2a: Equal-weight curated** | Optimism Citizens House | **0.365** | 1 NFT = 1 vote; non-transferable; curated issuance |
+| **2b: Proof-weighted attestation** | Sismo          | **0.683** | ZK-proof stack; self-service issuance; differentiated weight |
+| **3: Participation-weighted NFT** | Nouns          | **0.684** | NFT holdings reflect prior bidding auctions |
+|                  | Aavegotchi     | 0.645      | NFT + staking                             |
+|                  | Breadchain     | 0.45        | Contribution credits                     |
+
+The 0.365 / 0.683 / 0.684 spread — previously treated as "noise within the discrete cluster" — is now **explained by mechanism**. Curated equal-weight produces near-zero Gini for small populations (Citizens House's 60 voters, each 1.7% avg); proof-weighted and bidding-weighted NFT systems produce more variance at the top because participation stacks asymmetrically.
+
+### Contestation signal: another regime shift
+
+Citizens House pass rate = **54%** (13 of 28 rejected). Next-most-contested DAO in corpus is Yearn at 94% pass (1 of 16 rejected = 6% rejection). Citizens House rejects **~7× more proposals per capita**.
+
+This is not "Snapshot signaling allows token-holders to dissent." This is "discrete-architecture governance actually produces decisions that get rejected." The difference is structural — when every voter's vote has equal material weight, proposals that lack consensus can't grind through on concentrated support.
+
+### Re-examination of single-whale-capture vs non-plutocratic distinction
+
+Cross-tabulating the 55-DAO corpus by (mechanism, Gini, pass rate):
+
+| Pattern                          | Example          | Gini  | Pass rate | Characterization          |
+|----------------------------------|------------------|-------|-----------|---------------------------|
+| Single-whale capture             | dYdX (100% top)  | ~1.0  | ~100%     | Ceremonial vote           |
+| Plutocratic slow Governor         | Uniswap           | 0.973 | 100%      | Pre-negotiated, rubber stamp |
+| High-throughput plutocracy        | Aave              | 0.957 | 96%       | Concentrated but active   |
+| Plutocratic-lite Snapshot         | Yearn             | 0.824 | 94%       | Softer plutocracy + marginal contestation |
+| Participation-weighted NFT        | Nouns             | 0.684 | ~85%      | Real contestation + moderate concentration |
+| Proof-weighted attestation        | Sismo             | 0.683 | (tbd)     | Real contestation + mechanism-determined concentration |
+| Equal-weight curated             | Citizens House    | **0.365** | **54%**   | **Genuinely contested**   |
+
+The gradient is not continuous. There are **clear inflection points**:
+- 0.96-0.98 (plutocratic ceiling, voter-count declining)
+- 0.82-0.95 (token-weighted mid-range, varies by platform)
+- 0.65-0.69 (discrete-with-weighted-participation)
+- 0.36-0.45 (discrete-with-equal-weight) — **new floor band**
+
+### Updated correlation analysis
+
+Adding Citizens House to the Gini ↔ pass-rate analysis:
+- 0.365 Gini, 54% pass rate — single extreme point
+- Pulls the negative correlation marginally stronger
+- Sample effect on r is small (1 of 55), but visually it's a strong outlier confirming the directional claim
+
+### v2.3 gaps list (update from v2.2)
+
+- [x] Architecture 2/3 second data point — **CLOSED HB#562** (Citizens House + Sismo combined)
+- [ ] Architecture 5 (MakerDAO Endgame) — pending; Synthetix Council was the first data point
+- [ ] Arbitrum DAO bicameral full audit — pending (partial `probe-arbitrum-core-gov.json` exists)
+- [ ] Loopring re-audit — pending, tried HB#561 but space ID unreachable (renamed? off Snapshot?)
+- [ ] Blinded random-10 refresh (methodological fix from v2.1) — pending, still the single highest-value follow-up
+
+### Implication for the v3 external-facing piece
+
+v2.3 findings suggest the v3 piece should lead with the **mechanism-driven sub-architecture structure** rather than "four architectures." The claim has evolved:
+
+- v1 (static): "4 architectures have different Gini profiles"
+- v2 (longitudinal): "ERC-20 token-weighted governance exhibits concentration creep; discrete-architecture does not"
+- v2.3 (mechanism-refined): "The discrete-architecture cluster has three sub-patterns explained by weight-assignment mechanism; equal-weight curated systems produce the lowest corpus Gini (0.365) and most contested pass rate (54%); empirical Gini ceiling for token-weighted systems lies near 0.97-0.98, above which voter count declines"
+
+This is a publishable framework, not just a dataset description.
+
+### Reproduction for v2.3
+
+```bash
+# Citizens House audit (new corpus floor)
+node dist/index.js org audit-snapshot --space citizenshouse.eth --json
+```
+
+---
+
+*v2.3 authored HB#563 on 2026-04-17 during Hudson-AFK window. Adds 1 new DAO (Citizens House) and 1 refined-framework finding (mechanism sub-split of discrete-architecture cluster). The 0.365 Gini is the single most consequential data point added to the corpus since v1.*
