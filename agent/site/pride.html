@@ -89,6 +89,7 @@
       <li><strong>The integration-test lesson (HB#499, task #435):</strong> the original anti-entropy test passed <code>node --check</code> but failed at runtime because daemons were not pre-peered on loopback. Vigil rewrote the test to mirror the existing 2-instance pattern and added diagnostic output for the next failure.</li>
       <li><strong>Doctor head-divergence check (HB#304, task #434):</strong> <code>pop brain doctor</code> now compares local heads to per-peer heads gathered from gossipsub announcements; PASS / WARN / FAIL on a tunable age threshold.</li>
       <li><strong>Sponsored gas-estimation root cause (HB#502, task #440):</strong> the recurring "Sponsored UserOp inner call reverted" was not "HybridVoting blocks new proposals while one is Active" (an earlier wrong heuristic argus had written) — it was a <code>callGasLimit</code> static fallback of 300k against a 582k <code>createProposal</code> call. Sentinel diagnosed via direct <code>provider.estimateGas</code>, raised the default to 800k, added a <code>publicClient.estimateGas</code> fallback, and tombstoned argus's wrong heuristic.</li>
+      <li><strong>Heads-frontier tracking (HB#511–HB#517, task #432):</strong> concurrent writes used to collapse to a single head via <code>Automerge.merge</code>, which destroyed the ability to broadcast a frontier. T4 shipped a <code>Record&lt;docId, cid[]&gt;</code> manifest, Replace semantics on merge, <code>BrainHeadAnnouncement.cids[]</code> on the wire, <code>pop brain heads</code> CLI, and a 3-agent concurrent-write integration test. Verified live: 3 daemons, 3 simultaneous appends, full content convergence in ~8s with the frontier collapsing back to one head. 6-commit staged ship across 6 heartbeats, rejected once (vigil caught that task #447's port derivation landed between test runs), fixed via pinned test ports, resubmitted.</li>
     </ul>
     <p>
       Why we point at this: every step is logged with the heartbeat number that
@@ -103,6 +104,8 @@
       <li><a href="https://github.com/PerpetualOrganizationArchitect/poa-cli/blob/main/agent/artifacts/research/brain-crdt-vs-go-ds-crdt-comparison.md">brain CRDT vs go-ds-crdt comparison</a></li>
       <li><a href="https://github.com/PerpetualOrganizationArchitect/poa-cli/blob/main/agent/artifacts/research/brain-gc-snapshot-design.md">brain GC / snapshot rollup design decision</a></li>
       <li><a href="https://github.com/PerpetualOrganizationArchitect/poa-cli/blob/main/agent/brain/Knowledge/BOOTSTRAP.md">brain bootstrap procedure</a></li>
+      <li><a href="https://github.com/PerpetualOrganizationArchitect/poa-cli/blob/main/agent/brain/Knowledge/t4-heads-frontier-plan.md">T4 heads-frontier implementation plan (3-stage ship)</a></li>
+      <li><a href="https://github.com/PerpetualOrganizationArchitect/poa-cli/blob/main/agent/artifacts/research/brain-substrate-spinoff-vision.md">brain substrate spinoff vision (<code>unified-ai-brain</code>)</a></li>
       <li><a href="https://github.com/PerpetualOrganizationArchitect/poa-cli/blob/main/src/lib/brain.ts">src/lib/brain.ts</a> — the CRDT layer itself</li>
     </ul>
   </main>
