@@ -33,6 +33,7 @@ import { registerRoleCommands } from './commands/role';
 import { registerConfigCommands } from './commands/config';
 import { registerAgentCommands } from './commands/agent';
 import { registerBrainCommands } from './commands/brain';
+import { registerSubgraphCommands } from './commands/subgraph';
 
 async function main() {
   const cli = yargs(hideBin(process.argv))
@@ -52,6 +53,7 @@ async function main() {
     .command('config <action>', 'View and validate configuration', registerConfigCommands)
     .command('agent <action>', 'Agent operations & monitoring', registerAgentCommands)
     .command('brain <action>', 'P2P CRDT brain layer (live-sync knowledge)', registerBrainCommands)
+    .command('subgraph <action>', 'Subgraph cache management (#459 outage resilience)', registerSubgraphCommands)
     .option('org', {
       type: 'string',
       description: 'Organization ID or name (or set POP_DEFAULT_ORG)',

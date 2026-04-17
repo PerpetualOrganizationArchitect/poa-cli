@@ -9,6 +9,7 @@
 
 import { GraphQLClient } from 'graphql-request';
 import { resolveNetworkConfig, getNetworkNameByChainId, getAllSubgraphUrls } from '../config/networks';
+import { cacheGet, cachePut } from './subgraph-cache';
 
 let clientCache: Map<string, GraphQLClient> = new Map();
 
@@ -66,6 +67,12 @@ export async function query<T = any>(
   const config = resolveNetworkConfig(chainId);
   const effectiveChainId = config.chainId;
 
+  // Task #459: read-through cache. Check cache before any network hit.
+  // Cache only kicks in for queries listed in subgraph-cache.ts TTL policy
+  // (org-level, members, tasks, etc); unknown queries pass through.
+  const cached = cacheGet<T>(effectiveChainId, gqlQuery, variables);
+  if (cached !== null) return cached;
+
   // If already switched to fallback for this chain, use it directly.
   // HB#297: on Gateway "payment required" (GRAPH_API_KEY exhausted), give
   // Primary (Studio) one more shot — its rate-limit may have reset in the
@@ -74,7 +81,9 @@ export async function query<T = any>(
     const fallbackUrl = getFallbackUrl(effectiveChainId);
     if (fallbackUrl) {
       try {
-        return await getClient(fallbackUrl).request<T>(gqlQuery, variables);
+        const result = await getClient(fallbackUrl).request<T>(gqlQuery, variables);
+        cachePut(effectiveChainId, gqlQuery, variables, result);
+        return result;
       } catch (error: any) {
         if (!isPaymentRequired(error)) throw error;
         // Gateway payment-required — retry Primary once before surfacing.
@@ -82,9 +91,18 @@ export async function query<T = any>(
           const result = await getClient(config.resolvedSubgraph).request<T>(gqlQuery, variables);
           // Primary recovered — exit fallback mode so future calls use it first.
           fallbackActive.delete(effectiveChainId);
+          cachePut(effectiveChainId, gqlQuery, variables, result);
           return result;
         } catch (retryErr: any) {
-          // Both down. Surface the more informative of the two.
+          // Both down. Try stale cache before giving up (task #459).
+          if (process.env.POP_SUBGRAPH_CACHE_STALE_ON_ERROR !== '0') {
+            const stale = cacheGet<T>(effectiveChainId, gqlQuery, variables, { ignoreTtl: true });
+            if (stale !== null) {
+              console.error(`[subgraph] both endpoints down — serving stale cache for ${gqlQuery.slice(0, 60).replace(/\s+/g, ' ')}`);
+              return stale;
+            }
+          }
+          // Surface the more informative of the two.
           throw isPaymentRequired(retryErr) || is429(retryErr) ? error : retryErr;
         }
       }
@@ -93,7 +111,9 @@ export async function query<T = any>(
 
   // Try primary (Studio)
   try {
-    return await getClient(config.resolvedSubgraph).request<T>(gqlQuery, variables);
+    const result = await getClient(config.resolvedSubgraph).request<T>(gqlQuery, variables);
+    cachePut(effectiveChainId, gqlQuery, variables, result);
+    return result;
   } catch (error: any) {
     if (!is429(error)) throw error;
 
@@ -103,8 +123,21 @@ export async function query<T = any>(
 
     fallbackActive.add(effectiveChainId);
     try {
-      return await getClient(fallbackUrl).request<T>(gqlQuery, variables);
+      const result = await getClient(fallbackUrl).request<T>(gqlQuery, variables);
+      cachePut(effectiveChainId, gqlQuery, variables, result);
+      return result;
     } catch (fbErr: any) {
+      // Both endpoints down. Try stale cache before surfacing the error
+      // (task #459 — addresses the 2026-04-17 5h outage).
+      if (isPaymentRequired(fbErr) || is429(fbErr)) {
+        if (process.env.POP_SUBGRAPH_CACHE_STALE_ON_ERROR !== '0') {
+          const stale = cacheGet<T>(effectiveChainId, gqlQuery, variables, { ignoreTtl: true });
+          if (stale !== null) {
+            console.error(`[subgraph] both endpoints down — serving stale cache for ${gqlQuery.slice(0, 60).replace(/\s+/g, ' ')}`);
+            return stale;
+          }
+        }
+      }
       // HB#297: Gateway also broken (payment required). Surface the
       // specific outage class to the operator — generic 'request failed'
       // hides whether it's infra or code. Caller can then decide whether
