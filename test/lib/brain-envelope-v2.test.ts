@@ -6,6 +6,9 @@ import {
   canonicalMessageV2,
   unwrapChangeBytesV2,
   computePriorityV2,
+  packChanges,
+  unpackChanges,
+  extractDeltaChanges,
   BrainChangeEnvelopeV2,
 } from '../../src/lib/brain-envelope-v2';
 
@@ -148,6 +151,82 @@ describe('brain-envelope-v2', () => {
     it('returns max(parent.priority) + 1', () => {
       expect(computePriorityV2([{ priority: 3 }])).toBe(4);
       expect(computePriorityV2([{ priority: 5 }, { priority: 2 }, { priority: 7 }])).toBe(8);
+    });
+  });
+
+  describe('packChanges / unpackChanges', () => {
+it('round-trips empty array', () => {
+      const packed = packChanges([]);
+      expect(packed.length).toBe(0);
+      expect(unpackChanges(packed)).toEqual([]);
+    });
+
+    it('round-trips a single change', () => {
+      const ch = new Uint8Array([1, 2, 3, 4, 5]);
+      const packed = packChanges([ch]);
+      expect(packed.length).toBe(4 + 5);
+      const recovered = unpackChanges(packed);
+      expect(recovered.length).toBe(1);
+      expect(Array.from(recovered[0])).toEqual([1, 2, 3, 4, 5]);
+    });
+
+    it('round-trips multiple changes preserving order', () => {
+      const a = new Uint8Array([0xa, 0xb]);
+      const b = new Uint8Array([0xc, 0xd, 0xe]);
+      const c = new Uint8Array([0xf]);
+      const recovered = unpackChanges(packChanges([a, b, c]));
+      expect(recovered.length).toBe(3);
+      expect(Array.from(recovered[0])).toEqual([0xa, 0xb]);
+      expect(Array.from(recovered[1])).toEqual([0xc, 0xd, 0xe]);
+      expect(Array.from(recovered[2])).toEqual([0xf]);
+    });
+
+    it('returned slices do not share memory with input', () => {
+      const ch = new Uint8Array([0xff, 0xfe]);
+      const packed = packChanges([ch]);
+      const [recovered] = unpackChanges(packed);
+      // Mutate the recovered buffer; original packed bytes should be unchanged.
+      recovered[0] = 0;
+      const [reRecovered] = unpackChanges(packed);
+      expect(reRecovered[0]).toBe(0xff);
+    });
+
+    it('rejects truncated length prefix', () => {
+      const malformed = new Uint8Array([0, 0]); // 2 bytes, less than 4-byte prefix
+      expect(() => unpackChanges(malformed)).toThrow(/truncated length prefix/);
+    });
+
+    it('rejects length prefix exceeding buffer', () => {
+      // length prefix says 100 bytes follow, but only 2 bytes remain
+      const malformed = new Uint8Array([0, 0, 0, 100, 0xab, 0xcd]);
+      expect(() => unpackChanges(malformed)).toThrow(/exceeds buffer/);
+    });
+  });
+
+  describe('extractDeltaChanges', () => {
+    it('returns all changes when before is undefined (genesis)', () => {
+      const fakeAutomerge = {
+        getAllChanges: (doc: any) => doc.changes as Uint8Array[],
+        decodeChange: (c: Uint8Array) => ({ hash: c[0].toString(16) }),
+      };
+      const after = { changes: [new Uint8Array([0x1]), new Uint8Array([0x2])] };
+const delta = extractDeltaChanges(undefined, after, fakeAutomerge);
+      expect(delta.length).toBe(2);
+    });
+
+    it('returns only changes not in before (set difference by hash)', () => {
+      const fakeAutomerge = {
+        getAllChanges: (doc: any) => doc.changes as Uint8Array[],
+        decodeChange: (c: Uint8Array) => ({ hash: c[0].toString(16) }),
+      };
+      const before = { changes: [new Uint8Array([0x1]), new Uint8Array([0x2])] };
+      const after = {
+        changes: [new Uint8Array([0x1]), new Uint8Array([0x2]), new Uint8Array([0x3]), new Uint8Array([0x4])],
+      };
+const delta = extractDeltaChanges(before, after, fakeAutomerge);
+      expect(delta.length).toBe(2);
+      expect(delta[0][0]).toBe(0x3);
+      expect(delta[1][0]).toBe(0x4);
     });
   });
 });

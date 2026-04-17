@@ -181,6 +181,102 @@ export function unwrapChangeBytesV2(envelope: BrainChangeEnvelopeV2): Uint8Array
   return hexToBytes(envelope.changes);
 }
 
+// ---------------------------------------------------------------------------
+// Encoder + decoder building blocks (Automerge-aware, schema-agnostic).
+// ---------------------------------------------------------------------------
+//
+// extractDeltaChanges + packChanges + unpackChanges are the lower half of the
+// v2 wire format: take two Automerge doc states, produce the byte payload the
+// envelope wraps; or take a payload, recover the change array for
+// applyChanges. These functions are PURE — no IPFS, no signing, no I/O —
+// suitable for direct unit testing.
+//
+// Wire format for `envelope.changes`:
+//   length-prefixed concatenation. Each change is laid out as:
+//     [4-byte big-endian uint32 length][change bytes]...
+//   No magic number on the outer payload — version isolation comes from the
+//   envelope's `v: 2` field. Decoder validates each change's length prefix
+//   does not run past the buffer end.
+//
+// Why not single-buffer concat with Automerge's internal change-magic-number
+// detection: Automerge change format includes a magic prefix per change, so a
+// concat is technically parseable, but length-prefixing is robust to library
+// updates that might add wrapping bytes between changes. Cost: 4 bytes per
+// change. For our scale (typically 1 change per write) this is negligible.
+
+type AutomergeDoc = any; // Automerge typing changes across versions; treat opaque.
+
+/**
+ * Compute the Automerge changes added by `after` that are not in `before`.
+ *
+ * If `before` is undefined (first write after genesis), returns all changes
+ * in `after`. Order matches Automerge's getAllChanges output (causally
+ * dependency-respecting).
+ */
+export function extractDeltaChanges(
+  before: AutomergeDoc | undefined,
+  after: AutomergeDoc,
+  Automerge: { getAllChanges: (doc: AutomergeDoc) => Uint8Array[];
+               decodeChange: (c: Uint8Array) => { hash: string } },
+): Uint8Array[] {
+  const allAfter = Automerge.getAllChanges(after);
+  if (!before) return allAfter;
+  const beforeHashes = new Set(
+    Automerge.getAllChanges(before).map(c => Automerge.decodeChange(c).hash),
+  );
+  return allAfter.filter(c => !beforeHashes.has(Automerge.decodeChange(c).hash));
+}
+
+/**
+ * Pack an array of Automerge change buffers into a single byte payload using
+ * length-prefixed concatenation. The output is what goes into the envelope's
+ * `changes` field (after hex-encoding).
+ *
+ * Bytes per change in the output: 4 (length prefix) + change.length.
+ */
+export function packChanges(changes: readonly Uint8Array[]): Uint8Array {
+  let totalLen = 0;
+  for (const c of changes) totalLen += 4 + c.length;
+  const out = new Uint8Array(totalLen);
+  const view = new DataView(out.buffer, out.byteOffset, out.byteLength);
+  let offset = 0;
+  for (const c of changes) {
+    view.setUint32(offset, c.length, false); // big-endian
+    offset += 4;
+    out.set(c, offset);
+    offset += c.length;
+  }
+  return out;
+}
+
+/**
+ * Unpack the bytes from `packChanges` back into the original array.
+ * Validates that each length prefix does not run past the buffer end —
+ * malformed input throws rather than returning truncated changes.
+ */
+export function unpackChanges(packed: Uint8Array): Uint8Array[] {
+  const out: Uint8Array[] = [];
+  const view = new DataView(packed.buffer, packed.byteOffset, packed.byteLength);
+  let offset = 0;
+  while (offset < packed.length) {
+    if (offset + 4 > packed.length) {
+      throw new Error(`unpackChanges: truncated length prefix at offset ${offset}`);
+    }
+    const len = view.getUint32(offset, false);
+    offset += 4;
+    if (offset + len > packed.length) {
+      throw new Error(
+        `unpackChanges: change at offset ${offset - 4} claims length ${len}, exceeds buffer (${packed.length - offset} bytes remaining)`,
+      );
+    }
+    // Slice (not subarray) so the returned arrays don't share backing memory
+    // with the input — defensively safer for downstream Automerge calls.
+    out.push(packed.slice(offset, offset + len));
+    offset += len;
+  }
+  return out;
+}
+
 /**
  * Compute the priority of a new envelope from its parent envelopes.
  * Priority = max(parent.priority) + 1; if no parents (first write after
