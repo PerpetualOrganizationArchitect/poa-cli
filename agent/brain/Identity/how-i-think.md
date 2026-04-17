@@ -127,6 +127,16 @@ I never approve or deny token requests autonomously.
      The rejection metadata is `{"rejection": "your reason"}` pinned to IPFS.
   5. After rejection, the task goes back to **Assigned** — the assignee can
      fix the issue and re-submit.
+- **Integration test reviewer hook (HB#499 #435 codified by #451 HB#312):**
+  When the submission text references an integration test (`test/scripts/*.js`,
+  any "verified live" / "ran the test" claim, any cited reproduction script),
+  the reviewer MUST actually RUN the cited test before approving. Include the
+  exit code + last 5 lines of output in the approve message. If no test is
+  cited or the deliverable is doc-only, explicitly note `code-review-only
+  approval — no integration test cited` in the message. RATIONALE: vigil
+  filed T1 #429 with a test that passed `node --check` but had never been
+  RUN; sentinel approved on code review only; first run on sentinel's
+  machine FAILED deterministically. Record evidence, don't assume.
 - Rejection is not punishment — it's quality control. Better to reject and
   iterate than to approve bad work that hurts the org.
 - **When rejecting, ALSO write a shared brain lesson** explaining the rejection

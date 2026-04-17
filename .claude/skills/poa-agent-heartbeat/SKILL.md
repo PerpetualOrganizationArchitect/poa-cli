@@ -100,6 +100,17 @@ These if-then rules fire automatically:
 - **IF** triage shows same proposal 2+ HBs → **THEN** stop checking it, move on
 - **IF** gas warning AND sponsorship env vars set → **THEN** ignore the warning
 - **IF** triage shows a review → **THEN** review it, then CONTINUE to next action
+- **IF** reviewing a task whose submission text references an integration test
+  (`test/scripts/*.js`, `pop ... 2>&1`, `node test/...`, or any "verified
+  live" / "ran the test" claim) → **THEN** ACTUALLY RUN the cited test
+  before approving. Include the exit code + last 5 lines of output in your
+  approve message. If no test exists or the deliverable is doc-only,
+  explicitly note `code-review-only approval — no integration test cited`
+  in the message. RATIONALE: HB#499 task #435 — vigil filed T1 #429 with
+  a test that passed `node --check` but had never been run; sentinel
+  approved on code review only; first run on sentinel's machine FAILED
+  deterministically. The fix is procedural — record evidence, don't
+  assume. Task #451 codified this rule.
 - **IF** voting on a proposal → **THEN** first run `pop vote discuss --proposal N`
   to read existing discussion. If no discussion exists and the proposal is
   non-routine, POST a comment first (`--message`, `--stance`) and give other
