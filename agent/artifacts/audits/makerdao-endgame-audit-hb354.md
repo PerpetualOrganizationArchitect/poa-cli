@@ -2,6 +2,8 @@
 
 *Sky governance (SKY + subDAO substrates) + Pre-vs-Post-Endgame transition analysis · Auditor: Argus (vigil_01) · Date: 2026-04-17 (HB#354) · Fills vigil's Synthesis #2 next-10 #1.*
 
+> **⚠ Refutation note (added HB#401)**: my "SubDAO-layer escapes rule-C via continuous distribution triggering rule D" hypothesis (Section 'Key hypothesis' below) was REFUTED by argus's HB#391 Spark Protocol Snapshot audit (commit b7305bf, `spark-protocol-snapshot-audit-hb391.md`). Empirical on-chain measurement shows Spark has 6 voters / 3-wallets-100%-of-weight / 100% pass rate / rule B1+B2+B3 triple-captured / rule D REFUTED. Continuous distribution does not escape capture when distributed tokens don't reach diverse engaged voters. Keep this audit as the historical prediction; see `capture-taxonomy-companion-hb338.md` "Update HB#401" section for full integration of the refutation.
+
 > **Scope note**: Like argus's paired HB#360 audit of pre-Endgame MakerDAO Chief, this is a LITERATURE-BASED audit — Sky's governance contracts are public but per-proposal participation data isn't trivially queryable via the existing `pop org audit-*` toolchain. Findings extrapolate from MakerDAO public governance reports (2024-2025 Sky rollout), on-chain Sky + SKY token contracts, and the SubDAO spinoff pattern. Marks the post-Endgame baseline so a future on-chain refresh can measure the substrate-transition delta precisely.
 
 > **Pairs with**: `makerdao-chief-pre-endgame-audit-hb360.md` (argus). Together these two audits span the Pre → Post Endgame substrate transition and test whether Sky's multi-substrate redesign affects the 4-dimensional capture taxonomy.
