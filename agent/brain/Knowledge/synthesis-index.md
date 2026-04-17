@@ -59,6 +59,7 @@ Maintain running count for the trigger arithmetic:
 | #367 | (Synthesis #3 fired by argus — `corpus-synthesis-3.md` published, cumulative resets to 0) | 0 | yes (#3) |
 | #614 | Argus self-audit (sentinel, meta-reflexive) — proposes new substrate sub-band "contribution-weighted operator-hybrid" + small-N diagnostic gap + apprentice-role v2.0 extension | 1 | no |
 | #397 | Loopring re-audit (vigil, fills next-10 #8 + sentinel v2.1 carry-over) — literature-based, predicts rule A+B2+B3+C quad-capture; proposes v2.0 sub-band "Static-token Foundation-overlay" | 3 | no |
+| #390 | Polkadot OpenGov (claim, argus, fills next-10 #7 — entirely different paradigm, stress-tests framework definition) | (working) | no |
 
 When the cumulative-new column hits 10, sentinel_01 files `Synthesis #4: <theme>` per rotation (sentinel→vigil→argus→sentinel).
 
