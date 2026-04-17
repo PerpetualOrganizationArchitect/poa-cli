@@ -63,9 +63,89 @@ export interface DschiefAuditResult {
   contract: string;
   chainId: number;
   scanWindow: { fromBlock: number; toBlock: number };
-  /** Placeholder for Phase 2. Will contain: voters[], top-N by weight, gini, etc. */
   status: 'scaffold' | 'partial' | 'complete';
   note?: string;
+  /** Phase 2 measured fields (undefined when status=scaffold). */
+  totalVoters?: number;
+  currentlyLocked?: number; // MKR units as a plain number (converted from wei via /1e18)
+  top5Voters?: Array<{ address: string; lockedMkr: number; sharePct: number }>;
+  top1Share?: number;
+  top5Share?: number;
+  gini?: number;
+  rawLockEvents?: number;
+  rawFreeEvents?: number;
+}
+
+/**
+ * Aggregate LogLock/LogFree into net per-voter MKR weight.
+ * Returns a Map<address, lockedMkrAsPlainNumber>.
+ * Exported for unit testing.
+ */
+export function aggregateLockEvents(
+  locks: Array<{ voter: string; amount: bigint }>,
+  frees: Array<{ voter: string; amount: bigint }>,
+): Map<string, number> {
+  const weiPerMkr = 10n ** 18n;
+  const net = new Map<string, bigint>();
+  for (const l of locks) {
+    const prev = net.get(l.voter.toLowerCase()) ?? 0n;
+    net.set(l.voter.toLowerCase(), prev + l.amount);
+  }
+  for (const f of frees) {
+    const prev = net.get(f.voter.toLowerCase()) ?? 0n;
+    net.set(f.voter.toLowerCase(), prev - f.amount);
+  }
+  const result = new Map<string, number>();
+  for (const [voter, wei] of net) {
+    // Clamp to 0 (non-negative) — event-source ordering could go slightly negative on partial scans.
+    const clamped = wei > 0n ? wei : 0n;
+    // Convert wei → MKR (divide by 1e18), keeping 2 decimals of precision
+    const mkrTimes100 = clamped / (weiPerMkr / 100n);
+    result.set(voter, Number(mkrTimes100) / 100);
+  }
+  return result;
+}
+
+/**
+ * Compute Gini coefficient over weights.
+ * Gini = 0 (perfect equality) to 1 (perfect inequality).
+ * Returns 0 for empty or single-holder sets.
+ */
+export function computeGini(weights: number[]): number {
+  const positive = weights.filter((w) => w > 0);
+  if (positive.length < 2) return 0;
+  const sorted = [...positive].sort((a, b) => a - b);
+  const n = sorted.length;
+  let sumTimesRank = 0;
+  let totalSum = 0;
+  for (let i = 0; i < n; i++) {
+    sumTimesRank += (i + 1) * sorted[i];
+    totalSum += sorted[i];
+  }
+  if (totalSum === 0) return 0;
+  return (2 * sumTimesRank) / (n * totalSum) - (n + 1) / n;
+}
+
+/**
+ * Derive top-N by weight + aggregate shares.
+ * Exported for unit testing.
+ */
+export function deriveTopVoters(
+  weights: Map<string, number>,
+  topN: number = 5,
+): { top: Array<{ address: string; lockedMkr: number; sharePct: number }>; top1Share: number; top5Share: number } {
+  const entries = Array.from(weights.entries())
+    .filter(([, w]) => w > 0)
+    .sort(([, a], [, b]) => b - a);
+  const total = entries.reduce((acc, [, w]) => acc + w, 0);
+  const top = entries.slice(0, topN).map(([address, lockedMkr]) => ({
+    address,
+    lockedMkr,
+    sharePct: total > 0 ? (lockedMkr / total) * 100 : 0,
+  }));
+  const top1Share = top.length > 0 ? top[0].sharePct : 0;
+  const top5Share = top.slice(0, 5).reduce((acc, v) => acc + v.sharePct, 0);
+  return { top, top1Share, top5Share };
 }
 
 export const auditDschiefHandler = {
@@ -112,23 +192,69 @@ export const auditDschiefHandler = {
         throw new Error(`--from-block (${fromBlock}) must be <= --to-block (${toBlock}).`);
       }
 
+      // Phase 2 (HB#403): real event-scan via queryFilter. Large ranges chunked to
+      // respect public RPC caps (most Ethereum providers cap at 50k blocks per
+      // eth_getLogs; a full 500k-block scan needs 10 chunks).
+      const contract = new ethers.Contract(argv.address, DSCHIEF_ABI, provider);
+      const MAX_RANGE = 49_000;
+      const locks: Array<{ voter: string; amount: bigint }> = [];
+      const frees: Array<{ voter: string; amount: bigint }> = [];
+      for (let start = fromBlock; start <= toBlock; start += MAX_RANGE) {
+        const end = Math.min(start + MAX_RANGE - 1, toBlock);
+        spin.text = `Scanning DSChief events ${start}..${end}...`;
+        const [lockEvts, freeEvts] = await Promise.all([
+          contract.queryFilter(contract.filters.LogLock(), start, end).catch(() => [] as any[]),
+          contract.queryFilter(contract.filters.LogFree(), start, end).catch(() => [] as any[]),
+        ]);
+        for (const e of lockEvts) {
+          const args = (e as any).args;
+          if (args) locks.push({ voter: String(args.voter ?? args[0]), amount: BigInt(String(args.amount ?? args[1])) });
+        }
+        for (const e of freeEvts) {
+          const args = (e as any).args;
+          if (args) frees.push({ voter: String(args.voter ?? args[0]), amount: BigInt(String(args.amount ?? args[1])) });
+        }
+      }
+
+      const weights = aggregateLockEvents(locks, frees);
+      const { top, top1Share, top5Share } = deriveTopVoters(weights, 5);
+      const activeVoters = Array.from(weights.entries()).filter(([, w]) => w > 0);
+      const gini = computeGini(activeVoters.map(([, w]) => w));
+      const currentlyLocked = activeVoters.reduce((acc, [, w]) => acc + w, 0);
+
       const result: DschiefAuditResult = {
         contract: argv.address,
         chainId,
         scanWindow: { fromBlock, toBlock },
-        status: 'scaffold',
-        note: 'HB#402 scaffold — event-scan + Gini computation deferred to HB#403+ follow-up. Task #472 claimed; Phase 2 pending.',
+        status: 'complete',
+        totalVoters: activeVoters.length,
+        currentlyLocked: Math.round(currentlyLocked * 100) / 100,
+        top5Voters: top,
+        top1Share: Math.round(top1Share * 100) / 100,
+        top5Share: Math.round(top5Share * 100) / 100,
+        gini: Math.round(gini * 1000) / 1000,
+        rawLockEvents: locks.length,
+        rawFreeEvents: frees.length,
       };
 
       spin.stop();
       if (argv.json) {
         output.json(result);
       } else {
-        output.info(`DSChief audit scaffold ready for ${argv.address}`);
-        output.info(`  chain: ${chainId}`);
-        output.info(`  scan window: blocks ${fromBlock}..${toBlock} (${toBlock - fromBlock} blocks)`);
-        output.info(`  status: ${result.status}`);
-        output.info(`  note: ${result.note}`);
+        output.info(`DSChief audit — ${argv.address}`);
+        output.info(`  chain ${chainId}, scan window ${fromBlock}..${toBlock} (${toBlock - fromBlock} blocks)`);
+        output.info(`  raw events: ${locks.length} LogLock + ${frees.length} LogFree`);
+        output.info(`  active voters (positive net MKR): ${activeVoters.length}`);
+        output.info(`  currently locked: ${result.currentlyLocked} MKR`);
+        output.info(`  Gini (voter weights): ${result.gini}`);
+        output.info(`  top-1 share: ${result.top1Share}%`);
+        output.info(`  top-5 share: ${result.top5Share}%`);
+        if (top.length > 0) {
+          output.info(`  top 5 voters:`);
+          for (const v of top) {
+            output.info(`    ${v.address.slice(0, 10)}... — ${v.lockedMkr} MKR (${Math.round(v.sharePct * 100) / 100}%)`);
+          }
+        }
       }
     } catch (err: any) {
       spin.stop();
