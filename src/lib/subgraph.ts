@@ -41,6 +41,19 @@ function is429(error: any): boolean {
 }
 
 /**
+ * Task #447-adjacent resilience (HB#297): Gateway returns "payment required"
+ * when the GRAPH_API_KEY is exhausted (quota or billing). This is distinct
+ * from 429 rate-limit; the Gateway itself is not overloaded, the auth is
+ * the problem. When this happens AND we're on the Gateway fallback, we
+ * should give Primary (Studio) another try — its rate-limit may have
+ * reset while we were bouncing off Gateway.
+ */
+function isPaymentRequired(error: any): boolean {
+  const msg = error?.message || error?.response?.error || '';
+  return msg.includes('payment required');
+}
+
+/**
  * Query a subgraph on the specified chain.
  * Uses Studio (free) first, falls back to Gateway on 429.
  */
@@ -52,11 +65,28 @@ export async function query<T = any>(
   const config = resolveNetworkConfig(chainId);
   const effectiveChainId = config.chainId;
 
-  // If already switched to fallback for this chain, use it directly
+  // If already switched to fallback for this chain, use it directly.
+  // HB#297: on Gateway "payment required" (GRAPH_API_KEY exhausted), give
+  // Primary (Studio) one more shot — its rate-limit may have reset in the
+  // interval. If Primary still 429s, the original fallback error bubbles.
   if (fallbackActive.has(effectiveChainId)) {
     const fallbackUrl = getFallbackUrl(effectiveChainId);
     if (fallbackUrl) {
-      return getClient(fallbackUrl).request<T>(gqlQuery, variables);
+      try {
+        return await getClient(fallbackUrl).request<T>(gqlQuery, variables);
+      } catch (error: any) {
+        if (!isPaymentRequired(error)) throw error;
+        // Gateway payment-required — retry Primary once before surfacing.
+        try {
+          const result = await getClient(config.resolvedSubgraph).request<T>(gqlQuery, variables);
+          // Primary recovered — exit fallback mode so future calls use it first.
+          fallbackActive.delete(effectiveChainId);
+          return result;
+        } catch (retryErr: any) {
+          // Both down. Surface the more informative of the two.
+          throw isPaymentRequired(retryErr) || is429(retryErr) ? error : retryErr;
+        }
+      }
     }
   }
 
@@ -71,7 +101,24 @@ export async function query<T = any>(
     if (!fallbackUrl) throw error; // no fallback configured
 
     fallbackActive.add(effectiveChainId);
-    return getClient(fallbackUrl).request<T>(gqlQuery, variables);
+    try {
+      return await getClient(fallbackUrl).request<T>(gqlQuery, variables);
+    } catch (fbErr: any) {
+      // HB#297: Gateway also broken (payment required). Surface the
+      // specific outage class to the operator — generic 'request failed'
+      // hides whether it's infra or code. Caller can then decide whether
+      // to retry, wait, or pivot to subgraph-independent paths (brain
+      // layer, git).
+      if (isPaymentRequired(fbErr)) {
+        throw new Error(
+          `Both subgraphs are down: Primary (Studio) rate-limited (429) AND Fallback (Gateway) payment-required. ` +
+          `Wait for rate-limit reset OR rotate GRAPH_API_KEY. ` +
+          `For subgraph-independent work, use 'pop brain' commands or direct git. ` +
+          `(Original Primary err: ${error.message?.slice(0, 120)})`
+        );
+      }
+      throw fbErr;
+    }
   }
 }
 
