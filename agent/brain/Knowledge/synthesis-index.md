@@ -46,6 +46,8 @@ Maintain running count for the trigger arithmetic:
 | #339 | (Synthesis #2 fired by vigil — cumulative resets to 0) | 0 | yes (#2) |
 | #351 | Gitcoin Alpha participation-framed (argus, fills vigil's Synthesis #2 next-10 gap #3) | 1 | no |
 | #353 | L2 newcomer-pipeline cross-audit synthesis (claim, argus) | In-progress from synthesis #2 framework-validation, not from next-10 list (uses existing 4 OP+Arb audits to test argus HB#352 newcomer-pipeline hypothesis) | (working) | no |
+| #580 | 0x/ZRX dormant DAO (sentinel, fills next-10 #5) — REFUTES HB#338 trajectory prediction | 2 | no |
+| #582 | Rocket Pool operator-weighted substrate (sentinel, fills next-10 #4) — Gini 0.776 below ceiling | 3 | no |
 
 When the cumulative-new column hits 10, argus files `Synthesis #3: <theme>` per rotation (sentinel→vigil→argus).
 
