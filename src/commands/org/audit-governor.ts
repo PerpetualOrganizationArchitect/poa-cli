@@ -21,6 +21,8 @@ interface AuditGovernorArgs {
   address: string;
   chain?: number;
   blocks?: number;
+  fromBlock?: number;
+  toBlock?: number;
   pin?: boolean;
   rpc?: string;
 }
@@ -28,7 +30,9 @@ interface AuditGovernorArgs {
 export const auditGovernorHandler = {
   builder: (yargs: Argv) => yargs
     .option('address', { type: 'string', demandOption: true, describe: 'Governor contract address' })
-    .option('blocks', { type: 'number', default: 500000, describe: 'Number of blocks to scan for events' })
+    .option('blocks', { type: 'number', default: 500000, describe: 'Number of blocks to scan back from head (ignored if --from-block is set)' })
+    .option('from-block', { type: 'number', describe: 'Explicit start block (overrides --blocks). Useful on high-throughput L2s where "last N blocks" is a short time window.' })
+    .option('to-block', { type: 'number', describe: 'Explicit end block (defaults to current head). Pair with --from-block for a specific historical range.' })
     .option('pin', { type: 'boolean', default: false, describe: 'Pin report to IPFS' }),
 
   handler: async (argv: ArgumentsCamelCase<AuditGovernorArgs>) => {
@@ -70,7 +74,19 @@ export const auditGovernorHandler = {
       // Fetch events — chunk into smaller ranges to avoid RPC block limits (50K for public RPCs)
       spin.text = 'Scanning proposal events...';
       const currentBlock = await provider.getBlockNumber();
-      const fromBlock = Math.max(0, currentBlock - (argv.blocks as number));
+      // Range resolution: --from-block/--to-block override the relative --blocks window.
+      // Rationale: high-throughput L2s (Arbitrum ~0.25s/block) make "last N blocks" a short
+      // wall-clock window where governor proposals may not have occurred. Callers who know
+      // when a DAO was active can point an explicit range. Added for task #467 (HB#570).
+      const toBlock = argv.toBlock !== undefined
+        ? Math.min(argv.toBlock as number, currentBlock)
+        : currentBlock;
+      const fromBlock = argv.fromBlock !== undefined
+        ? Math.max(0, argv.fromBlock as number)
+        : Math.max(0, toBlock - (argv.blocks as number));
+      if (fromBlock > toBlock) {
+        throw new Error(`--from-block (${fromBlock}) must be <= --to-block (${toBlock}).`);
+      }
       const MAX_RANGE = 49_000; // stay under common 50K block limit
 
       async function chunkedQuery(filter: any, from: number, to: number): Promise<any[]> {
@@ -88,10 +104,10 @@ export const auditGovernorHandler = {
       }
 
       const [createdEvents, executedEvents, canceledEvents, voteEvents] = await Promise.all([
-        chunkedQuery(governor.filters.ProposalCreated(), fromBlock, currentBlock),
-        chunkedQuery(governor.filters.ProposalExecuted(), fromBlock, currentBlock),
-        chunkedQuery(governor.filters.ProposalCanceled(), fromBlock, currentBlock),
-        chunkedQuery(governor.filters.VoteCast(), fromBlock, currentBlock),
+        chunkedQuery(governor.filters.ProposalCreated(), fromBlock, toBlock),
+        chunkedQuery(governor.filters.ProposalExecuted(), fromBlock, toBlock),
+        chunkedQuery(governor.filters.ProposalCanceled(), fromBlock, toBlock),
+        chunkedQuery(governor.filters.VoteCast(), fromBlock, toBlock),
       ]);
 
       const totalProposals = createdEvents.length;
