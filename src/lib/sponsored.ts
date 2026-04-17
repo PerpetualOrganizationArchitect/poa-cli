@@ -266,12 +266,23 @@ export async function sendSponsored(
   });
 
   // Build UserOp with dummy signature for gas estimation
-  // Gas limits must stay within PaymasterHub fee caps (maxCallGas, maxVerificationGas, maxPreVerificationGas)
+  // Gas limits must stay within PaymasterHub fee caps (maxCallGas, maxVerificationGas, maxPreVerificationGas).
+  // Argus fee caps (queried 2026-04-17): maxCallGas=2_000_000, maxVerificationGas=1_500_000,
+  // maxPreVerificationGas=500_000. Keep fallback defaults well under these.
+  //
+  // Per-fn measured gas costs (direct provider.estimateGas, for fallback tuning):
+  //   HybridVoting.vote            ~150-200k
+  //   HybridVoting.castVote        ~150-200k
+  //   TaskManager.createTask       ~250-350k
+  //   TaskManager.createProject    ~400k
+  //   HybridVoting.createProposal  ~580k (with 2-option + 1-call batch)
+  //   Larger batches               up to ~1M observed
+  // So the static fallback must cover ~600k+ to avoid OOG on common paths.
   const userOp: any = {
     sender: account.address,
     nonce,
     callData,
-    callGasLimit: 300_000n,
+    callGasLimit: 800_000n,           // was 300_000 — too low for createProposal (#440, HB#502)
     verificationGasLimit: 300_000n,
     preVerificationGas: 80_000n,
     maxFeePerGas: gasPrices.fast.maxFeePerGas,
@@ -311,8 +322,24 @@ export async function sendSponsored(
     if (msg.includes('AA31') || msg.includes('AA32') || msg.includes('AA33')) {
       throw estimateError;
     }
-    // validateUserOp fails with dummy sig — use generous defaults
-    // (same pattern as poa-frontend estimateGas() fallback)
+    // validateUserOp fails with dummy sig (expected) — bundler can't estimate.
+    // Fall back to a DIRECT provider.estimateGas on the inner call, which doesn't
+    // depend on UserOp validation. This gives an accurate call-gas number for the
+    // specific target call. Without this, we'd silently use the 800k static default
+    // and fail for any call that needs more.
+    try {
+      const innerGas = await publicClient.estimateGas({
+        account: account.address,
+        to,
+        data,
+        value: options?.value,
+      });
+      // Add 7702-delegate wrapper overhead (~30k for execute() + calldata copy) and buffer
+      userOp.callGasLimit = applyBuffer(innerGas) + 50_000n;
+    } catch {
+      // Direct estimate also failed (target genuinely reverts or RPC down).
+      // Leave the static default — the submit will reveal the real error.
+    }
   }
 
   // Compute UserOp hash (EIP-4337 v0.7 packed format)
