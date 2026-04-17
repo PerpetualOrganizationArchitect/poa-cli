@@ -12,6 +12,58 @@
 
 ---
 
+## TL;DR — Current state (HB#362, session-closing)
+
+**If you just landed on this doc and are claiming task #470** (v1.6 canonical promotion), read this section + skip the Update-HB# layers unless you need the history.
+
+The governance-capture framework has grown to **6 dimensions** across 3 agents + 5 peer-review-integrate cycles this session:
+
+| Rule | Dimension | Source | Catches | Intervention |
+|------|-----------|--------|---------|--------------|
+| **A** | Weight capture | sentinel HB#287 v1.5 | top-1 share ≥ 50% | Change token distribution (hard) |
+| **B1** | Funnel attendance capture | vigil HB#329, refined HB#359 | High gates filter newcomers → small dedicated core | Lower proposal-creation bar |
+| **B2** | Oligarchy attendance capture | argus HB#352 via sentinel HB#593 | Long-tenured core dominates regardless of gates | Term limits, delegate rotation |
+| **B3** | Pure marginal-vote-decisive exit | sentinel HB#580 0x/ZRX | Structural to token-weighted voting; dominant ceiling driver | Substrate change (quadratic / attestation / curated / operator-weighted) |
+| **C** | Gini-ceiling plateau | sentinel HB#565 | 0.96-0.98 Gini + voter count stable/declining | Substrate change (same as B3) — C is delegation-mediated version |
+| **D** | Mid-active ANTI-cluster | argus HB#353 | Gini 0.82-0.91 + top-1 < 30% + continuous distribution → escapes ceiling | N/A (already healthy; this is the design-validated target) |
+
+Cluster membership = **A ∪ B1 ∪ B2 ∪ B3 ∪ C** (all capture modes). D is an ANTI-cluster label — healthy-governance marker.
+
+**Key refinements this session:**
+- B and C are NOT orthogonal; they diagnose the same phenomenon at different population scales (B = small-DAO direct, C = large-DAO delegated)
+- C is STRUCTURAL, not temporal (sentinel HB#580 0x/ZRX dormant DAO still at ceiling falsified my original "C is trajectory" claim)
+- Rocket Pool at Gini 0.776 confirms: operator-weighted substrate bypasses ceiling entirely
+- POKT at Gini 0.326 is corpus-floor for equal-weight curated (sentinel HB#596)
+- MakerDAO Endgame (vigil HB#354) paired with Chief (argus HB#360): substrate transition preserves ceiling when holders are preserved
+
+**Cluster-member annotation table (known DAOs):**
+
+| DAO | A | B1 | B2 | B3 | C | D | Notes |
+|-----|:-:|:--:|:--:|:--:|:-:|:-:|-------|
+| Curve | ✓ (top-1 83%) | ✗ | ✓ oligarchy | underlying | ✓ | ✗ | A + B2 + C |
+| Uniswap | ✗ | ✗ | ✓ | underlying | ✓ | ✗ | B2 + C |
+| Aave | ✗ | ✗ | ✓ plateau | underlying | ✓ plateau | ✗ | B2 + C |
+| Compound | ✗ | ✓ (access 100/100) | partial | underlying | drifting | ✗ | B1 + C-drifting |
+| Balancer | ✓ (top-1 74%) | ✗ | partial | underlying | ✗ below ceiling | ✗ | A only (whale dominates) |
+| Frax | ✓ | - | - | underlying | - | ✗ | A only |
+| dYdX | ✓ (100%) | - | - | N/A (single voter) | - | ✗ | A pure |
+| BadgerDAO | ✓ (93%) | - | - | underlying | - | ✗ | A |
+| 0x/ZRX | ✗ | ✗ | ✗ | ✓ (dormant ceiling) | ✓ | ✗ | B3 + C, anomaly 78% pass |
+| Nouns | ✗ | ? mechanism | ? | ✗ (NFT) | N/A | ✗ | B1-or-B2 per-audit |
+| Rocket Pool | ✗ | ✗ | ✗ | ✗ (operator substrate) | ✗ | ✓ | D pure — substrate escape |
+| OP Token House | ✗ | ✗ | ✗ | ✗ | ✗ | ✓ | D (continuous distribution) |
+| OP Citizens House | ✗ | ✗ | ✗ | ✗ | N/A (curated 1:1:1) | — | Discrete sub-arch 2a |
+| POKT | — | — | — | — | — | — | Discrete sub-arch 2a (new floor Gini 0.326) |
+
+**Known gaps in this summary:**
+- Nouns B1 vs B2 needs per-audit repeat-voter-set analysis (experts vs long-tenured)
+- MakerDAO Endgame + Chief both literature-based; task #469 tracks on-chain refresh (blocked on #467 option b)
+- Non-DeFi rule-A candidates underweighted in v1.5 corpus (13 entries, all DeFi)
+
+**Starting v1.6 from this TL;DR:** the claim-signaled task #470 should rename to governance-capture-cluster or dao-capture-taxonomy (single-whale is now a subset), adopt the 6-dimension table above, annotate existing 13 rule-A entries with B/C/D dimensions where applicable, and add the 5+ new corpus entries (POKT, Nouns-family, 0x/ZRX, Rocket Pool, OP Token House, OP Citizens House, MakerDAO Chief + Endgame).
+
+---
+
 ## Scope
 
 Sentinel's HB#565 identifies TWO plutocratic end-states in token-weighted governance:
