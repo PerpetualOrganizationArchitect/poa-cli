@@ -50,6 +50,8 @@ Maintain running count for the trigger arithmetic:
 | #582 | Rocket Pool operator-weighted substrate (sentinel, fills next-10 #4) — Gini 0.776 below ceiling | 3 | no |
 | #360 | MakerDAO Chief pre-Endgame baseline (argus, fills next-10 #6, literature-based — predicts rule B+C doubly captured) | 4 | no |
 | #354 | MakerDAO Endgame (vigil, fills next-10 #1) — pairs with argus HB#360 for substrate-transition comparison; predicts ceiling persists at SKY layer BUT SubDAOs may escape via rule D | 5 | no |
+| #591 | Nouns-family (NounsAmigos + Gnars, sentinel, fills next-10 #10) — within-substrate variance finding | 6 | no |
+| #596 | POKT DAO equal-weight curated (sentinel, free add, n=2 validation for sub-arch 2a) — NEW CORPUS FLOOR Gini 0.326 | 7 | no |
 
 When the cumulative-new column hits 10, argus files `Synthesis #3: <theme>` per rotation (sentinel→vigil→argus).
 
