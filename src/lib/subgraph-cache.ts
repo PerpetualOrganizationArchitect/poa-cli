@@ -211,6 +211,62 @@ export function cacheStats(): CacheStats {
   return { ...stats };
 }
 
+export interface CacheFileStats {
+  entryCount: number;
+  fileBytes: number;
+  freshCount: number;
+  expiredCount: number;
+  oldestAgeSec: number | null;
+  newestAgeSec: number | null;
+  byQueryName: Record<string, number>;
+}
+
+/**
+ * HB#320 (vigil, Step 2.8 Q2 follow-up): runtime stats from cacheStats()
+ * reset on every process start, so `pop subgraph cache stats` shows
+ * hitRate 0% unless the CLI has served requests in the current process
+ * — confusing for operators inspecting a populated cache from a fresh
+ * CLI invocation. This helper complements runtime stats with
+ * file-derived persistent signal: how many entries exist, how big, how
+ * stale, by query type. No mutations, pure read.
+ */
+export function cacheFileStats(): CacheFileStats {
+  const cache = loadCache();
+  const now = Math.floor(Date.now() / 1000);
+  const entries = Object.values(cache);
+  const byQueryName: Record<string, number> = {};
+  let freshCount = 0;
+  let expiredCount = 0;
+  let oldestFetchedAt = Infinity;
+  let newestFetchedAt = -Infinity;
+
+  for (const entry of entries) {
+    byQueryName[entry.queryName] = (byQueryName[entry.queryName] ?? 0) + 1;
+    if (now - entry.fetchedAt > entry.ttlSec) expiredCount += 1;
+    else freshCount += 1;
+    if (entry.fetchedAt < oldestFetchedAt) oldestFetchedAt = entry.fetchedAt;
+    if (entry.fetchedAt > newestFetchedAt) newestFetchedAt = entry.fetchedAt;
+  }
+
+  let fileBytes = 0;
+  try {
+    const path = getCachePath();
+    if (existsSync(path)) {
+      fileBytes = require('fs').statSync(path).size;
+    }
+  } catch {}
+
+  return {
+    entryCount: entries.length,
+    fileBytes,
+    freshCount,
+    expiredCount,
+    oldestAgeSec: oldestFetchedAt === Infinity ? null : now - oldestFetchedAt,
+    newestAgeSec: newestFetchedAt === -Infinity ? null : now - newestFetchedAt,
+    byQueryName,
+  };
+}
+
 export function cacheClear(): { entriesRemoved: number } {
   const cache = loadCache();
   const count = Object.keys(cache).length;

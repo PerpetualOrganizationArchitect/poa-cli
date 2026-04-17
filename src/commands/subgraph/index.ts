@@ -12,7 +12,7 @@
  */
 
 import type { Argv, ArgumentsCamelCase } from 'yargs';
-import { cacheList, cacheClear, cacheStats, getCachePath } from '../../lib/subgraph-cache';
+import { cacheList, cacheClear, cacheStats, cacheFileStats, getCachePath } from '../../lib/subgraph-cache';
 import * as output from '../../lib/output';
 
 export function registerSubgraphCommands(yargs: Argv) {
@@ -74,22 +74,43 @@ export function registerSubgraphCommands(yargs: Argv) {
           )
           .command(
             'stats',
-            'Print cache hit/miss/write counts for this process lifetime',
+            'Print cache file + runtime hit/miss/write counts',
             (y) => y,
             (_argv: ArgumentsCamelCase<{}>) => {
               const s = cacheStats();
+              const f = cacheFileStats();
               const total = s.hits + s.misses;
               const hitRate = total === 0 ? 0 : (s.hits / total) * 100;
               if (output.isJsonMode()) {
                 output.json({
-                  ...s,
-                  totalReads: total,
-                  hitRatePct: Number(hitRate.toFixed(1)),
+                  runtime: { ...s, totalReads: total, hitRatePct: Number(hitRate.toFixed(1)) },
+                  file: f,
                 });
                 return;
               }
+              // HB#320: file-derived stats complement runtime stats —
+              // the latter reset every process start, so a fresh CLI
+              // invocation always shows 0% hit rate even with a
+              // populated cache. File stats answer "what's in the cache
+              // on disk right now" regardless of process history.
               console.log('');
-              console.log('  Subgraph cache stats (this process lifetime)');
+              console.log('  Subgraph cache — file (persistent)');
+              console.log('  ' + '─'.repeat(50));
+              console.log(`  entries:      ${f.entryCount}  (${f.freshCount} fresh, ${f.expiredCount} expired)`);
+              console.log(`  fileBytes:    ${f.fileBytes}`);
+              if (f.oldestAgeSec !== null) {
+                console.log(`  oldestAge:    ${f.oldestAgeSec}s`);
+                console.log(`  newestAge:    ${f.newestAgeSec}s`);
+              }
+              const queryNames = Object.entries(f.byQueryName);
+              if (queryNames.length > 0) {
+                console.log(`  byQueryName:`);
+                for (const [name, count] of queryNames.sort((a, b) => b[1] - a[1])) {
+                  console.log(`    ${name.padEnd(24)} ${count}`);
+                }
+              }
+              console.log('');
+              console.log('  Subgraph cache — runtime (this process lifetime)');
               console.log('  ' + '─'.repeat(50));
               console.log(`  hits:         ${s.hits}`);
               console.log(`  misses:       ${s.misses}`);
