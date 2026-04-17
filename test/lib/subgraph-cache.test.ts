@@ -8,6 +8,7 @@ import {
   cacheClear,
   cacheList,
   cacheStats,
+  cacheFileStats,
   extractQueryName,
   cacheKey,
   getCachePath,
@@ -179,6 +180,72 @@ describe('subgraph-cache', () => {
       // fetchedAt is older than its embedded ttlSec AND ignoreTtl is true.
       // Hard to test deterministically without time travel; the dual-endpoint
       // failure integration test covers the behavior.
+    });
+  });
+
+  describe('skippedWrites (policy-coverage gap signal)', () => {
+    it('counts cachePut calls where queryName is not in TTL policy', () => {
+      cachePut(100, 'query NotInPolicyA { x }', {}, 'a');
+      cachePut(100, 'query NotInPolicyA { x }', { v: 2 }, 'a2');
+      cachePut(100, 'query NotInPolicyB { y }', {}, 'b');
+      const s = cacheStats();
+      expect(s.skippedWrites).toBe(3);
+      expect(s.skippedQueryNames.NotInPolicyA).toBe(2);
+      expect(s.skippedQueryNames.NotInPolicyB).toBe(1);
+      expect(s.writes).toBe(0);
+    });
+
+    it('does NOT increment for anonymous queries (handled separately)', () => {
+      cachePut(100, '{ foo }', {}, 'x');
+      const s = cacheStats();
+      expect(s.skippedWrites).toBe(0);
+    });
+
+    it('does NOT increment for queries in TTL policy', () => {
+      _setTtlForTesting('InPolicyQ', 3600);
+      cachePut(100, 'query InPolicyQ { x }', {}, 'cached');
+      const s = cacheStats();
+      expect(s.skippedWrites).toBe(0);
+      expect(s.writes).toBe(1);
+    });
+  });
+
+  describe('cacheFileStats (disk-derived persistent signal)', () => {
+    it('returns zeroed stats for empty cache', () => {
+      const f = cacheFileStats();
+      expect(f.entryCount).toBe(0);
+      expect(f.freshCount).toBe(0);
+      expect(f.expiredCount).toBe(0);
+      expect(f.oldestAgeSec).toBe(null);
+      expect(f.newestAgeSec).toBe(null);
+      expect(f.byQueryName).toEqual({});
+    });
+
+    it('counts entries and groups by queryName', () => {
+      _setTtlForTesting('FileStatQA', 3600);
+      _setTtlForTesting('FileStatQB', 3600);
+      cachePut(100, 'query FileStatQA { x }', { id: 1 }, 'a1');
+      cachePut(100, 'query FileStatQA { x }', { id: 2 }, 'a2');
+      cachePut(100, 'query FileStatQB { x }', {}, 'b');
+      const f = cacheFileStats();
+      expect(f.entryCount).toBe(3);
+      expect(f.freshCount).toBe(3);
+      expect(f.expiredCount).toBe(0);
+      expect(f.byQueryName.FileStatQA).toBe(2);
+      expect(f.byQueryName.FileStatQB).toBe(1);
+      expect(f.fileBytes).toBeGreaterThan(0);
+    });
+
+    it('separates fresh from expired by embedded ttl', () => {
+      _setTtlForTesting('FreshQ', 3600);
+      _setTtlForTesting('ExpiredQ', -1); // truthy (passes !ttlSec gate) but age > -1 → always expired
+      cachePut(100, 'query FreshQ { x }', {}, 'fresh');
+      cachePut(100, 'query ExpiredQ { x }', {}, 'expired');
+      const f = cacheFileStats();
+      expect(f.entryCount).toBe(2);
+      // ExpiredQ has ttlSec=0, so age > ttl immediately.
+      expect(f.expiredCount).toBeGreaterThanOrEqual(1);
+      expect(f.freshCount + f.expiredCount).toBe(2);
     });
   });
 

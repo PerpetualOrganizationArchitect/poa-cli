@@ -116,6 +116,14 @@ export function registerSubgraphCommands(yargs: Argv) {
               console.log(`  misses:       ${s.misses}`);
               console.log(`  writes:       ${s.writes}`);
               console.log(`  staleServed:  ${s.staleServed}  (served stale on dual-endpoint failure)`);
+              console.log(`  skippedWrites:${s.skippedWrites}  (named query but not in TTL policy — coverage gap)`);
+              const skipped = Object.entries(s.skippedQueryNames);
+              if (skipped.length > 0) {
+                console.log(`  skippedByName:`);
+                for (const [name, count] of skipped.sort((a, b) => b[1] - a[1])) {
+                  console.log(`    ${name.padEnd(24)} ${count}`);
+                }
+              }
               console.log(`  hitRate:      ${hitRate.toFixed(1)}%  (of ${total} reads)`);
               console.log('');
             },

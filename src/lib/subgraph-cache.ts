@@ -56,6 +56,11 @@ const stats = {
   misses: 0,
   staleServed: 0,
   writes: 0,
+  // Silent-skip counter: cachePut was called with a named query that is
+  // NOT in TTL_BY_QUERY_NAME. Surfaces policy-coverage gaps — queries
+  // that ran against the subgraph but never made it into the cache.
+  skippedWrites: 0,
+  skippedQueryNames: {} as Record<string, number>,
 };
 
 // ---------------------------------------------------------------------------
@@ -187,7 +192,11 @@ export function cachePut(
   const queryName = extractQueryName(gqlQuery);
   if (!queryName) return; // not cacheable
   const ttlSec = TTL_BY_QUERY_NAME[queryName];
-  if (!ttlSec) return; // not in TTL policy = no cache
+  if (!ttlSec) {
+    stats.skippedWrites += 1;
+    stats.skippedQueryNames[queryName] = (stats.skippedQueryNames[queryName] ?? 0) + 1;
+    return;
+  }
   const key = cacheKey(chainId, gqlQuery, variables);
   const cache = loadCache();
   cache[key] = {
@@ -205,10 +214,19 @@ export interface CacheStats {
   misses: number;
   staleServed: number;
   writes: number;
+  skippedWrites: number;
+  skippedQueryNames: Record<string, number>;
 }
 
 export function cacheStats(): CacheStats {
-  return { ...stats };
+  return {
+    hits: stats.hits,
+    misses: stats.misses,
+    staleServed: stats.staleServed,
+    writes: stats.writes,
+    skippedWrites: stats.skippedWrites,
+    skippedQueryNames: { ...stats.skippedQueryNames },
+  };
 }
 
 export interface CacheFileStats {
@@ -307,4 +325,6 @@ export function _resetStatsForTesting(): void {
   stats.misses = 0;
   stats.staleServed = 0;
   stats.writes = 0;
+  stats.skippedWrites = 0;
+  stats.skippedQueryNames = {};
 }
