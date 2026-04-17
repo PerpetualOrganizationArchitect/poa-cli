@@ -150,13 +150,19 @@ export interface AllowlistEntry {
  *
  * Exported so command handlers can write to the same path without
  * hard-coding it independently.
+ *
+ * HB#588: optional baseDir parameter for testability. Defaults to
+ * process.cwd() to preserve existing caller behavior. Test code
+ * passes a temp dir to avoid chdir (which vitest workers reject
+ * with ERR_WORKER_UNSUPPORTED_OPERATION — see brain lesson
+ * bafkreif3yvh54lynlxoy73w7fadkh5atl6geqjkg7fp5blnjwtoft5wism).
  */
-export function getAllowlistPath(): string {
-  return join(process.cwd(), 'agent', 'brain', 'Config', 'brain-allowlist.json');
+export function getAllowlistPath(baseDir: string = process.cwd()): string {
+  return join(baseDir, 'agent', 'brain', 'Config', 'brain-allowlist.json');
 }
 
-export function loadAllowlist(): AllowlistEntry[] {
-  const p = getAllowlistPath();
+export function loadAllowlist(baseDir?: string): AllowlistEntry[] {
+  const p = getAllowlistPath(baseDir);
   if (!existsSync(p)) return [];
   try {
     const raw = JSON.parse(readFileSync(p, 'utf8'));
@@ -177,9 +183,9 @@ export function loadAllowlist(): AllowlistEntry[] {
  * Check whether a given address is in the allowlist.
  * Case-insensitive on the address.
  */
-export function isAllowedAuthor(address: string): boolean {
+export function isAllowedAuthor(address: string, baseDir?: string): boolean {
   const needle = address.toLowerCase();
-  const list = loadAllowlist();
+  const list = loadAllowlist(baseDir);
   return list.some(e => e.address === needle);
 }
 
@@ -187,9 +193,9 @@ export function isAllowedAuthor(address: string): boolean {
  * Combined auth check: verify signature + allowlist membership.
  * Returns the authenticated author on success; throws otherwise.
  */
-export function authenticateAndAuthorize(envelope: BrainChangeEnvelope): string {
+export function authenticateAndAuthorize(envelope: BrainChangeEnvelope, baseDir?: string): string {
   const author = verifyBrainChange(envelope);
-  if (!isAllowedAuthor(author)) {
+  if (!isAllowedAuthor(author, baseDir)) {
     throw new Error(`Brain change rejected: author ${author} not in allowlist`);
   }
   return author;

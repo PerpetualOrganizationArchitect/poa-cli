@@ -1,18 +1,23 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { ethers } from 'ethers';
+import { writeFileSync, mkdirSync, rmSync } from 'fs';
+import { join } from 'path';
+import os from 'os';
 import {
   signBrainChange,
   verifyBrainChange,
   unwrapAutomergeBytes,
+  getAllowlistPath,
+  loadAllowlist,
+  isAllowedAuthor,
+  authenticateAndAuthorize,
   type BrainChangeEnvelope,
 } from '../../src/lib/brain-signing';
 
-// Pure-function tests only. Filesystem-backed helpers (loadAllowlist,
-// isAllowedAuthor, authenticateAndAuthorize, getAllowlistPath) use
-// process.cwd() directly and would require chdir() to test, which vitest
-// workers reject with ERR_WORKER_UNSUPPORTED_OPERATION. Those helpers
-// stay uncovered until a future refactor accepts the allowlist path
-// via parameter injection.
+// HB#588: parameter-injection refactor unblocked filesystem-backed
+// testing. Helpers now accept optional baseDir arg defaulting to
+// process.cwd(). Tests pass a temp dir explicitly, bypassing the
+// vitest chdir restriction (ERR_WORKER_UNSUPPORTED_OPERATION).
 
 const wallet = ethers.Wallet.createRandom();
 
@@ -127,5 +132,110 @@ describe('unwrapAutomergeBytes', () => {
     expect(unwrapped.length).toBe(1024);
     expect(unwrapped[100]).toBe(100);
     expect(unwrapped[1023]).toBe(255);
+  });
+});
+
+describe('getAllowlistPath / loadAllowlist / isAllowedAuthor', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = join(os.tmpdir(), `uab-allowlist-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    mkdirSync(join(tmpDir, 'agent', 'brain', 'Config'), { recursive: true });
+  });
+
+  afterEach(() => {
+    try { rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+  });
+
+  it('getAllowlistPath resolves under baseDir', () => {
+    const p = getAllowlistPath(tmpDir);
+    expect(p).toBe(join(tmpDir, 'agent', 'brain', 'Config', 'brain-allowlist.json'));
+  });
+
+  it('loadAllowlist returns empty when file missing', () => {
+    expect(loadAllowlist(tmpDir)).toEqual([]);
+  });
+
+  it('loadAllowlist returns empty when file is malformed JSON', () => {
+    writeFileSync(join(tmpDir, 'agent', 'brain', 'Config', 'brain-allowlist.json'), 'not json');
+    expect(loadAllowlist(tmpDir)).toEqual([]);
+  });
+
+  it('loadAllowlist parses array form + lowercases addresses', () => {
+    writeFileSync(
+      join(tmpDir, 'agent', 'brain', 'Config', 'brain-allowlist.json'),
+      JSON.stringify([
+        { address: '0xDEADBEEF', name: 'alice' },
+        { address: '0xAABBCC' },
+      ]),
+    );
+    const list = loadAllowlist(tmpDir);
+    expect(list.length).toBe(2);
+    expect(list[0].address).toBe('0xdeadbeef');
+    expect(list[0].name).toBe('alice');
+    expect(list[1].address).toBe('0xaabbcc');
+  });
+
+  it('loadAllowlist parses entries-wrapper form', () => {
+    writeFileSync(
+      join(tmpDir, 'agent', 'brain', 'Config', 'brain-allowlist.json'),
+      JSON.stringify({ entries: [{ address: '0x1234' }] }),
+    );
+    const list = loadAllowlist(tmpDir);
+    expect(list.length).toBe(1);
+    expect(list[0].address).toBe('0x1234');
+  });
+
+  it('isAllowedAuthor is case-insensitive', () => {
+    writeFileSync(
+      join(tmpDir, 'agent', 'brain', 'Config', 'brain-allowlist.json'),
+      JSON.stringify([{ address: '0xDEADBEEF' }]),
+    );
+    expect(isAllowedAuthor('0xdeadbeef', tmpDir)).toBe(true);
+    expect(isAllowedAuthor('0xDEADBEEF', tmpDir)).toBe(true);
+    expect(isAllowedAuthor('0xDeAdBeEf', tmpDir)).toBe(true);
+    expect(isAllowedAuthor('0xnope', tmpDir)).toBe(false);
+  });
+});
+
+describe('authenticateAndAuthorize', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = join(os.tmpdir(), `uab-authz-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    mkdirSync(join(tmpDir, 'agent', 'brain', 'Config'), { recursive: true });
+  });
+
+  afterEach(() => {
+    try { rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+  });
+
+  it('rejects valid sig from unauthorized address', async () => {
+    writeFileSync(
+      join(tmpDir, 'agent', 'brain', 'Config', 'brain-allowlist.json'),
+      JSON.stringify([{ address: '0x0000000000000000000000000000000000000001' }]),
+    );
+    const env = await signBrainChange(new Uint8Array([1]), wallet.privateKey);
+    expect(() => authenticateAndAuthorize(env, tmpDir)).toThrow(/not in allowlist/);
+  });
+
+  it('accepts valid sig from authorized address', async () => {
+    writeFileSync(
+      join(tmpDir, 'agent', 'brain', 'Config', 'brain-allowlist.json'),
+      JSON.stringify([{ address: wallet.address }]),
+    );
+    const env = await signBrainChange(new Uint8Array([1]), wallet.privateKey);
+    const author = authenticateAndAuthorize(env, tmpDir);
+    expect(author).toBe(wallet.address.toLowerCase());
+  });
+
+  it('rejects tampered envelope even when author would be allowed', async () => {
+    writeFileSync(
+      join(tmpDir, 'agent', 'brain', 'Config', 'brain-allowlist.json'),
+      JSON.stringify([{ address: wallet.address }]),
+    );
+    const env = await signBrainChange(new Uint8Array([1]), wallet.privateKey);
+    const tampered = { ...env, automerge: '0xdeadbeef' };
+    expect(() => authenticateAndAuthorize(tampered, tmpDir)).toThrow();
   });
 });
