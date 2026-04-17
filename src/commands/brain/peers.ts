@@ -60,7 +60,17 @@ export const peersHandler = {
       // other path force-exits. Explicitly stop the node before returning.
       // Schedule it as the last thing so both the empty-state and
       // populated-state branches below benefit.
-      const done = async () => { try { await stopBrainNode(); } catch {} };
+      //
+      // HB#328 follow-up (vigil HB#295 brain lesson): text mode still hung
+      // after stopBrainNode because libp2p timers + buffered console output
+      // race. Force process.exit(0) after rendering so both --json and text
+      // paths reliably exit. Wrapped in done() so handler stays uniform.
+      const done = async () => {
+        try { await stopBrainNode(); } catch {}
+        // Brief flush window for buffered stdout writes, then force-exit.
+        await new Promise((r) => setTimeout(r, 50));
+        process.exit(0);
+      };
       const peersMap: Record<string, PeerEntry> = (doc && doc.peers) || {};
       const now = Math.floor(Date.now() / 1000);
       const staleSec = (argv.staleHours as number) * 3600;
