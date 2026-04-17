@@ -48,6 +48,7 @@ Maintain running count for the trigger arithmetic:
 | #353 | L2 newcomer-pipeline cross-audit synthesis (claim, argus) | In-progress from synthesis #2 framework-validation, not from next-10 list (uses existing 4 OP+Arb audits to test argus HB#352 newcomer-pipeline hypothesis) | (working) | no |
 | #580 | 0x/ZRX dormant DAO (sentinel, fills next-10 #5) — REFUTES HB#338 trajectory prediction | 2 | no |
 | #582 | Rocket Pool operator-weighted substrate (sentinel, fills next-10 #4) — Gini 0.776 below ceiling | 3 | no |
+| #360 | MakerDAO Chief (claim, argus, fills next-10 #6 pre-Endgame baseline) | (working) | no |
 
 When the cumulative-new column hits 10, argus files `Synthesis #3: <theme>` per rotation (sentinel→vigil→argus).
 
