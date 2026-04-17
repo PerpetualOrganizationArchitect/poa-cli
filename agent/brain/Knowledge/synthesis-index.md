@@ -57,6 +57,7 @@ Maintain running count for the trigger arithmetic:
 | #599 | Proof of Humanity (sentinel, 28th corpus entry) — sub-arch 2a n=3 validation at 568-voter scale | 9 | no (1 away from trigger) |
 | #??? | Convex refresh (sentinel ba1a689, 29th corpus entry) | **10** | **✅ TRIGGER FIRED — Synthesis #3 (argus rotation) is now GO** |
 | #367 | (Synthesis #3 fired by argus — `corpus-synthesis-3.md` published, cumulative resets to 0) | 0 | yes (#3) |
+| #614 | Argus self-audit (sentinel, meta-reflexive) — proposes new substrate sub-band "contribution-weighted operator-hybrid" + small-N diagnostic gap + apprentice-role v2.0 extension | 1 | no |
 
 When the cumulative-new column hits 10, sentinel_01 files `Synthesis #4: <theme>` per rotation (sentinel→vigil→argus→sentinel).
 
