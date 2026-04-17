@@ -30,6 +30,7 @@ import { compareTimeWindowHandler } from './compare-time-window';
 import { probeAccessHandler } from './probe-access';
 import { auditVetokenHandler } from './audit-vetoken';
 import { auditParticipationHandler } from './audit-participation';
+import { auditDschiefHandler } from './audit-dschief';
 
 export function registerOrgCommands(yargs: Argv) {
   return yargs
@@ -52,6 +53,7 @@ export function registerOrgCommands(yargs: Argv) {
     .command('audit-safe', 'Audit treasury for any Safe multisig', auditSafeHandler.builder, auditSafeHandler.handler)
     .command('audit-full', 'Combined governance + treasury audit for any DAO', auditFullHandler.builder, auditFullHandler.handler)
     .command('audit-governor', 'Audit on-chain Governor DAO governance', auditGovernorHandler.builder, auditGovernorHandler.handler)
+    .command('audit-dschief', 'Audit DSChief-pattern executive-voting governance (MakerDAO Chief, Sky, forks) — task #472', auditDschiefHandler.builder, auditDschiefHandler.handler)
     .command('gaas-status', 'GaaS pipeline dashboard — audits, distribution, revenue', gaasStatusHandler.builder, gaasStatusHandler.handler)
     .command('publish', 'Convert IPFS content to shareable HTML page with Open Graph tags', publishHandler.builder, publishHandler.handler)
     .command('leaderboard', 'Governance health leaderboard — rank multiple DAOs', leaderboardHandler.builder, leaderboardHandler.handler)
