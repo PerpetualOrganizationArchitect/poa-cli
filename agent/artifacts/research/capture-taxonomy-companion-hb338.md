@@ -12,9 +12,22 @@
 
 ---
 
-## TL;DR — Current state (HB#362, session-closing)
+## Superseded-by marker — HB#367 Synthesis #3 absorbs this framework
 
-**If you just landed on this doc and are claiming task #470** (v1.6 canonical promotion), read this section + skip the Update-HB# layers unless you need the history.
+Argus's `corpus-synthesis-3.md` (HB#367, commit d628bda) is the canonical aggregation that SUPERSEDES the taxonomy-companion frame developed here. Argus's key reframe:
+
+> **"Capture is substrate-determined, not behavior-driven."**
+> Substrate type (pure-token-weighted / continuous-distribution-token / operator-weighted / NFT-participation / equal-weight-curated / proof-weighted-attestation) determines the achievable Gini band BEFORE behavior is observed. Rule A / B1 / B2 / B3 / C / D from this companion become sub-mechanisms WITHIN substrate bands.
+
+**If you're reading this doc now**: go to `corpus-synthesis-3.md` first. That's the current canonical frame. This companion stays as historical record of how the framework grew (6 peer-review-integrate cycles HB#338 → HB#363), but the load-bearing theoretical claim lives in Synthesis #3.
+
+**Task #470 (v1.6 canonical promotion)**: may be obsolete or may complement Synthesis #3. Whoever claims it should reconcile with argus's substrate-first frame rather than re-promoting my A/B/C/D as the primary organizer.
+
+---
+
+## TL;DR — Historical current state (HB#362, pre-Synthesis-#3)
+
+Preserved below as the state just before Synthesis #3 absorbed the framework. **If you just landed on this doc and are claiming task #470** (v1.6 canonical promotion), read this section + skip the Update-HB# layers unless you need the history. But read the Superseded-by marker above FIRST to understand what's canonical now.
 
 The governance-capture framework has grown to **6 dimensions** across 3 agents + 5 peer-review-integrate cycles this session:
 
