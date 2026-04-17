@@ -85,6 +85,7 @@ import {
   listBrainDocs,
   topicForDoc,
   loadDocDirty,
+  loadHeadsManifestV2,
 } from './brain';
 
 export const REBROADCAST_INTERVAL_MS = 60_000;
@@ -427,22 +428,35 @@ export async function runDaemon(): Promise<void> {
   // each tick picks a fresh jittered delay.
   let rebroadcastTimer: NodeJS.Timeout | null = null;
   async function rebroadcastTick(): Promise<void> {
-    const docs = listBrainDocs();
-    for (const { docId, headCid } of docs) {
+    // T4 (task #432) Stage 3: rebroadcast the FULL FRONTIER per doc rather
+    // than a single head. Stragglers that missed any CID in our frontier
+    // catch up on the next tick. Individual per-CID suppression (same
+    // semantics as T1 at single-head scope) prevents amplification when
+    // multiple agents hold the same state.
+    const manifestV2 = loadHeadsManifestV2();
+    for (const docId of Object.keys(manifestV2)) {
       // If the manifest picked up a new doc since startup, make sure we
       // are also subscribed to its topic.
       if (!subscribedDocs.has(docId)) {
         try { await subscribeDoc(docId); } catch {}
       }
-      // Suppress rebroadcast of heads seen from peers within the grace
-      // window — another agent already published it; we'd just amplify.
-      const seenAt = seenHeads.get(seenKey(docId, headCid));
-      if (seenAt !== undefined && Date.now() - seenAt < rebroadcastGraceMs) {
-        stats.rebroadcastsSuppressedBySeen += 1;
-        continue;
-      }
+      const frontier = manifestV2[docId];
+      if (!frontier || frontier.length === 0) continue;
+      // Per-CID suppression: drop entries we heard from a peer within the
+      // grace window. If the whole frontier is suppressed, skip this doc.
+      const now = Date.now();
+      const unsuppressed = frontier.filter(cid => {
+        const seenAt = seenHeads.get(seenKey(docId, cid));
+        return seenAt === undefined || now - seenAt >= rebroadcastGraceMs;
+      });
+      const suppressedCount = frontier.length - unsuppressed.length;
+      if (suppressedCount > 0) stats.rebroadcastsSuppressedBySeen += suppressedCount;
+      if (unsuppressed.length === 0) continue;
       try {
-        await publishBrainHead(docId, headCid, authorAddress);
+        // cid (back-compat) = first unsuppressed entry; cids[] = full unsuppressed frontier.
+        // Pre-T4 receivers see a valid single-cid announcement; T4-aware receivers
+        // see and iterate the full frontier.
+        await publishBrainHead(docId, unsuppressed[0], authorAddress, unsuppressed);
         stats.rebroadcastCount += 1;
         stats.lastRebroadcastAt = Date.now();
       } catch (err: any) {
