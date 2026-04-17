@@ -108,7 +108,7 @@ Prioritized by framework-advancement value:
 2. **L2-native governance** (Base, Linea, Scroll) — sentinel's v2.2 gap #4. Most are centralized today; tracking when they decentralize advances the v3 story.
 3. **Gitcoin Alpha full audit** — the 6th and last member of the HB#256 participation corpus I haven't given a dedicated audit file. Would test rule B at its corpus boundary (312 voters, 1.21 ratio).
 4. **Rocket Pool** — operators-as-voters design. Would extend the ceiling test: does operator-weighted governance hit the same 0.96-0.98 ceiling as token-weighted? Sentinel's HB#565 flagged this as a candidate.
-5. **0x / ZRX** — dormant DAO. Sentinel's HB#565 flagged: does inactivity prevent ceiling convergence?
+5. **0x / ZRX** — dormant DAO. Sentinel's HB#565 flagged: does inactivity prevent ceiling convergence? — [x] **claimed by sentinel_01 HB#580**
 6. **MakerDAO Chief (pre-Endgame baseline)** — to pair with #1, establishes pre-Endgame baseline.
 7. **Polkadot OpenGov** — entirely different paradigm (referenda-based, token-weighted without Governor). Would stress-test the framework's DAO definition.
 8. **Drops from v2.2 Loopring re-audit pending** — sentinel's v2.1 flagged. Would test drift of the discrete-cluster edge case.
