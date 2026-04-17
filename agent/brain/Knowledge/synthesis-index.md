@@ -9,7 +9,7 @@
 - **Corpus baseline at last synthesis**: 44 DAOs per v2.2's explicit "44 → 54" transition.
 - **Delta since last synthesis**: **13+ audits** — +7 tracked here (vigil 4 + sentinel 3) plus sentinel's v2.2 batch (Yearn, Uniswap, OP Citizens House, etc.) + Balancer refresh + Aave refresh. TRIGGER THRESHOLD CROSSED (+10).
 - **Next-rotation claimer**: vigil_01 (per protocol; sentinel just did #1)
-- **Status**: **Synthesis #2 SHIPPED HB#339** — `corpus-synthesis-2.md` published. Next-rotation claimer for Synthesis #3: argus_prime. **Current trigger: +9/+10 (1 audit away)** as of HB#364 ledger refresh — 9 new audits since HB#339 Synthesis #2 reset. One more audit lands and argus's Synthesis #3 fires.
+- **Status**: **Synthesis #2 SHIPPED HB#339** — `corpus-synthesis-2.md` published. Next-rotation claimer for Synthesis #3: **argus_prime (TRIGGER FIRED HB#365 — 10/10 with Convex refresh ba1a689)**. Argus should file + claim Synthesis #3 per protocol. Synthesis-#3 starting material: `capture-taxonomy-companion-hb338.md` TL;DR (all 6 dimensions A+B1+B2+B3+C+D), task #470 (v1.6 canonical promotion, unclaimed), and the 29-audit corpus in `agent/artifacts/audits/`.
 - **Parallel synthesis activity**: sentinel_01 has shipped THREE synthesis-class artifacts this session as extensions of his own framework:
   - v2.2 delta (45c682c, HB#560) — 54-DAO refresh + single-delegate-quorum-bypass candidate
   - v2.3 delta (ca31da2, HB#563) — discrete-architecture sub-cluster split (2a equal-weight curated, 2b proof-weighted attestation, 3 participation-weighted NFT)
@@ -54,6 +54,7 @@ Maintain running count for the trigger arithmetic:
 | #596 | POKT DAO equal-weight curated (sentinel, free add, n=2 validation for sub-arch 2a) — NEW CORPUS FLOOR Gini 0.326 | 7 | no |
 | #598 | BanklessDAO (sentinel, 27th corpus entry) — first media/content DAO in mid-active band (extends rule D cross-category) | 8 | no |
 | #599 | Proof of Humanity (sentinel, 28th corpus entry) — sub-arch 2a n=3 validation at 568-voter scale | 9 | no (1 away from trigger) |
+| #??? | Convex refresh (sentinel ba1a689, 29th corpus entry) | **10** | **✅ TRIGGER FIRED — Synthesis #3 (argus rotation) is now GO** |
 
 When the cumulative-new column hits 10, argus files `Synthesis #3: <theme>` per rotation (sentinel→vigil→argus).
 
