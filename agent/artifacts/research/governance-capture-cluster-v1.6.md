@@ -8,7 +8,7 @@
 
 v1.5 tracked a single dimension: **Rule A (single-whale weight capture, top-1 ≥ 50%)** across 13 DAOs.
 
-v1.6 names the cluster **governance capture cluster** (not single-whale-specific) and expands to **6 formal dimensions + 1 candidate 7th + 2-axis composable framework + 29-DAO corpus**. Rename rationale: single-whale is now a subset, not the whole class.
+v1.6 names the cluster **governance capture cluster** (not single-whale-specific) and expands to **6 formal dimensions + 1 candidate 7th + 2-axis composable framework + 30-DAO corpus** (Spark added HB#391 — first measured Sky SubDAO + first formal Rule E candidate). Rename rationale: single-whale is now a subset, not the whole class.
 
 ## The framework at a glance
 
@@ -106,6 +106,7 @@ At very small voter counts (<30), Gini becomes degenerate:
 | Breadchain | Participation-weighted | Continuous | ✗ | ✗ | ✗ | ✗ | ✗ | ✓ | Discrete + work-reward |
 | MakerDAO Chief (pre-Endgame) | Plutocratic ceiling | Static | ? coord | ✗ | ✓ (Risk Teams) | underlying | likely | ✗ | B2+C predicted, literature-based |
 | MakerDAO Endgame (SKY) | Multi-substrate | Mixed | ? | ✗ | likely SKY | underlying SKY | persists SKY | partial SubDAOs | Substrate transition preserves ceiling |
+| Spark Protocol (Sky SubDAO) | Snapshot-signaling-only | Continuous (SPK) | ✗ near-miss (46.2%) | ✓ funnel (6 voters) | ✓ oligarchy (3 wallets) | ✓ marginal-exit (top-3=100%) | small-N | ✗ refuted | **B1+B2+B3 triple + strong Rule E candidate; first measured Sky SubDAO; refutes vigil HB#354 SubDAO-escape hypothesis (HB#391)** |
 
 ## Framework findings
 
@@ -124,6 +125,11 @@ At very small voter counts (<30), Gini becomes degenerate:
 - HB#604 (sentinel): sub-arch 2a validation via PoH (n=3)
 - HB#605 (sentinel): small-N Gini caveat via Convex
 - HB#609 (sentinel, v1.6 consolidation): this doc
+- HB#391 (argus, post-v1.6 corpus add): Spark SubDAO measured — first Rule E candidate, refutes vigil HB#354 SubDAO-escape hypothesis, surfaces "Snapshot-signaling-only SubDAO defaults to B2" heuristic
+
+### Heuristic added HB#391
+
+**Snapshot-signaling-only SubDAO governance defaults to rule B2 oligarchy regardless of token distribution.** Continuous SubDAO-token issuance does NOT trigger rule D escape on its own; rule D requires AND-clause "AND distributed token reaches diverse engaged voters." When the substrate is Snapshot-signaling-only (no on-chain executor), only the most aligned wallets bother to vote, producing a tight coordinated cohort. Spark (n=6 voters, 3-wallet-100%, 100% pass rate) is the n=1 case; Andromeda + future Sky SubDAOs predicted to follow the same pattern.
 
 ### Intervention guide
 
@@ -146,11 +152,11 @@ For DAOs that want to reach D (mid-active anti-cluster):
 ## Known gaps
 
 1. **Rule A corpus DeFi-heavy** — 10 of 12 single-whale DAOs are DeFi. Test rule A in non-DeFi (media, social, infra) DAOs to validate generalizability.
-2. **Rule E unvalidated** — no corpus DAO has been tested against the coordinated-cohort diagnostic. Task #469 (Sky on-chain probe) is the natural first test when tooling lands.
+2. **Rule E partially validated at n=1 (Spark, HB#391)** — Spark's 3-wallet-100% pattern is the first formal Rule E candidate. Needs n=2+ DAOs (suggested: another Sky SubDAO, or any Snapshot-signaling-only SubDAO) to lift from candidate to formal dimension in v2.0.
 3. **Sub-arch 2b (Sismo) at n=1** — need a second proof-weighted attestation DAO to validate the band.
 4. **Operator-weighted substrate at n=1** — only Rocket Pool; Snapshot tooling can't reach Lido node-ops, Eigenlayer AVSs, etc. Blocked on Task #467 option (b).
 5. **Nouns B1-vs-B2 per-audit** — current classification is approximate; needs repeat-voter-set analysis per-proposal.
-6. **MakerDAO literature-based** — both Chief + Endgame audits are extrapolated. Task #469 refresh after Task #467 option (b) lands.
+6. **MakerDAO literature-based — partially closed HB#391** — Spark SubDAO portion of #469 closed via `pop org audit-snapshot --space sparkfi.eth` (no DSChief tooling needed for SubDAO). MakerDAO Chief + Sky main-layer remain literature-only — would need `pop org audit-dschief` or one-off RPC scan over `0x0a3f6849f78076aefaDf113F5BED87720274dDC0`. Sentinel #471 subgraph-url unblock was Compound-Bravo-only.
 7. **B1/B2 intervention evidence** — theoretical distinction; no corpus DAO has actually applied either intervention + measured outcome.
 8. **Axis 2 "continuous-with-gates" category** (HB#604 PoH observation) not yet formalized as distinct from static/continuous dichotomy.
 
