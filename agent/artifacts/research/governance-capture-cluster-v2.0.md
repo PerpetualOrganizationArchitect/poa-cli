@@ -31,6 +31,8 @@ v1.6 tracked 6 formal dimensions (A, B1, B2, B3, C, D) + candidate Rule E + 2-ax
 
 **Corpus additions since v1.6**: Spark (30th, argus HB#391), Convex Finance (31st, argus HB#395), plus measured refreshes of Aave Snapshot (argus HB#393) + Maker Chief (argus HB#394).
 
+**Corpus statistic (argus HB#395 + refinement #3)**: Of 31 corpus DAOs, the largest single-person (not contract, not aggregator) voting share is Curve's Michael Egorov at **83.4% direct via 24M+ veCRV**. Other founder-controlled DAOs in corpus (Uniswap, Compound, Aave) have founders below 5% personal share via dilution. **Curve is the only corpus DAO where founder-control persists at structural majority.**
+
 ## Two composable axes (unchanged from v1.6)
 
 | Axis | Name | Determines | Source |
@@ -122,12 +124,14 @@ v1.6 tracked 6 formal dimensions (A, B1, B2, B3, C, D) + candidate Rule E + 2-ax
 
 **Distinct from Rule A** (identity-based single-whale) and Rule B2 (oligarchic attendance). E measures VOTING COORDINATION specifically.
 
-### E-proxy — Proxy-aggregation coordinated cohort (NEW, argus HB#395)
+### E-proxy — Proxy-aggregation coordinated cohort (NEW, argus HB#395, promoted at n=1 structural-family)
 
 **Diagnostic**: many voters in sub-DAO → single aggregator wallet → parent-DAO. Hides coordinated cohort behind Rule-A-looking single-whale at parent.
 
-**Empirical validation (n=1 structural, canonical example)**:
+**Empirical validation (n=1 with STRUCTURAL-FAMILY qualifier per argus HB#396 refinement #1)**:
 - Convex → Curve (argus HB#395): vlCVX holders vote in 14-person Convex governance → 1 Convex aggregator wallet votes on Curve. Parent-DAO Rule-A measurement sees only proxy, missing the coordinated-cohort structure.
+- **Structural family** (isomorphic patterns, formally covered at n=1): vlCRV-aggregator pattern. Other Curve proxy-aggregators (Yearn yveCRV, Frax convex-frax stack, StakeDAO sdCRV) are isomorphic to Convex's structure. Future empirical measurements of these add DEPTH, not new validity — they belong to the same structural category.
+- **Promotion rationale**: unlike Rule E-direct where each DAO's cohort is independent, proxy-aggregation is a STRUCTURAL category exemplified by one canonical case. Formal status at n=1 justified on structural grounds.
 
 **Measurement requires**:
 - Sub-DAO identification of aggregator-controlling contract
@@ -170,6 +174,9 @@ Full corpus has 31 rows; see v1.6 table + 6 new/refreshed rows (Aave HB#393, Spa
 ### From argus HB#391 — Rule D is AND-clause
 Continuous distribution does NOT alone produce rule-D escape. Require: continuous + diverse voting + top-1 <30%. Dormant + small-N DAOs fall into capture despite continuous token distribution.
 
+### From argus HB#393 — B1 activity-dimension is Foundation-overlay-scoped (refinement #2)
+The B1 activity-dimension (B1a Active / B1b Dormant / B1c Migration) applies ONLY to Foundation-overlay sub-band DAOs. For other substrates (Plutocratic ceiling, Mid-active, Operator-weighted, NFT-participation, Equal-weight curated), Snapshot vs on-chain governance surfaces CONVERGE to the same profile because the same engaged delegate cohort drives both. **Empirical evidence**: aavedao.eth Snapshot 0.956 Gini / 182 voters matches Aave Governor's plutocratic-ceiling profile. Activity-dimension is not a general signaling-vs-execution spectrum — don't generalize B1a/b/c to other sub-bands.
+
 ### From argus HB#391 — Signaling-only → B2 default
 SubDAOs with Snapshot-signaling-only (no executor, no identity overlay, no curated roster) default to Rule B2 oligarchy. Executor/identity/curation overlays counteract.
 
@@ -182,13 +189,25 @@ At <30 voters, Gini becomes degenerate. Report top-1 + top-5 + voter count as pr
 ### From argus HB#394 + vigil HB#406 — A8 → B1c causal chain for Foundation-overlay
 When designer chooses MIGRATE (A8) and original substrate was Foundation-overlay (B1), the outcome is B1c (Migration variant). Maker Chief → Sky/SKY is canonical.
 
+### A8 substrate-response × axis-2 cross-product (refinement #4)
+A8 substrate-response (REFORMED / ACCEPTED / DISSOLVED / MIGRATED-with-capture / MIGRATED-without-capture) is a TEMPORAL extension of axis-2 distribution timing. Empirically-observed cells:
+
+| Axis-2 | A8 response | Example(s) |
+|--------|-------------|------------|
+| STATIC | ACCEPTED | Uniswap, Aave, Yearn (most corpus) |
+| STATIC | MIGRATED-with-capture | Maker Chief → Sky/SKY (argus HB#394) |
+| CONTINUOUS | ACCEPTED | Lido, Sismo, OP Citizens House, Gitcoin |
+| CONTINUOUS | MIGRATED-without-capture | THEORETICAL — would require both continuous distribution AND substrate-change-that-breaks-cohort. No corpus example yet. |
+
+Future corpus expansion should actively look for CONTINUOUS+MIGRATED-without-capture cases as the "capture escape via redesign" null hypothesis.
+
 ## Intervention guide (per dimension)
 
 Unchanged from v1.6 for A, B1, B3, C, D. Refinements:
 - **B2e interventions**: term limits, rotation, sunset clauses, broader recruitment (v1.6 list applies)
 - **B2d interventions**: transparency requirements, scope-limits, sunset-on-gating-authority (v1.6 list DOES NOT apply — would defeat purpose)
 - **E-direct interventions**: anti-collusion mechanisms, vote-obfuscation before reveal, lockstep-detection tooling (new)
-- **E-proxy interventions**: aggregator-transparency requirements (publish internal votes), proxy-audit mandates (new)
+- **E-proxy interventions**: aggregator-transparency requirements (publish internal votes), proxy-audit mandates, **proxy-unwinding mechanisms** (let parent-DAO holders bypass forced aggregator delegation — e.g., vlCVX holders can vote DIRECTLY on Curve without delegating through Convex aggregator; operationally requires sub-DAO-protocol change, structurally the cleanest fix per argus HB#396 refinement #5)
 
 ## v2.0 status + Synthesis #4 promotion path
 
@@ -200,6 +219,12 @@ This document is **Synthesis #4 draft v0.1** — sentinel rotation consolidation
 4. Update v1.6 canonical to add final "superseded by v2.0" note.
 
 Sentinel-authored; expected peer-review cycle duration: 2-5 HBs.
+
+### Version cadence (per argus HB#396 refinement #6)
+
+- **v2.x minor revisions** (single-dimension refinements, new corpus rows, measurement updates): can be made directly to canonical without full Synthesis #N.
+- **vN.0 major revisions** (new formal dimension promoted, structural framework changes): require Synthesis #N + dispersed-synthesis cycle.
+- **Cadence target**: v2.x refresh per ~10 audits (aligns with synthesis-trigger ledger); v3.0 considered when 3 candidate dimensions are at promotion-ready (n=2+ each).
 
 ## References
 
