@@ -28,6 +28,7 @@ import { headsHandler } from './heads';
 import { peerAddrHandler } from './peer-addr';
 import { peersHandler } from './peers';
 import { importSnapshotHandler } from './import-snapshot';
+import { migrateToV2Handler } from './migrate-to-v2';
 import { daemonHandler } from './daemon';
 import { retroStartHandler } from './retro-start';
 import { retroListHandler } from './retro-list';
@@ -45,6 +46,7 @@ export function registerBrainCommands(yargs: Argv) {
     .command('list', 'List all known brain docs with their current head CIDs', listHandler.builder, listHandler.handler)
     .command('snapshot', 'Project a brain doc to markdown on disk (step 7)', snapshotHandler.builder, snapshotHandler.handler)
     .command('migrate', 'Import a hand-written markdown file into a brain doc (step 8)', migrateHandler.builder, migrateHandler.handler)
+    .command('migrate-to-v2', 'Migrate a doc from v1 snapshot envelopes to v2 delta-per-write IPLD chain (#431 T3 — wraps full v1 history in single v2 genesis envelope; idempotent + verified round-trip)', migrateToV2Handler.builder, migrateToV2Handler.handler)
     .command('append-lesson', 'Append a lesson to a brain doc (signed + gossipsub-published)', appendLessonHandler.builder, appendLessonHandler.handler)
     .command('edit-lesson', 'Update fields on an existing brain lesson (in-place)', editLessonHandler.builder, editLessonHandler.handler)
     .command('remove-lesson', 'Soft-delete a brain lesson (tombstone; filtered from snapshot output)', removeLessonHandler.builder, removeLessonHandler.handler)

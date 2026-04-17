@@ -932,6 +932,109 @@ export async function openBrainDoc<T = any>(docId: string): Promise<{ doc: any; 
 }
 
 /**
+ * Migrate a doc's v1 snapshot chain to v2 by wrapping its full Automerge
+ * change history into a single v2 genesis envelope (priority=1, no parents).
+ *
+ * Per agent/artifacts/research/brain-wire-format-v2-design.md Section 6
+ * (Migration). The "all-history-in-one-envelope" approach is a migration
+ * shortcut: each future write links to this v2 envelope as parent and the
+ * priority chain extends from 1. Historical per-change attestation is lost
+ * (the v1 envelopes remain in the blockstore for audit); the post-migration
+ * agent's key signs the rolled-up envelope.
+ *
+ * Throws if verification fails (rebuilt v2 chain doesn't reproduce the v1
+ * doc state byte-for-byte) — caller's manifest stays at the prior v1 head.
+ *
+ * Idempotent: if the doc's current head is already a v2 envelope, returns
+ * the existing head with action='already-v2'.
+ */
+export async function migrateDocToV2(docId: string): Promise<{
+  headCid: string;
+  action: 'migrated' | 'already-v2' | 'fresh-init';
+  changeCount: number;
+}> {
+  const { doc, headCid: currentHead } = await openBrainDoc(docId);
+  const Automerge = await getAutomerge();
+
+  // Idempotent guard: if the current head IS a v2 envelope, no migration
+  // needed. openBrainDoc already routes v2 reads through loadDocFromV2Chain
+  // so the manifest is already canonical.
+  if (currentHead) {
+    const { CID } = await esmImport<any>('multiformats/cid');
+    const { FsBlockstore } = await esmImport<any>('blockstore-fs');
+    const bs = new FsBlockstore(join(getBrainHome(), 'helia-blocks'));
+    await bs.open();
+    try {
+      const bytes = await bs.get(CID.parse(currentHead));
+      const env = JSON.parse(new TextDecoder().decode(bytes));
+      if (env.v === 2) {
+        return { headCid: currentHead, action: 'already-v2', changeCount: 0 };
+      }
+    } finally {
+      await bs.close();
+    }
+  }
+
+  const allChanges: Uint8Array[] = Automerge.getAllChanges(doc);
+  if (allChanges.length === 0) {
+    // Doc is fresh-init or genesis-only — nothing to migrate.
+    return { headCid: currentHead || '', action: 'fresh-init', changeCount: 0 };
+  }
+
+  const packed = packChanges(allChanges);
+  const envelope = await signBrainChangeV2({
+    changeBytes: packed,
+    parentCids: [],
+    priority: 1,
+  });
+  const envelopeBytes = new TextEncoder().encode(JSON.stringify(envelope));
+
+  const { CID } = await esmImport<any>('multiformats/cid');
+  const { sha256 } = await esmImport<any>('multiformats/hashes/sha2');
+  const { FsBlockstore } = await esmImport<any>('blockstore-fs');
+  const hash = await sha256.digest(envelopeBytes);
+  const cid = CID.createV1(0x55, hash);
+  const bs = new FsBlockstore(join(getBrainHome(), 'helia-blocks'));
+  await bs.open();
+  try {
+    await bs.put(cid, envelopeBytes);
+  } finally {
+    await bs.close();
+  }
+
+  // Update v2 manifest (also propagates to v1 manifest via back-compat).
+  const newCidStr = cid.toString();
+  const manifestV2 = loadHeadsManifestV2();
+  manifestV2[docId] = [newCidStr];
+  saveHeadsManifestV2(manifestV2);
+
+  // Verify: round-trip through the v2 read path; reconstructed doc state
+  // must match the source v1 doc byte-for-byte. Fail-loud on divergence.
+  const { doc: rebuilt } = await openBrainDoc(docId);
+  const sourceBytes = Automerge.save(doc);
+  const rebuiltBytes = Automerge.save(rebuilt);
+  if (Buffer.from(sourceBytes).compare(Buffer.from(rebuiltBytes)) !== 0) {
+    // Roll back the manifest so the operator can retry from the v1 head.
+    if (currentHead) {
+      const rollback = loadHeadsManifestV2();
+      rollback[docId] = [currentHead];
+      saveHeadsManifestV2(rollback);
+    } else {
+      const rollback = loadHeadsManifestV2();
+      delete rollback[docId];
+      saveHeadsManifestV2(rollback);
+    }
+    throw new Error(
+      `migrateDocToV2: verification failed for ${docId}. ` +
+      `Rebuilt v2 doc differs from v1 source by Automerge.save() byte comparison. ` +
+      `Manifest rolled back to v1 head. Migration aborted.`,
+    );
+  }
+
+  return { headCid: newCidStr, action: 'migrated', changeCount: allChanges.length };
+}
+
+/**
  * Reconstruct an Automerge doc by walking a v2 envelope chain from a head
  * CID back through parent CIDs (BFS), then replaying changes in priority
  * order via Automerge.applyChanges.
