@@ -87,12 +87,18 @@ export const auditGovernorHandler = {
       if (fromBlock > toBlock) {
         throw new Error(`--from-block (${fromBlock}) must be <= --to-block (${toBlock}).`);
       }
-      // Chunk size: Ethereum mainnet + most providers cap at 10K-50K blocks per
-      // eth_getLogs call. L2 public RPCs often allow much larger ranges (verified
-      // Arbitrum public: 1M-block query returns in ~200ms). Bump for known L2s so
-      // scanning a useful Arbitrum/Optimism/Base window is practical.
+      // Chunk size: public RPC eth_getLogs cap. Arbitrum's public RPC enforces
+      // 50K strictly (confirmed via error response HB#572); Ethereum + Optimism
+      // + Base use similar limits. Single universal 49K chunk size.
+      const MAX_RANGE = 49_000;
+
+      // Warn user on L2s about slow scans — many chunks required per filter.
       const L2_CHAINS = new Set([10, 42161, 8453]); // Optimism, Arbitrum, Base
-      const MAX_RANGE = L2_CHAINS.has(chainId) ? 1_000_000 : 49_000;
+      const isL2 = L2_CHAINS.has(chainId);
+      if (isL2 && (toBlock - fromBlock) > 500_000) {
+        const estChunks = Math.ceil((toBlock - fromBlock) / MAX_RANGE);
+        spin.text = `Scanning proposal events (L2: ${estChunks} chunks × 4 filters)...`;
+      }
 
       async function chunkedQuery(filter: any, from: number, to: number): Promise<any[]> {
         const results: any[] = [];
@@ -102,7 +108,8 @@ export const auditGovernorHandler = {
             const events = await governor.queryFilter(filter, start, end);
             results.push(...events);
           } catch {
-            // If a chunk fails, skip it and continue
+            // If a chunk fails, skip it and continue (mainnet + L2 fallback).
+            // Silent because public RPCs frequently rate-limit transiently.
           }
         }
         return results;
