@@ -61,15 +61,89 @@ interface PeerRegistryReport {
   warning?: string;
 }
 
+/**
+ * HB#577 (retro-344 change-4): fleet-state diagnostic.
+ * Distinguishes self-dark (I'm alone / first agent) from fleet-dark
+ * (peers published but unreachable) from partial (some up, some down)
+ * from healthy (all published peers reachable). Addresses the HB#564
+ * brain lesson: 'daemon-check detects self-dark but not fleet-dark'.
+ */
+type FleetState = 'isolated' | 'fleet-dark' | 'partial' | 'healthy' | 'unknown';
+
+interface FleetReport {
+  state: FleetState;
+  /** Registry peer count excluding my own entry (count of potential peers to dial). */
+  otherPeersInRegistry: number;
+  /** Current live connections per daemon IPC. */
+  connections: number;
+  /** Optional diagnostic hint for the operator. */
+  hint?: string;
+}
+
 interface SessionStartReport {
   ok: boolean;
   daemon: DaemonReport;
   cache: CacheReport;
   peers: PeerRegistryReport;
+  fleet: FleetReport;
   durationMs: number;
 }
 
 const PEER_REGISTRY_STALE_SEC = 5 * 60;
+
+/**
+ * Classify fleet state from daemon + registry reports.
+ * No new I/O — pure derivation from already-collected data.
+ */
+function computeFleetState(daemon: DaemonReport, peers: PeerRegistryReport): FleetReport {
+  const connections = daemon.connections;
+  // peers.peerCount includes my own entry (daemon publishes it on startup).
+  // Subtract 1 to get "other agents that have registered."
+  const otherPeersInRegistry = Math.max(peers.peerCount - 1, 0);
+
+  if (peers.status === 'skipped' || peers.status === 'unavailable') {
+    return {
+      state: 'unknown',
+      otherPeersInRegistry,
+      connections,
+      hint: `registry check ${peers.status} — cannot classify fleet state`,
+    };
+  }
+
+  if (otherPeersInRegistry === 0) {
+    return {
+      state: 'isolated',
+      otherPeersInRegistry,
+      connections,
+      hint: connections === 0
+        ? 'no other agents in registry — first agent or all others never published. Writes persist locally, will sync on peer arrival.'
+        : connections > 0
+          ? `connected to ${connections} peer(s) but registry shows none — pop.brain.peers not yet synced from them. Will stabilize once their registry entry propagates.`
+          : undefined,
+    };
+  }
+
+  if (connections === 0) {
+    return {
+      state: 'fleet-dark',
+      otherPeersInRegistry,
+      connections,
+      hint: `${otherPeersInRegistry} peer(s) registered but 0 reachable — their daemons may be down. Not a self-dark issue (my daemon up). Writes persist locally until fleet reconnects.`,
+    };
+  }
+
+  if (connections < otherPeersInRegistry) {
+    return {
+      state: 'partial',
+      otherPeersInRegistry,
+      connections,
+      hint: `connected to ${connections} of ${otherPeersInRegistry} registered peer(s). Some fleet members dark or blocked — partial propagation only.`,
+    };
+  }
+
+  // connections >= otherPeersInRegistry → healthy (may exceed if public bootstrap peers counted)
+  return { state: 'healthy', otherPeersInRegistry, connections };
+}
 
 async function ensureDaemon(waitMs: number): Promise<DaemonReport> {
   const existingPid = getRunningDaemonPid();
@@ -219,6 +293,7 @@ async function sessionStartHandler(argv: ArgumentsCamelCase<SessionStartArgs>): 
   const daemon = await ensureDaemon(waitMs);
   const cache = await warmupSubgraphCache(!!argv['skip-cache-warmup']);
   const peers = await checkPeerRegistry(!!argv['skip-peer-refresh']);
+  const fleet = computeFleetState(daemon, peers);
 
   const ok = daemon.status !== 'failed';
   const report: SessionStartReport = {
@@ -226,6 +301,7 @@ async function sessionStartHandler(argv: ArgumentsCamelCase<SessionStartArgs>): 
     daemon,
     cache,
     peers,
+    fleet,
     durationMs: Date.now() - start,
   };
 
@@ -241,6 +317,9 @@ async function sessionStartHandler(argv: ArgumentsCamelCase<SessionStartArgs>): 
     if (cache.warning) console.log(`             ⚠ ${cache.warning}`);
     console.log(`  peers:     ${peers.status.padEnd(10)} count=${peers.peerCount}${peers.oldestAgeSec !== null ? `  oldest=${peers.oldestAgeSec}s` : ''}`);
     if (peers.warning) console.log(`             ⚠ ${peers.warning}`);
+    const fleetIcon = fleet.state === 'healthy' ? '✓' : (fleet.state === 'partial' ? '~' : (fleet.state === 'isolated' ? '○' : '⚠'));
+    console.log(`  fleet:     ${fleet.state.padEnd(10)} ${fleetIcon} others=${fleet.otherPeersInRegistry} conns=${fleet.connections}`);
+    if (fleet.hint) console.log(`             ⚠ ${fleet.hint}`);
     console.log('');
     if (!ok) console.log(`  ✗ Session start CRITICAL: daemon failed. Brain writes will not propagate.`);
     else console.log(`  ✓ Session ready.`);
