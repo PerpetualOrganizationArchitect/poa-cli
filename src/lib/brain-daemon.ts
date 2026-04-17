@@ -877,14 +877,64 @@ export async function runDaemon(): Promise<void> {
     const n = Number(raw);
     return Number.isFinite(n) && n >= 5_000 ? n : REDIAL_INTERVAL_MS;
   })();
-  const redialTimer: NodeJS.Timeout | null =
-    parsedPeerAddrs.length > 0
-      ? setInterval(async () => {
-          for (const addr of parsedPeerAddrs) {
-            await dialIfDisconnected(addr, 'redial');
+  // Task #448 pt3: on each redial tick, ALSO dial multiaddrs learned from
+  // pop.brain.peers. Lazy-load multiaddr module if POP_BRAIN_PEERS was unset
+  // (so makeMultiaddrLocal didn't initialize at startup).
+  async function ensureMultiaddrLoader(): Promise<void> {
+    if (makeMultiaddrLocal) return;
+    const mod = await esmImportPeers('@multiformats/multiaddr');
+    makeMultiaddrLocal = mod.multiaddr;
+  }
+
+  async function peerAddrsFromRegistry(): Promise<string[]> {
+    try {
+      const { readBrainDoc } = await import('./brain');
+      const { doc } = await readBrainDoc('pop.brain.peers');
+      const peersMap: Record<string, { multiaddrs?: string[] }> = (doc && (doc as any).peers) || {};
+      const ownPeerId = node.libp2p.peerId.toString();
+      const addrs: string[] = [];
+      for (const [peerId, entry] of Object.entries(peersMap)) {
+        if (peerId === ownPeerId) continue;  // don't dial self
+        if (entry && Array.isArray(entry.multiaddrs)) {
+          for (const ma of entry.multiaddrs) {
+            if (typeof ma === 'string' && ma.startsWith('/ip4/')) addrs.push(ma);
           }
-        }, redialInterval)
-      : null;
+        }
+      }
+      return addrs;
+    } catch (err: any) {
+      // Doc may not exist yet (no peer has written), or helia node unavailable.
+      // Return empty list silently — static POP_BRAIN_PEERS remains the fallback.
+      return [];
+    }
+  }
+
+  async function redialTick(): Promise<void> {
+    await ensureMultiaddrLoader();
+    const fromEnv = parsedPeerAddrs;
+    const fromRegistry = await peerAddrsFromRegistry();
+    // De-dupe: env addrs take precedence (operator explicit); registry augments.
+    const seen = new Set<string>(fromEnv);
+    const combined: string[] = [...fromEnv];
+    for (const addr of fromRegistry) {
+      if (!seen.has(addr)) { combined.push(addr); seen.add(addr); }
+    }
+    for (const addr of combined) {
+      await dialIfDisconnected(addr, 'redial');
+    }
+  }
+
+  // Start redial timer whenever EITHER source might have entries — registry
+  // is empty at first but fills as peers publish, so always run if env OR
+  // the registry-write path is enabled (peersRefreshMs > 0). Saves a corner
+  // case where a fresh agent with no POP_BRAIN_PEERS never learns registry
+  // peers.
+  const shouldRunRedial = parsedPeerAddrs.length > 0 || peersRefreshMs > 0;
+  const redialTimer: NodeJS.Timeout | null = shouldRunRedial
+    ? setInterval(() => {
+        redialTick().catch(err => log(`redial tick err: ${err?.message ?? err}`));
+      }, redialInterval)
+    : null;
 
   // --- Graceful shutdown ---
   let shuttingDown = false;
