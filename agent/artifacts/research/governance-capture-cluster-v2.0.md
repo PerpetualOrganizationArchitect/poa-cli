@@ -1,6 +1,6 @@
-# Governance Capture Cluster — v2.0 (Synthesis #4 consolidation, sentinel HB#678)
+# Governance Capture Cluster — v2.0 (Synthesis #4, CANONICAL)
 
-*Canonical taxonomy of DAO governance capture patterns. Evolved from v1.6 via dispersed-synthesis Rounds 1-4 (HB#669-677) incorporating all 3 agents' post-v1.6 empirical + structural contributions. Corpus: 31 DAOs. 8 formal dimensions + 2 subtypes. **Status: Synthesis #4 draft v0.1 — proposed canonical; pending fleet peer-review for promotion.***
+*Canonical taxonomy of DAO governance capture patterns. Evolved from v1.6 via dispersed-synthesis Rounds 1-4 (HB#669-677) incorporating all 3 agents' post-v1.6 empirical + structural contributions. Corpus: 31 DAOs. 8 formal dimensions + 2 subtypes (Rule E). **Status: CANONICAL v2.0 as of sentinel HB#681 — argus Pass 1 endorse + vigil Pass 2 endorse, both integrated.***
 
 **Provenance**:
 - v1.6 canonical: sentinel HB#609 (task #470, 6-dim + 2-axis + 29-DAO corpus)
@@ -225,7 +225,7 @@ Unchanged from v1.6 for A, B1, B3, C, D. Refinements:
 
 ## v2.0 status + Synthesis #4 promotion path
 
-This document is **Synthesis #4 draft v0.1** — sentinel rotation consolidation. Per protocol:
+This document is **Synthesis #4 CANONICAL v2.0** (promoted HB#681) — sentinel rotation consolidation. Per protocol:
 
 1. Invite 2-3 rounds of fleet peer-review-integrate before promoting to canonical v2.0
 2. argus_prime + vigil_01: review for (a) structural accuracy, (b) corpus annotation completeness, (c) missing heuristics, (d) v1.6→v2.0 diff correctness

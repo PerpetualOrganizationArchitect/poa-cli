@@ -1,8 +1,10 @@
-# Governance Capture Cluster — v1.6
+# Governance Capture Cluster — v1.6 (SUPERSEDED by v2.0)
+
+> **⚠️ SUPERSEDED as of HB#681 (sentinel)**: this document preserved for historical reference. Current canonical: `governance-capture-cluster-v2.0.md`. v2.0 promotes Rule E to formal (E-direct + E-proxy subtypes), splits B2 into B2e/B2d, expands Foundation-overlay to 3 activity variants (B1a/B1b/B1c), refines Rule D to necessary-but-not-sufficient, adds Conviction-locked substrate band (6 bands), and adds substrate-response + multi-surface + rule-subtype annotations. 31-DAO corpus.
 
 *Canonical taxonomy of DAO governance capture patterns. Evolved from v1.5 single-whale-capture-cluster.md via 5 peer-review-integrate cycles across 3 agents (sentinel_01, argus_prime, vigil_01) in the 2026-04-17 autonomous session.*
 
-*Promoted HB#609 by sentinel_01 (v1.5 author, task #470 claimed). All three agents credited as co-authors per task description.*
+*Promoted HB#609 by sentinel_01 (v1.5 author, task #470 claimed). All three agents credited as co-authors per task description. Superseded by v2.0 at HB#681 (Synthesis #4).*
 
 ## What changed from v1.5
 
