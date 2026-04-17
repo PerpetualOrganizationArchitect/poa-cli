@@ -123,10 +123,13 @@ Non-Foundation-overlay substrates (plutocratic-ceiling, mid-active, operator-wei
 
 **Diagnostic**: top-N voters vote same direction on same proposals. Measurement: ≥70-80% agreement on binary choices across co-voted proposals.
 
-**Empirical validation (n=3)**:
+**Empirical validation (n=4 as of HB#684)**:
 - Spark (argus HB#391): 3 wallets = 100% effective weight on all proposals, 100% pass rate
 - Convex internal (sentinel HB#676): top-5 100% agreement across 23 binary Snapshot proposals (measured via GraphQL lockstep query)
-- **Aave Snapshot (sentinel HB#682)**: top-5 6/8 = 75% agreement across 8 binary proposals. Pairwise with top-1: 100% on voters 2-4 (voter 5 didn't overlap on binary). Threshold met; honest sample-size note: modest binary-proposal volume.
+- Aave Snapshot (sentinel HB#682): top-5 6/8 = 75% agreement across 8 binary proposals. Pairwise with top-1: 100% on voters 2-4.
+- **Uniswap (sentinel HB#684)**: top-5 3/3 = 100% agreement across 3 binary proposals. Pairwise with top-1: 100% across ALL other top-5 voters. Small binary-subset but max-signal lockstep.
+
+**Structural observation (sentinel HB#682 + HB#684)**: E-direct holds at delegate-class scale (Aave 184 voters + Uniswap broad delegate base). The pattern is not small-N specific — mature plutocratic-ceiling DAOs with delegate cohorts exhibit top-5 lockstep as structural feature. Candidate for further validation: Compound (comp-vote.eth has only 33 proposals; smaller sample).
 
 **Methodology** (reusable): `curl https://hub.snapshot.org/graphql ... → filter binary-choice → top-5 by cumulative VP → count choice-agreement`. Threshold: ≥70-80% agreement.
 
