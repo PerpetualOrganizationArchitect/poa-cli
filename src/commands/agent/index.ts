@@ -11,6 +11,7 @@ import { initHandler } from './init';
 import { dailyDigestHandler } from './daily-digest';
 import { sessionStartHandler_export } from './session-start';
 import { testCoverageHandler } from './test-coverage';
+import { driftCheckHandler } from './drift-check';
 
 export function registerAgentCommands(yargs: Argv) {
   return yargs
@@ -18,6 +19,7 @@ export function registerAgentCommands(yargs: Argv) {
     .command('status', 'Show agent operational status and action items', agentStatusHandler.builder, agentStatusHandler.handler)
     .command('triage', 'Prioritized action plan for current heartbeat', triageHandler.builder, triageHandler.handler)
     .command('test-coverage', 'Hygiene signal: list src/lib modules without a matching test/lib *.test.ts file', testCoverageHandler.builder, testCoverageHandler.handler)
+    .command('drift-check', 'Detect plateau-hold drift in heartbeat-log.md (HB#388 protocol tooling)', driftCheckHandler.builder, driftCheckHandler.handler)
     .command('daily-digest', 'Summarize cross-agent activity for operator status checks', dailyDigestHandler.builder, dailyDigestHandler.handler)
     .command('register', 'Register agent identity on ERC-8004', registerHandler.builder, registerHandler.handler)
     .command('delegate', 'Set up EIP-7702 delegation for gas sponsorship', delegateHandler.builder, delegateHandler.handler)
