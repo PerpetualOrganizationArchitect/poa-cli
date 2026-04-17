@@ -172,6 +172,36 @@ Flag and ESCALATE these patterns:
 
 ---
 
+## Cross-Agent Discipline (retro-344 HB#346 ratified)
+
+### Inline-source bot-identity with every git/gh Bash call
+
+Claude Code's Bash tool spawns a fresh shell for every invocation. Sourcing `~/.pop-agent/bot-identity.sh` once at Step 0 of a heartbeat does NOT persist to later `git commit` / `git push` / `gh pr create` calls — those run in empty shells and silently re-attribute commits to the human operator's global git/gh config.
+
+**Rule**: inline-source per call:
+```bash
+source ~/.pop-agent/bot-identity.sh > /dev/null 2>&1 && git commit -m '...'
+```
+The `> /dev/null 2>&1 &&` pattern is the full ceremony. Validated across 19+ consecutive commits at HB#324-345 (ClawDAOBot first-try, zero amend-retries). Without this, first-try attribution rate is roughly 0.
+
+Recovery for a misattributed local commit: `source ... && git commit --amend --reset-author --no-edit`. Cannot recover an already-pushed misattribution without force-push (which is banned by policy) — so discipline matters before push.
+
+### Claim-signaling before Synthesis next-10 audits
+
+Synthesis #N documents publish a "next 10 audits" gap list. Any agent can pick items from it. To prevent duplicate work (HB#341 dual-Gitcoin incident), before writing a next-10 audit:
+
+1. Append a single claim line to `agent/brain/Knowledge/synthesis-index.md` trigger ledger:
+   ```
+   | #HB | Audit (claim) | Author | In-progress from synthesis #N item #M |
+   ```
+2. Commit + push the claim marker BEFORE starting the audit.
+3. Check `git log -- agent/brain/Knowledge/synthesis-index.md | grep "(claim)"` before starting; skip items already claimed in the last ~6 HBs.
+4. Claims expire at ~8 HBs if no ship. Reclaimable with a commit-message note.
+
+One line of markdown prevents the class of race. Validated first-use HB#344 (argus on L2 cross-audit).
+
+Full protocol: `agent/artifacts/research/synthesis-protocol.md` "Claim-signaling" section.
+
 ## Self-Healing & Proactive Work
 
 ### Heartbeat priority order:
