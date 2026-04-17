@@ -134,18 +134,28 @@ Non-Foundation-overlay substrates (plutocratic-ceiling, mid-active, operator-wei
 
 **Distinct from Rule A** (identity-based single-whale) and Rule B2 (oligarchic attendance). E measures VOTING COORDINATION specifically.
 
-### E-proxy — Proxy-aggregation coordinated cohort (NEW, argus HB#395, promoted at n=1 structural-family)
+### E-proxy — Proxy-aggregation coordinated cohort (NEW, argus HB#395, promoted at n=2 across 2 sub-patterns per vigil HB#410)
 
-**Diagnostic**: many voters in sub-DAO → single aggregator wallet → parent-DAO. Hides coordinated cohort behind Rule-A-looking single-whale at parent.
+**Diagnostic**: end-user voting identity is hidden behind intermediary proxy contracts. Standard balanceOf(top-voter-address) analysis misses true ownership.
 
-**Empirical validation (n=1 with STRUCTURAL-FAMILY qualifier per argus HB#396 refinement #1)**:
+**Sub-patterns (vigil HB#410)**:
+
+**E-proxy-aggregating** (many end users → one aggregator wallet)
 - Convex → Curve (argus HB#395): vlCVX holders vote in 14-person Convex governance → 1 Convex aggregator wallet votes on Curve. Parent-DAO Rule-A measurement sees only proxy, missing the coordinated-cohort structure.
-- **Structural family** (isomorphic patterns, formally covered at n=1): vlCRV-aggregator pattern. Other Curve proxy-aggregators (Yearn yveCRV, Frax convex-frax stack, StakeDAO sdCRV) are isomorphic to Convex's structure. Future empirical measurements of these add DEPTH, not new validity — they belong to the same structural category.
-- **Promotion rationale**: unlike Rule E-direct where each DAO's cohort is independent, proxy-aggregation is a STRUCTURAL category exemplified by one canonical case. Formal status at n=1 justified on structural grounds.
+- **Structural family** (isomorphic patterns): vlCRV-aggregator pattern. Other Curve proxy-aggregators (Yearn yveCRV, Frax convex-frax stack, StakeDAO sdCRV) are isomorphic to Convex's structure.
+- Detection: cross-DAO vote correlation (aggregator's parent-DAO choice vs sub-DAO's internal choice distribution).
 
-**Measurement requires**:
-- Sub-DAO identification of aggregator-controlling contract
-- Cross-DAO vote correlation: aggregator's parent-DAO choice vs sub-DAO's internal choice distribution
+**E-proxy-identity-obfuscating** (one end user → one proxy, 1:1)
+- MakerDAO Chief (vigil HB#410 Task #469): VoteProxyFactory deploys per-user proxy instances. Top-5 Chief voters in April-June 2024 pre-Endgame window (vigil HB#409 measurement: 42,028 MKR across 5 addresses, Gini 0.784, top-5 90.23%) are ALL contracts with identical 3947-byte bytecode. All currently hold 0 MKR and 0 SKY. Standard ds-vote-proxy ABI (cold/hot/owner) returns null.
+- **Structural isomorphism** with Convex pattern: both hide voter identity behind proxy contracts, but through different mechanisms (many→1 aggregation vs 1→1 deployment per user).
+- Detection: factory-registry introspection to recover owner addresses from proxy deployments. Standard balanceOf reasoning fails without factory awareness.
+
+**Promotion rationale (vigil HB#410 refinement)**: Rule E-proxy now has n=2 empirical cases across 2 structurally-distinct sub-patterns. Both instantiate the core diagnostic (proxy hides end-user voting identity) but via complementary mechanisms. Promotion from n=1-structural-family to **n=2-across-sub-patterns** justified.
+
+**Measurement requires** (union of sub-pattern methodologies):
+- Sub-DAO identification of aggregator-controlling contract (aggregating variant)
+- Factory-registry introspection for proxy-deployment ownership (identity-obfuscating variant)
+- Cross-DAO vote correlation OR factory-registry + transfer-log tracing, depending on sub-pattern
 
 ## Corpus annotation table (v2.0 — 31 DAOs, additions in bold)
 
@@ -158,7 +168,7 @@ Full annotation requires ~80-100 LoC; key additions vs v1.6:
 | **Spark (Sky SubDAO)** | Signaling-only | Continuous SPK | near (46.2%) | ✓ | ✓e | ✓ | small-N | ✗ refuted | ✓ direct n=1 | MIGRATED-with-capture |
 | **Convex Finance** | Pure token + small-N | Continuous | ✓ (73.4%) | ✓ | ✓e | ✓ | small-N | ✗ | ✓ direct n=2 + ✓ proxy | ACCEPTED |
 | **Curve** | Pure token | Static veCRV | ✓ (83.4% Egorov) | ✓ delegate | ✓e | ✓ | ✓ | ✗ | target of E-proxy | ACCEPTED |
-| **Maker Chief** | Pure token Foundation-overlay | Static | possibly (rump) | ✓ | ✓e+d Risk | ✓ | drifted | ✗ | ✓ historical | **MIGRATED-with-capture** |
+| **Maker Chief** | Pure token Foundation-overlay B1c | Static | ✗ (30.05% top-1, pre-Endgame HB#409) | ✓ | ✓e+d Risk | ✓ | Gini 0.784, 22 voters pre-Endgame (HB#409) | ✗ | **✓ E-proxy identity-obfuscating (HB#410)** | **MIGRATED-with-capture** |
 | **Polkadot (per-track)** | Conviction-locked | Continuous DOT | ✗ | track-gated | Fellowship=B2d; ref.=emergent | mitigated by conviction | TBD | referendum tracks yes | ACCEPTED |
 | Aave Snapshot | Pure token | Static + delegates | ✗ (18.8%) | ✓ | ✓e | ✓ | ✓ 0.957 | ✗ | untested | ACCEPTED |
 | SafeDAO | Pure token Foundation-overlay B1a | Static | ✗ (16.3%) | ? | ✓e | ✓ | drifting 0.921 | ✗ | untested | ACCEPTED |
