@@ -30,6 +30,7 @@ import {
   stopBrainNode,
   getBrainHome,
   listBrainDocs,
+  loadDocDirty,
 } from '../../lib/brain';
 import { isAllowedAuthor, loadAllowlist } from '../../lib/brain-signing';
 import { sendIpcRequest, getDaemonPidPath } from '../../lib/brain-daemon';
@@ -305,6 +306,60 @@ function checkDocManifest(): CheckResult {
   }
 }
 
+/**
+ * T2 (task #430): dirty-doc health check. Surfaces pending retry-entries
+ * created by fetchAndMergeRemoteHead on bitswap fetch failure. The repair
+ * worker in the daemon retries these every POP_BRAIN_REPAIR_INTERVAL_MS
+ * (1h default). If an entry has been dirty for >24h, something is
+ * persistently wrong — FAIL so the operator investigates.
+ */
+function checkDirtyDocs(): CheckResult {
+  let dirty: Record<string, { dirtyAt: number; cid: string; lastError: string }>;
+  try {
+    dirty = loadDocDirty();
+  } catch (err: any) {
+    return {
+      name: 'dirty docs (T2 repair queue)',
+      status: 'warn',
+      detail: `cannot read doc-dirty.json — ${err.message}`,
+    };
+  }
+  const entries = Object.entries(dirty);
+  if (entries.length === 0) {
+    return {
+      name: 'dirty docs (T2 repair queue)',
+      status: 'pass',
+      detail: 'no docs marked dirty — fetch path has no outstanding retries',
+    };
+  }
+  const now = Date.now();
+  const STUCK_MS = 24 * 60 * 60 * 1000; // 24h
+  const ages = entries.map(([, e]) => now - e.dirtyAt);
+  const oldestAge = Math.max(...ages);
+  const ageSec = Math.round(oldestAge / 1000);
+  const ageStr = ageSec > 3600
+    ? `${Math.round(ageSec / 60)}min`
+    : ageSec > 60 ? `${Math.round(ageSec / 60)}min` : `${ageSec}s`;
+  if (oldestAge > STUCK_MS) {
+    const stuck = entries
+      .filter(([, e]) => now - e.dirtyAt > STUCK_MS)
+      .map(([d]) => d)
+      .slice(0, 3)
+      .join(', ');
+    return {
+      name: 'dirty docs (T2 repair queue)',
+      status: 'fail',
+      detail: `${entries.length} dirty, oldest ${ageStr} > 24h — stuck: ${stuck}. Run 'pop brain repair' manually; if still failing, the peer with that CID may be permanently gone.`,
+    };
+  }
+  const docList = entries.slice(0, 3).map(([d]) => d).join(', ');
+  return {
+    name: 'dirty docs (T2 repair queue)',
+    status: 'warn',
+    detail: `${entries.length} dirty, oldest ${ageStr} — ${docList}${entries.length > 3 ? ', ...' : ''}. Repair worker will retry every hour; or run 'pop brain repair' for immediate pass.`,
+  };
+}
+
 async function checkSubscribedTopics(node: any): Promise<CheckResult> {
   if (!node) {
     return {
@@ -564,6 +619,7 @@ export const doctorHandler = {
       checks.push(checkAllowlist());
       checks.push(await checkDynamicMembership());
       checks.push(checkDocManifest());
+      checks.push(checkDirtyDocs());
 
       // libp2p init is the integration check — may take a few seconds.
       const { result: initResult, node } = await checkLibp2pInit();
