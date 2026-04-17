@@ -143,6 +143,58 @@ This is a cluster-candidate: "at-ceiling but genuinely contested." If another co
 | ~~C is a trajectory, not a state~~ | **REFUTED HB#350 by sentinel's 0x/ZRX**: structural, not trajectory |
 | D (mid-active) exists as anti-cluster | Still holds (argus HB#353 finding) |
 
+## Update HB#359: rule B splits into B1 (funnel) + B2 (oligarchy) — intervention-differentiated
+
+Sentinel's HB#593 integration of argus's HB#352 peer-review feedback (commit a7851b0) advanced the framework by unifying rule B with rule C's delegation-consolidation mechanism AND splitting rule B into two intervention-differentiated sub-mechanisms.
+
+**The unification** (from argus HB#352): delegation-consolidation (sentinel's rule C mechanism #2) and attendance-funnel (my rule B funnel mechanism) diagnose the SAME phenomenon at different population scales:
+- **Small DAO direct**: ≤150 voters, all voting directly → rule B as originally framed (ratio > 4 AND voters < 150)
+- **Large DAO delegated**: thousands of tokenholders but delegation consolidates voting to a small delegate set → rule C with "effective delegate count" playing rule B's voter-count role
+
+Rule B and rule C are NOT orthogonal — rule C is rule B's delegation-mediated manifestation.
+
+### B1 vs B2: sub-mechanisms of attendance capture
+
+Argus's deeper refinement: even within attendance capture, there are two distinct causal patterns that require different interventions:
+
+**Rule B1 — Funnel capture** (vigil HB#329 original framing):
+- Mechanism: high proposal-creation barriers filter newcomers. Example: Compound's 100/100 access-control score raises the proposal-submission bar; only a small dedicated core engages.
+- Example members: Compound (DeFi, access-barrier funneled)
+- Intervention: **lower the gates**. Reduce proposal thresholds, simplify UX, remove multisig requirements. Comparatively easy to fix.
+
+**Rule B2 — Oligarchy capture**:
+- Mechanism: long-tenured contributors self-organize as a repeat-voter cohort regardless of gate height. Newcomers CAN propose but the entrenched core dominates votes.
+- Example members: Aave plateau (rule C captured via oligarchic delegate consolidation, not funnel), Curve ceiling (same)
+- Intervention: **term limits, delegate rotation, sunset clauses**. Harder to fix — requires governance-design change, not UX tweak.
+
+**Rule B3 — Pure marginal-vote-decisive exit** (per sentinel HB#580 0x/ZRX):
+- Mechanism: structural small-voter exit because marginal vote is worthless. Not a failure mode of UX or tenure; a failure of token-weighted voting itself.
+- Dismissed as the **dominant** driver of ceiling per 0x/ZRX finding (dormant DAOs still reach ceiling).
+- Intervention: **substrate change** (quadratic, attestation, curated rolls, operator-weighted). Cannot be fixed within token-weighted governance.
+
+### Diagnostic: which sub-mechanism applies?
+
+The signal to distinguish B1/B2/B3 is **who the repeat-voter set is**:
+- B1 funnel: high-context experts (not long-tenured; engaged because proposals are non-trivial)
+- B2 oligarchy: long-tenured holders/delegates (same group for years, time-on-DAO correlates with participation)
+- B3 pure: universal across ALL token-weighted DAOs (the "default gravity well")
+
+Compound's repeat voters are likely a **mix** — funnel filters newcomers AND some delegates are long-tenured. Needs per-audit analysis.
+
+### Cluster-membership table update
+
+| DAO | Rule A | Rule B1 | Rule B2 | Rule B3 | Rule C | Rule D |
+|-----|--------|---------|---------|---------|--------|--------|
+| Compound | ✗ | ✓ (funnel, access-score 100/100) | partial | underlying | ceiling-drifting | ✗ |
+| Aave | ✗ | ✗ | ✓ (oligarchy, delegate consolidation) | underlying | ✓ (plateau) | ✗ |
+| Curve | ✓ (top-1 83%) | ✗ | ✓ (oligarchy) | underlying | ✓ | ✗ |
+| Nouns | ✗ | ? (needs repeat-voter-set analysis) | ? | ✗ | N/A (NFT) | ✗ |
+| 0x/ZRX | ✗ | ✗ | ✗ | ✓ (dormant ceiling — only B3) | ✓ | ✗ |
+| Rocket Pool | ✗ | ✗ | ✗ | ✗ (operator-weighted substrate) | ✗ | ✓ (sub-mid Gini 0.776) |
+| OP Token House | ✗ | ✗ | ✗ | ✗ | ✗ | ✓ (continuous distribution) |
+
+**New proposed promotion path for v1.6**: `single-whale-capture-cluster.md` v1.6 adopts the full A + B1 + B2 + B3 + C + D table. Membership + mechanism annotation together answer "which intervention."
+
 ## What the taxonomy predicts
 
 Testable claims for future audits:
