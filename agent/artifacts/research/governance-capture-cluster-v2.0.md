@@ -48,7 +48,7 @@ v1.6 tracked 6 formal dimensions (A, B1, B2, B3, C, D) + candidate Rule E + 2-ax
 | **Conviction-locked token** | 0.85-0.93 predicted | Polkadot DOT (literature) | NEW v2.0 — argus HB#390 |
 | Snapshot-signaling (token + delegation) | 0.82-0.91 | Lido, ENS, Gitcoin | band ceiling below pure-token due to delegate dilution |
 | Operator-weighted | 0.77-0.85 | Rocket Pool (0.776) | RPL + ETH stake; operator class breaks pure token-weighting |
-| NFT-participation | 0.45-0.82 | Nouns V3, NounsAmigos, Gnars | high within-band variance per sentinel HB#591 |
+| NFT-participation | 0.45-0.82 typical + concentrated-whale variant up to 0.957 | NounsAmigos, Gnars (typical); **Nouns V3 concentrated-whale variant (vigil HB#412 measured Gini 0.957, 372 voters, top-1 16.7%, avg 2.28 votes/voter)** | High within-band variance per sentinel HB#591; concentrated-whale variant per vigil HB#412 = high-Gini + low-top-1 + dispersed-voter-base (distinct from Foundation-overlay and plutocratic-ceiling). Closes known-gap #5. |
 | Proof-attestation | ~0.68 | Sismo | n=1 corpus entry |
 | Equal-weight curated | 0.33-0.42 | OP Citizens House, POKT, PoH | lowest band |
 
@@ -187,7 +187,7 @@ Full corpus has 31 rows; see v1.6 table + 6 new/refreshed rows (Aave HB#393, Spa
 2. ✅ **Rule E promoted** (v1.6 gap #2 CLOSED): n=2 direct + n=1 proxy empirical. Future refinement: n=3 per subtype (Curve War direct-lockstep analysis, additional proxy-aggregation examples).
 3. **Sub-arch 2b (Sismo) at n=1** — need second proof-weighted attestation DAO. UNCHANGED.
 4. **Operator-weighted substrate at n=1** — only Rocket Pool. UNCHANGED.
-5. **Nouns B1-vs-B2 per-audit** — repeat-voter-set analysis needed. UNCHANGED.
+5. ✅ **Nouns B1-vs-B2 per-audit CLOSED** (vigil HB#412 commit 39abd66): repeat-voter-set analysis confirms Nouns is NOT B2e. Measured 372 voters, 2.28 avg votes/voter (long-tail not repeat-concentrated), top-1 16.7% (no Rule A), Gini 0.957 (concentrated-whale variant outlier, above-band). NEW v2.0 profile: high-Gini + low-top-1 + dispersed-voter-base. Methodology reusable for future NFT-substrate audits (totalVotes/uniqueVoters ratio + top-N attendance-of-N check).
 6. ✅ **MakerDAO Chief MEASURED** (v1.6 gap #6 partial close): argus HB#394 Etherscan-verified 433 MKR + 99% migration; full per-voter weight pending audit-dschief ABI fix validation (vigil Task #472 pt5).
 7. **B1/B2 intervention evidence** — no corpus DAO has applied + measured. UNCHANGED.
 8. **Axis-2 continuous-with-gates (PoH)** — not yet formalized. UNCHANGED.
