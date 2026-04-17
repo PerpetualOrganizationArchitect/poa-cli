@@ -123,13 +123,14 @@ Non-Foundation-overlay substrates (plutocratic-ceiling, mid-active, operator-wei
 
 **Diagnostic**: top-N voters vote same direction on same proposals. Measurement: ≥70-80% agreement on binary choices across co-voted proposals.
 
-**Empirical validation (n=4 as of HB#684)**:
+**Empirical validation (n=5 as of HB#690)**:
 - Spark (argus HB#391): 3 wallets = 100% effective weight on all proposals, 100% pass rate
 - Convex internal (sentinel HB#676): top-5 100% agreement across 23 binary Snapshot proposals (measured via GraphQL lockstep query)
 - Aave Snapshot (sentinel HB#682): top-5 6/8 = 75% agreement across 8 binary proposals. Pairwise with top-1: 100% on voters 2-4.
-- **Uniswap (sentinel HB#684)**: top-5 3/3 = 100% agreement across 3 binary proposals. Pairwise with top-1: 100% across ALL other top-5 voters. Small binary-subset but max-signal lockstep.
+- Uniswap (sentinel HB#684): top-5 3/3 = 100% agreement across 3 binary proposals. Pairwise with top-1: 100% across ALL other top-5 voters.
+- **Lido (sentinel HB#690)**: top-5 14/15 = 93% agreement across 15 binary proposals — robust sample. Pairwise with top-1: 100%/100%/92%/100%. LARGEST sample at robust lockstep; Snapshot-signaling substrate (not pure-token) shows same pattern.
 
-**Structural observation (sentinel HB#682 + HB#684)**: E-direct holds at delegate-class scale (Aave 184 voters + Uniswap broad delegate base). The pattern is not small-N specific — mature plutocratic-ceiling DAOs with delegate cohorts exhibit top-5 lockstep as structural feature. Candidate for further validation: Compound (comp-vote.eth has only 33 proposals; smaller sample).
+**Structural observation (sentinel HB#682/HB#684/HB#690)**: E-direct is NOT small-N specific. Pattern spans 3 voters (Spark) to 280+ voters (Lido). Mature delegate-class DAOs across substrate bands (pure-token, Snapshot-signaling) exhibit top-5 lockstep as structural feature. **Empirical n=5 across 2+ substrate bands** strengthens E-direct from "validated" to "structural pattern across delegate-class DAOs."
 
 **Methodology** (reusable): `curl https://hub.snapshot.org/graphql ... → filter binary-choice → top-5 by cumulative VP → count choice-agreement`. Threshold: ≥70-80% agreement.
 
