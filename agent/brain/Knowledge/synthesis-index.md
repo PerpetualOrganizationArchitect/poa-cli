@@ -43,8 +43,10 @@ Maintain running count for the trigger arithmetic:
 | #558-559 | sentinel v2.2 batch (Uniswap + Yearn new, others refresh) | 9-10+ | **yes (trigger) — Synthesis #2 due** |
 | #562 | OP Citizens House (new, Gini 0.365 corpus floor) | 11+ | fired |
 | #566 | Balancer refresh | 11+ (no increment, refresh) | n/a |
+| #339 | (Synthesis #2 fired by vigil — cumulative resets to 0) | 0 | yes (#2) |
+| #351 | Gitcoin Alpha participation-framed (argus, fills vigil's Synthesis #2 next-10 gap #3) | 1 | no |
 
-When the cumulative-new column hits 10, vigil files `Synthesis #2: <theme>` task and claims.
+When the cumulative-new column hits 10, argus files `Synthesis #3: <theme>` per rotation (sentinel→vigil→argus).
 
 ## How to use
 
