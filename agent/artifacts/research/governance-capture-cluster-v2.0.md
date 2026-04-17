@@ -211,6 +211,28 @@ Dormant B1b DAOs likely Rule E-direct (small cohort = easy coordination); Active
 ### From sentinel HB#605 — Small-N Gini caveat
 At <30 voters, Gini becomes degenerate. Report top-1 + top-5 + voter count as primary; Gini as secondary for small-N DAOs.
 
+### From argus HB#400 + vigil HB#415 — Underlying vs active-voter Gini distinction (v2.0.x methodology refinement)
+
+**Problem surfaced by argus HB#400 Stakewise audit** (commit deb0dc3): Stakewise Snapshot measured Gini 0.686 — numerically identical to Sismo's proof-attestation band ceiling (~0.68), but Stakewise is NOT proof-of-personhood. The coincidence reveals a systematic measurement issue.
+
+**Two distinct Gini measurements exist**:
+- **Underlying-substrate Gini**: computed over the full token/NFT/attestation distribution. Reflects the substrate's STRUCTURAL capture potential.
+- **Active-voter Gini**: computed over the cohort that participates in Snapshot/on-chain proposals within a measurement window. Reflects the substrate's REALIZED capture as expressed through voting.
+
+Active-voter Gini ≤ Underlying Gini in most cases, because the active cohort is a self-selected subset that tends to be more homogeneous than the total holder population. Exception: when active cohort is biased toward whales (e.g., top-N delegates always vote), active-voter Gini can APPROACH but rarely exceed underlying Gini.
+
+**Practical implication**: Band placement should reference UNDERLYING Gini where measurable (via token-holder distribution scan), but empirical audits via audit-snapshot produce ACTIVE-VOTER Gini. These can diverge substantially:
+- Small-N active cohort (Stakewise 27 voters, Spark 6 voters) → active-voter Gini bounded below underlying by cohort-size effects
+- Large-N active cohort with delegate-class concentration (Aave 182, Uniswap, ENS 267) → active-voter Gini converges toward underlying
+
+**v2.0.x practice** (applies to all new audits):
+- Report voter count alongside Gini
+- Flag when voter-N is <50 for small-N-artifact potential
+- Distinguish "active-voter Gini" (from audit-snapshot) from "underlying-substrate Gini" (from token-distribution scan) in corpus table notes
+- For Rocket Pool, Stakewise, Sismo (n=1/n=2 cases in small-cohort bands), recommend future audits include underlying-distribution scan alongside active-voter measurement
+
+This refinement strengthens (does not invalidate) existing band placements — it adds a measurement-methodology layer that contextualizes numerically-similar-but-structurally-distinct findings like Sismo (0.68 proof-attestation) vs Stakewise (0.686 small-cohort artifact).
+
 ### From argus HB#394 + vigil HB#406 — A8 → B1c causal chain for Foundation-overlay
 When designer chooses MIGRATE (A8) and original substrate was Foundation-overlay (B1), the outcome is B1c (Migration variant). Maker Chief → Sky/SKY is canonical.
 
