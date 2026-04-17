@@ -5,7 +5,216 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>What we built — Argus</title>
   <meta name="description" content="POP CLI + agent substrate + brain CRDT + audit toolkit + 17-DAO corpus + Governance Health Leaderboard. Each layer has shipped, on-chain, in production." />
-  <link rel="stylesheet" href="https://ipfs.io/ipfs/QmYkcnQ1U18qZbukFcPekNNBD6MPxv5FkmrRGWZNuwmyrv" />
+  <style>
+:root {
+  --bg: #0a0e1a;
+  --panel: #11172a;
+  --border: #1f2841;
+  --text: #e8ecf5;
+  --muted: #8b95b5;
+  --accent: #5fa8ff;
+  --accent-soft: #5fa8ff22;
+  --good: #5fd9a8;
+  --warn: #ffb86b;
+  --mono: 'SF Mono', Menlo, Monaco, Consolas, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 4rem;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 0 2rem;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 2.5rem;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  text-decoration: none;
+  color: var(--text);
+  font-weight: 600;
+  font-size: 1.1rem;
+}
+
+.brand-mark {
+  width: 32px;
+  height: 32px;
+  background: radial-gradient(circle at 35% 35%, var(--accent), #1a2848 70%);
+  border-radius: 50%;
+  border: 1px solid var(--accent-soft);
+}
+
+nav {
+  display: flex;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+}
+
+nav a {
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 0.95rem;
+  transition: color 0.15s;
+}
+
+nav a:hover, nav a.active { color: var(--accent); }
+
+h1 {
+  font-size: 2.2rem;
+  line-height: 1.2;
+  margin-bottom: 0.75rem;
+  letter-spacing: -0.02em;
+}
+
+h2 {
+  font-size: 1.4rem;
+  margin: 2rem 0 0.75rem;
+  color: var(--accent);
+  letter-spacing: -0.01em;
+}
+
+h3 {
+  font-size: 1.1rem;
+  margin: 1.25rem 0 0.5rem;
+  color: var(--text);
+}
+
+p { margin-bottom: 1rem; color: var(--text); }
+
+.lede {
+  font-size: 1.15rem;
+  color: var(--muted);
+  margin-bottom: 2rem;
+  max-width: 60ch;
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+ul { padding-left: 1.5rem; margin-bottom: 1rem; }
+ul li { margin-bottom: 0.4rem; }
+
+code, pre {
+  font-family: var(--mono);
+  font-size: 0.9em;
+}
+
+code {
+  background: var(--panel);
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+}
+
+pre {
+  background: var(--panel);
+  padding: 1rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  overflow-x: auto;
+  margin-bottom: 1rem;
+}
+
+pre code { background: none; border: none; padding: 0; }
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.panel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+
+.panel-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.25rem;
+  text-decoration: none;
+  color: var(--text);
+  transition: border-color 0.15s, transform 0.15s;
+}
+
+.panel-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+  text-decoration: none;
+}
+
+.panel-card h3 { margin-top: 0; color: var(--accent); }
+.panel-card p { color: var(--muted); font-size: 0.95rem; margin: 0; }
+
+.kv {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.4rem 1.5rem;
+  margin: 1rem 0;
+}
+.kv dt { color: var(--muted); font-family: var(--mono); font-size: 0.9rem; }
+.kv dd { font-family: var(--mono); font-size: 0.9rem; }
+
+.tag {
+  display: inline-block;
+  padding: 0.15em 0.6em;
+  border-radius: 4px;
+  font-size: 0.78em;
+  font-family: var(--mono);
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid var(--accent-soft);
+  margin-right: 0.25em;
+}
+
+.tag.good { background: #5fd9a822; color: var(--good); border-color: #5fd9a822; }
+.tag.warn { background: #ffb86b22; color: var(--warn); border-color: #ffb86b22; }
+
+footer {
+  margin-top: 4rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.85rem;
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+footer a { color: var(--muted); }
+
+@media (max-width: 600px) {
+  body { padding: 1rem 1rem 3rem; }
+  header { flex-direction: column; align-items: flex-start; gap: 1rem; }
+  h1 { font-size: 1.8rem; }
+}
+
+  </style>
 </head>
 <body>
   <header>
