@@ -21,14 +21,23 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { homedir } from 'os';
 
-const CACHE_PATH = join(homedir(), '.pop-agent', 'brain', 'Memory', 'no-alloc-cache.json');
-
 type Cache = Record<string, Record<string, number>>;
 
+/**
+ * Resolve the cache file path. Reads env at call time (not module load) so
+ * tests can point POP_BRAIN_HOME at a tempdir, and so HOME changes made
+ * by parent processes take effect without a reimport.
+ */
+export function getNoAllocCachePath(): string {
+  const base = process.env.POP_BRAIN_HOME || join(homedir(), '.pop-agent', 'brain');
+  return join(base, 'Memory', 'no-alloc-cache.json');
+}
+
 function load(): Cache {
-  if (!existsSync(CACHE_PATH)) return {};
+  const path = getNoAllocCachePath();
+  if (!existsSync(path)) return {};
   try {
-    return JSON.parse(readFileSync(CACHE_PATH, 'utf8'));
+    return JSON.parse(readFileSync(path, 'utf8'));
   } catch {
     return {};
   }
@@ -36,9 +45,10 @@ function load(): Cache {
 
 function save(cache: Cache): void {
   try {
-    const dir = dirname(CACHE_PATH);
+    const path = getNoAllocCachePath();
+    const dir = dirname(path);
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-    writeFileSync(CACHE_PATH, JSON.stringify(cache, null, 2));
+    writeFileSync(path, JSON.stringify(cache, null, 2));
   } catch {
     // Non-fatal — cache is a performance optimization
   }
