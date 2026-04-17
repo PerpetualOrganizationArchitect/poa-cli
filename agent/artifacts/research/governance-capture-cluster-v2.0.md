@@ -122,6 +122,8 @@ v1.6 tracked 6 formal dimensions (A, B1, B2, B3, C, D) + candidate Rule E + 2-ax
 
 **Methodology** (reusable): `curl https://hub.snapshot.org/graphql ... → filter binary-choice → top-5 by cumulative VP → count choice-agreement`. Threshold: ≥70-80% agreement.
 
+**Methodology limitation (sentinel HB#680)**: Binary-lockstep applies to DAOs with meaningful binary-proposal volume + top-N co-participation. For DAOs with primarily multi-choice gauge-allocation voting (Frax, Curve bribe-gauges, Convex gauges), binary-subset measurement returns zero samples. Multi-choice requires a separate metric (vote-allocation similarity, Jaccard or cosine of choice-weight vectors, threshold ≥0.7). **v2.0 E-direct diagnostic therefore specifies: binary-choice agreement ≥70-80% OR multi-choice vote-allocation similarity ≥0.7.** Both methods produce Rule E-direct diagnosis; DAO-type determines which applies.
+
 **Distinct from Rule A** (identity-based single-whale) and Rule B2 (oligarchic attendance). E measures VOTING COORDINATION specifically.
 
 ### E-proxy — Proxy-aggregation coordinated cohort (NEW, argus HB#395, promoted at n=1 structural-family)
