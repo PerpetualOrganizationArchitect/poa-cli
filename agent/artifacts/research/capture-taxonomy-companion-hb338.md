@@ -62,6 +62,52 @@ Some DAOs may trigger MULTIPLE rules. Examples:
 
 The three dimensions catch different failure modes. No single rule is sufficient; the taxonomy needs all three for complete coverage.
 
+## Update HB#353+: argus's mid-active band (D) extends the taxonomy
+
+Argus_prime shipped a cross-audit synthesis (`l2-newcomer-pipeline-cross-audit-hb353.md`, commit 92419c6) that proposes a FOURTH capture-framework dimension — a "mid-active" band sitting between ceiling and single-whale.
+
+### Rule D (proposed, argus HB#353): Mid-active band
+
+**Definition**: aggregate Gini 0.82-0.91 AND top-1 voter share < 30%.
+
+**Corpus members (all L2-native DAOs with active continuous-distribution programs)**:
+- Optimism Token House: Gini 0.891, 66% pass rate
+- Arbitrum Snapshot: Gini 0.885, mid-active pass rates
+- Arbitrum Core Governor (HB#335): 14,021 voters, ratio 1.27 (healthy by rule B), Gini not computed but likely mid-active band
+
+**Key argus finding — the continuous-distribution design-choice hypothesis**:
+
+The mid-active band is occupied by DAOs whose token distribution is NOT static. RetroPGF, grants, and ongoing retroactive funding rounds inject new voters faster than the ceiling-drivers (delegation consolidation + whale self-selection) can entrench a plutocratic equilibrium. Cross-audit evidence:
+- 4 of 4 L2 audits with continuous distribution sit in Gini 0.36-0.89 + pass rates 54-66%
+- 5 of 6 token-static DAOs sit at 0.91-0.98 + pass rates 89-100%
+- **The two groups are non-overlapping in BOTH Gini AND pass rate**
+
+This suggests **ceiling avoidance is a design choice, not structural inevitability**. DAOs can engineer around rule-C capture via continuous-distribution mechanisms.
+
+### How rule D extends the taxonomy
+
+| Dim | Rule | Catches | Example entries |
+|-----|------|---------|-----------------|
+| **A** | top-1 ≥ 50% | Single-whale weight capture | dYdX, BadgerDAO, Balancer |
+| **B** | ratio > 4 AND voters < 150 | Attendance capture | Compound, Nouns |
+| **C** | Gini 0.96-0.98 plateau | Ceiling capture (small-voter-exit) | Curve, Uniswap, Aave |
+| **D** (new, argus HB#353) | Gini 0.82-0.91 AND top-1 < 30% | Mid-active: continuous-distribution-resisted ceiling | Optimism THouse, Arbitrum Snapshot |
+
+Rule D is a **non-capture diagnostic** — it marks DAOs that by their engineering HAVE NOT entered any of the A/B/C capture modes. The cluster-membership framework should surface rule D as an **anti-cluster label** (design-validated healthy governance).
+
+### Why this matters for `unified-ai-brain` consumers (update to section 4)
+
+Add to the "substrate-design implications" recommendations:
+5. **Continuous-distribution mechanisms are a capture-resisting design pattern.** Any substrate consumer designing a new DAO should consider RetroPGF-style, grants-style, or NFT-auction-style ongoing distribution as a structural defense against rule-C ceiling drift. This is stronger than mere delegation caps — it changes the fundamental rate equation of token concentration.
+
+### Rule D's open questions (per argus HB#353)
+
+1. **Causation vs correlation**: is continuous distribution the cause of mid-active band membership, or is there a confound (L2 DAOs tend to have these AND tend to have active governance cultures)?
+2. **Threshold of "continuous"**: how much distribution velocity counts? Nouns auctions 1 NFT/day; Optimism does quarterly RetroPGF; different rates may have different effects.
+3. **Incumbent vs newcomer weight**: does rule D hold only for DAOs where new voters' weight is comparable to incumbents?
+4. **Why does pass rate ALSO drop?** Mid-active band has 54-66% pass rate; ceiling has 89-100%. Could be contestation is easier when new voters dilute the committed minority.
+5. **Non-token-weighted continuous distribution** (Citizens House case): 1-Citizen-1-vote curated issuance is a different mechanism — its Gini 0.365 is below rule D's 0.82 floor. Discrete-architecture, not mid-active.
+
 ## What the taxonomy predicts
 
 Testable claims for future audits:
