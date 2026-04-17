@@ -905,7 +905,7 @@ export async function openBrainDoc<T = any>(docId: string): Promise<{ doc: any; 
       // Automerge.applyChanges in priority order. Genesis doc starts from
       // the same loadGenesisBytes seed v1 uses, so v2 chains over a
       // committed genesis stay merge-compatible with v1 chains.
-      const doc = await loadDocFromV2Chain(headCidStr, bs, Automerge, docId);
+      const doc = await loadDocFromV2Chain(headCidStr, helia, bs, Automerge, docId);
       return { doc, headCid: headCidStr };
     }
     // v1 read path (snapshot-per-write): unwrap full state, Automerge.load.
@@ -1054,11 +1054,51 @@ export async function migrateDocToV2(docId: string): Promise<{
  */
 async function loadDocFromV2Chain(
   headCidStr: string,
+  helia: any,
   bs: any,
   Automerge: any,
   docId: string,
 ): Promise<any> {
   const { CID } = await esmImport<any>('multiformats/cid');
+
+  // Helper: try local FsBlockstore first (fast path), fall back to
+  // helia.blockstore.get which transparently invokes bitswap when local-miss.
+  // Mirrors the v1 fetchAndMergeRemoteHead pattern + handles helia 5.x/6.x
+  // return-shape variance defensively.
+  async function fetchBlock(cid: any, cidStr: string): Promise<Uint8Array> {
+    // Local fast path
+    try {
+      const local = await bs.get(cid);
+      if (local instanceof Uint8Array) return local;
+    } catch {
+      // Local miss — fall through to bitswap.
+    }
+    // Bitswap path via helia
+    try {
+      const result: any = await helia.blockstore.get(cid);
+      if (result instanceof Uint8Array) return result;
+      if (result && typeof result[Symbol.asyncIterator] === 'function') {
+        const chunks: Uint8Array[] = [];
+        let total = 0;
+        for await (const chunk of result) {
+          chunks.push(chunk);
+          total += chunk.byteLength;
+        }
+        const merged = new Uint8Array(total);
+        let off = 0;
+        for (const c of chunks) { merged.set(c, off); off += c.byteLength; }
+        return merged;
+      }
+      if (result && typeof result.slice === 'function') return result.slice();
+      throw new Error(`unexpected blockstore.get shape for ${cidStr}`);
+    } catch (err: any) {
+      throw new Error(
+        `loadDocFromV2Chain: cannot fetch block ${cidStr.slice(0, 16)}... ` +
+        `(local + bitswap both failed). The chain is incomplete or peers ` +
+        `holding the block are offline. Error: ${err.message}`,
+      );
+    }
+  }
 
   // BFS: collect all envelopes from headCid back to genesis (or the deepest
   // ancestor in the local blockstore).
@@ -1068,16 +1108,7 @@ async function loadDocFromV2Chain(
     const cidStr = queue.shift()!;
     if (collected.has(cidStr)) continue;
     const cid = CID.parse(cidStr);
-    let envelopeBytes: Uint8Array;
-    try {
-      envelopeBytes = await bs.get(cid);
-    } catch (err: any) {
-      throw new Error(
-        `loadDocFromV2Chain: missing block ${cidStr.slice(0, 16)}... — ` +
-        `peer fetch not yet wired (pt3-followup) or chain genuinely broken. ` +
-        `Underlying error: ${err.message}`,
-      );
-    }
+    const envelopeBytes = await fetchBlock(cid, cidStr);
     const envelope = JSON.parse(new TextDecoder().decode(envelopeBytes)) as BrainChangeEnvelopeV2;
     if (envelope.v !== 2) {
       throw new Error(
