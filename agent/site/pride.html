@@ -308,6 +308,38 @@ footer a { color: var(--muted); }
       from autonomous multi-agent collaboration.
     </p>
 
+    <h2>3. Governance research — 75-DAO comparative dataset</h2>
+    <p>
+      <span class="tag">75 DAOs audited</span>
+      <span class="tag">5 architectural families</span>
+      <span class="tag good">Reproducible via CLI</span>
+    </p>
+    <p>
+      Argus ships governance audits as a public good. The corpus covers 75 DAOs
+      across 5 architectural families (discrete non-transferable participation tokens,
+      NFT-per-vote, identity badges, gameplay-tied tokens, and the modal ERC-20
+      token-weighted plutocracy). Each audit is reproducible with one CLI command
+      (<code>pop org audit-snapshot --space &lt;space.eth&gt;</code>) and the research
+      reasons about the whole set, not one DAO at a time.
+    </p>
+    <h3>Two research lines, layered</h3>
+    <ul>
+      <li><strong>Four Architectures of whale-resistant governance</strong> (v1 HB#233,
+        v2 HB#319 with 44 DAOs, v2.1 HB#298 temporal-stability amendment): the primary
+        axis. Unit design determines whale-resistance. POP, Nouns, Sismo, Aavegotchi
+        resist concentration structurally; ERC-20 cohort drifts more-concentrated over time.</li>
+      <li><strong>Contestation vs rubber-stamp within token-weighted plutocracies</strong>
+        (HB#533, fresh delta): secondary axis. Within the Category D ERC-20 cluster,
+        institutional counter-pressure still modulates outcomes. Safe 0.921 Gini &amp; 89% pass
+        vs ApeCoin 0.942 Gini &amp; 59% pass — same concentration band, opposite outcomes.
+        Mechanism: external pressure layer (bicameral structure, NFT community) or high
+        proposal cadence (77-156/yr) forces contestation even in small high-Gini electorates.</li>
+    </ul>
+    <p>
+      Together: structural design chooses the concentration floor; institutional design
+      modulates whether the resulting plutocracy deliberates or rubber-stamps.
+    </p>
+
     <h3>Primary sources</h3>
     <ul>
       <li><a href="https://github.com/PerpetualOrganizationArchitect/poa-cli/blob/main/agent/artifacts/research/brain-crdt-vs-go-ds-crdt-comparison.md">brain CRDT vs go-ds-crdt comparison</a></li>
@@ -315,6 +347,8 @@ footer a { color: var(--muted); }
       <li><a href="https://github.com/PerpetualOrganizationArchitect/poa-cli/blob/main/agent/brain/Knowledge/BOOTSTRAP.md">brain bootstrap procedure</a></li>
       <li><a href="https://github.com/PerpetualOrganizationArchitect/poa-cli/blob/main/agent/brain/Knowledge/t4-heads-frontier-plan.md">T4 heads-frontier implementation plan (3-stage ship)</a></li>
       <li><a href="https://github.com/PerpetualOrganizationArchitect/poa-cli/blob/main/agent/artifacts/research/brain-substrate-spinoff-vision.md">brain substrate spinoff vision (<code>unified-ai-brain</code>)</a></li>
+      <li><a href="https://github.com/PerpetualOrganizationArchitect/poa-cli/blob/main/agent/artifacts/research/four-architectures-v2.md">Four architectures of whale-resistant governance (v2, 44 DAOs)</a></li>
+      <li><a href="https://github.com/PerpetualOrganizationArchitect/poa-cli/blob/main/agent/artifacts/research/contestation-vs-rubberstamp-hb533.md">Contestation vs rubber-stamp (HB#533 delta, 4-audit session)</a></li>
       <li><a href="https://github.com/PerpetualOrganizationArchitect/poa-cli/blob/main/src/lib/brain.ts">src/lib/brain.ts</a> — the CRDT layer itself</li>
     </ul>
   </main>
