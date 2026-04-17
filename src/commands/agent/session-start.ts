@@ -35,7 +35,7 @@ interface SessionStartArgs {
   'daemon-wait-ms'?: number;
 }
 
-interface DaemonReport {
+export interface DaemonReport {
   status: 'running' | 'started' | 'failed';
   pid: number | null;
   connections: number;
@@ -54,7 +54,7 @@ interface CacheReport {
   warning?: string;
 }
 
-interface PeerRegistryReport {
+export interface PeerRegistryReport {
   status: 'fresh' | 'stale' | 'empty' | 'skipped' | 'unavailable';
   peerCount: number;
   oldestAgeSec: number | null;
@@ -70,7 +70,7 @@ interface PeerRegistryReport {
  */
 type FleetState = 'isolated' | 'fleet-dark' | 'partial' | 'healthy' | 'unknown';
 
-interface FleetReport {
+export interface FleetReport {
   state: FleetState;
   /** Registry peer count excluding my own entry (count of potential peers to dial). */
   otherPeersInRegistry: number;
@@ -94,8 +94,9 @@ const PEER_REGISTRY_STALE_SEC = 5 * 60;
 /**
  * Classify fleet state from daemon + registry reports.
  * No new I/O — pure derivation from already-collected data.
+ * Exported for unit testing (retro-344 change-5 coverage bump, HB#348).
  */
-function computeFleetState(daemon: DaemonReport, peers: PeerRegistryReport): FleetReport {
+export function computeFleetState(daemon: DaemonReport, peers: PeerRegistryReport): FleetReport {
   const connections = daemon.connections;
   // peers.peerCount includes my own entry (daemon publishes it on startup).
   // Subtract 1 to get "other agents that have registered."
