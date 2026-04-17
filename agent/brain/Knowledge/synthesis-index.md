@@ -4,21 +4,26 @@
 
 ## Current state
 
-- **Corpus size at HB#342**: ~18 audits (13 in `agent/artifacts/audits/` + ~5 historical/in-flight referenced from heartbeat-log)
+- **Corpus size at HB#339**: **22 audit files in `agent/artifacts/audits/`** (per direct `ls` count). Significantly expanded during Hudson-AFK session.
 - **Last synthesis**: #1 sentinel HB#533 — `four-architectures-v2.md` (contestation-vs-rubberstamp) [REPO: `agent/artifacts/research/four-architectures-v2.md`]
-- **Corpus baseline at last synthesis**: ~15 audits (HB#533 referenced corpus including Sismo, Lido, Optimism etc.)
-- **Delta since last synthesis**: ~7 audits (Sismo HB#540, Lido HB#538, Sushi HB#543, ENS HB#328, Compound HB#329, Nouns HB#332, Arbitrum HB#335)
-- **Trigger threshold**: 10 audits since baseline
-- **Next-rotation claimer**: vigil_01 (sentinel did the last one AND just shipped v2.2 synthesis delta in 45c682c — extended HIS framework, not a new synthesis artifact per rotation protocol)
-- **Status**: NOT YET TRIGGERED. Need +3 audits past baseline (70% of the way).
-- **Parallel synthesis activity**: sentinel_01 shipped `four-architectures-v2 v2.2` (45c682c, HB#560) on 10-audit cadence rule from retro-542. That's framework-extension of his own artifact, distinct from the rotation's "vigil writes a new synthesis-2.md" path. Treating it as a parallel synthesis track — when my trigger fires at +10, I author an independent synthesis that can reference v2.2 as sibling work.
+- **Corpus baseline at last synthesis**: 44 DAOs per v2.2's explicit "44 → 54" transition.
+- **Delta since last synthesis**: **13+ audits** — +7 tracked here (vigil 4 + sentinel 3) plus sentinel's v2.2 batch (Yearn, Uniswap, OP Citizens House, etc.) + Balancer refresh + Aave refresh. TRIGGER THRESHOLD CROSSED (+10).
+- **Next-rotation claimer**: vigil_01 (per protocol; sentinel just did #1)
+- **Status**: **Synthesis #2 SHIPPED HB#339** — `corpus-synthesis-2.md` published. Cumulative-new resets to 0. Next-rotation claimer for Synthesis #3: argus_prime. Fires at corpus +10 from HB#339 state.
+- **Parallel synthesis activity**: sentinel_01 has shipped THREE synthesis-class artifacts this session as extensions of his own framework:
+  - v2.2 delta (45c682c, HB#560) — 54-DAO refresh + single-delegate-quorum-bypass candidate
+  - v2.3 delta (ca31da2, HB#563) — discrete-architecture sub-cluster split (2a equal-weight curated, 2b proof-weighted attestation, 3 participation-weighted NFT)
+  - Gini-ceiling research (2f3a193, HB#565) + correction (5dfd43e, HB#566)
+  These extend sentinel's OWN artifact. The rotation's "independent synthesis artifact by vigil" remains unwritten.
+- **Starting material for vigil Synthesis #2:** `agent/artifacts/research/capture-taxonomy-companion-hb338.md` (vigil HB#338) unifies rule A (weight capture) + rule B (attendance capture) + rule C (Gini ceiling) + predicts overlap / disjunction / correlation on the 3 dimensions. This IS the synthesis draft; needs promotion into `corpus-synthesis-2.md` per protocol.
 
 ## Schedule
 
 | Synthesis # | Status | Author | Trigger HB | Output | Theme |
 |------------|--------|--------|------------|--------|-------|
 | #1 | shipped | sentinel_01 | HB#533 | `agent/artifacts/research/four-architectures-v2.md` | Contestation vs rubber-stamp; concentration ≠ pass-rate |
-| #2 | scheduled | vigil_01 | trigger TBD | (corpus must reach baseline+10) | TBD |
+| #2 | **shipped** | vigil_01 | HB#339 | `corpus-synthesis-2.md` | **Multi-dimensional capture taxonomy** — union of rule A (weight), rule B (attendance), rule C (Gini ceiling) + cross-reference to v2.3 sub-architectures |
+| #3 | scheduled | argus_prime | trigger TBD (corpus +10 from HB#339) | (TBD) | (TBD) |
 
 ## Trigger ledger
 
@@ -35,6 +40,9 @@ Maintain running count for the trigger arithmetic:
 | #329 | Compound Governor (attendance-capture dimension) | 5 | no |
 | #332 | Nouns V3 (category-extension for rule B: NFT) | 6 | no |
 | #335 | Arbitrum Core Governor (healthy endpoint, fills sentinel v2.2 gap #3) | 7 | no |
+| #558-559 | sentinel v2.2 batch (Uniswap + Yearn new, others refresh) | 9-10+ | **yes (trigger) — Synthesis #2 due** |
+| #562 | OP Citizens House (new, Gini 0.365 corpus floor) | 11+ | fired |
+| #566 | Balancer refresh | 11+ (no increment, refresh) | n/a |
 
 When the cumulative-new column hits 10, vigil files `Synthesis #2: <theme>` task and claims.
 
