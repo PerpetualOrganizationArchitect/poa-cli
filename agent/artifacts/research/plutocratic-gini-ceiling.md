@@ -8,17 +8,26 @@
 
 Across 55 audited DAOs, token-weighted on-chain governance appears to converge to a structural **Gini concentration ceiling of 0.96-0.98**. Above this ceiling, voter count declines — participants exit because their votes are decisive at effectively zero marginal cost.
 
-Five representative DAOs at or near the ceiling:
+Three representative DAOs at the ceiling, and two that plateaued *below* the ceiling via a different mechanism:
 
-| DAO             | Governance form        | Gini     | Voter trend               |
-|-----------------|------------------------|----------|---------------------------|
-| Curve           | veToken + Snapshot     | 0.983    | Declining (top voter 83.4%) |
-| Balancer veBAL  | veToken + Snapshot     | 0.911–0.98 | Voters: 156 → 24 (-85%) |
-| Uniswap         | Governor Bravo         | 0.973    | Low per-proposal (322 unique voters, 2 props / 70d) |
-| Aave            | Snapshot + Safe        | 0.957    | 193 → 184 (-4.7% at plateau) |
-| Compound        | Governor Bravo         | 0.911    | Still drifting             |
+| DAO        | Governance form      | Gini    | Regime                                         |
+|------------|----------------------|---------|------------------------------------------------|
+| Curve      | veToken + Snapshot   | 0.983   | **At ceiling** (top voter 83.4%)               |
+| Uniswap    | Governor Bravo       | 0.973   | **At ceiling** (top voter 21.3%, top-5 62.4%)  |
+| Aave       | Snapshot + Safe      | 0.957   | **Near ceiling, plateaued** (193 → 184 voters, no further drift) |
+| Compound   | Governor Bravo       | 0.911   | Below ceiling, still drifting                  |
+| Balancer   | veToken + Snapshot   | 0.911   | **Below ceiling, plateaued** — single-whale-captured at top voter 73.7% |
 
-All five show the same pattern: as Gini approaches 0.97, voter count stops growing, and in cases where Gini exceeds 0.96 for a sustained period, voter count declines. This appears to be a general property of token-weighted systems — not a peculiarity of any specific protocol.
+The three at-ceiling DAOs (Curve, Uniswap, Aave) show the expected pattern: Gini 0.95+ with voter count stable or declining. Aave and Balancer both plateaued between audit cycles — reaching equilibrium rather than continuing to drift.
+
+**A key correction from an initial reading**: Balancer at Gini 0.911 is NOT at the 0.96-0.98 ceiling — it's in a different failure mode. Its top voter holds 73.7%, which means one address has unilateral authority regardless of the remaining distribution. This is **single-whale capture at lower aggregate Gini**: once a single address dominates, the remaining voters' distribution becomes irrelevant to outcomes, and the aggregate Gini can stay in the 0.91-0.92 band indefinitely.
+
+So there are actually **two distinct plutocratic end-states** in the corpus:
+
+- **Gini 0.96-0.98 ceiling**: DAOs where no single address dominates (top voter typically 10-30%) but concentration is broadly high. Requires broad participation to meet quorum; reaches equilibrium as small voters exit.
+- **Single-whale capture below ceiling**: DAOs where one address holds >50%. Aggregate Gini doesn't need to be extreme because the single whale decides regardless. Balancer (73.7%), Frax (93.6%), BadgerDAO (93.3%), dYdX (100%), Venus top-2 (99.3%) sit in this cluster at Gini 0.91-0.95, not 0.97+.
+
+Both end-states are failure modes of token-weighted governance; they differ in HOW the failure manifests, not whether.
 
 ## Why the ceiling exists
 
