@@ -99,6 +99,28 @@ function getPeerKeyPath(): string {
 }
 
 /**
+ * Task #447 (HB#286 + HB#290 widen) — derive a deterministic listen port
+ * from a privateKey hash. Range 34000-43999 (10,000 slots, 1-in-10,000
+ * collision risk on the same host). Extracted from initBrainNode as a
+ * pure helper for unit testing (HB#319 vigil — Step 2.8 Q5 reflection).
+ *
+ * Input: 32-byte sha256 digest of the canonical privateKey protobuf bytes.
+ * Output: integer in [34000, 43999].
+ *
+ * Stability guarantee: same hash in → same port out, forever. Agents
+ * with stable POP_PRIVATE_KEY get stable ports across restarts.
+ */
+export function derivePortFromHash(hash: Uint8Array): number {
+  if (!hash || hash.length < 2) {
+    throw new Error(`derivePortFromHash: hash must have at least 2 bytes (got ${hash?.length ?? 0})`);
+  }
+  // Two-byte window × 10,000 slots. Top bytes of sha256 are
+  // well-distributed enough that simple modulo works.
+  const offset = ((hash[0] << 8) | hash[1]) % 10000;
+  return 34000 + offset;
+}
+
+/**
  * Task #447 regression fix (HB#287): detect whether another process is
  * already running as the brain daemon for this home. Used by initBrainNode
  * to avoid binding to the derived port when the daemon already holds it.
@@ -365,10 +387,7 @@ export async function initBrainNode(): Promise<any> {
       const pkBytes: Uint8Array = privateKeyToProtobuf(privateKey);
       const nodeCrypto = await esmImport<any>('node:crypto');
       const hash = nodeCrypto.createHash('sha256').update(Buffer.from(pkBytes)).digest();
-      // Two-byte window × 10,000 slots. Top bytes of sha256 are
-      // well-distributed enough that simple modulo works.
-      const offset = ((hash[0] << 8) | hash[1]) % 10000;
-      listenPort = 34000 + offset;
+      listenPort = derivePortFromHash(hash);
     } catch (err: any) {
       if (process.env.POP_BRAIN_DEBUG) {
         console.error(`[brain] listen-port derivation failed (${err.message}) — using random port`);
