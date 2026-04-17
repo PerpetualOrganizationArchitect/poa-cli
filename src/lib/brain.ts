@@ -1062,10 +1062,15 @@ export async function fetchAndMergeRemoteHead(
   docId: string,
   remoteCidStr: string,
 ): Promise<BrainSyncResult> {
-  // Cheap dedup: we already track this exact CID, nothing to do.
-  const manifest = loadHeadsManifest();
-  if (manifest[docId] === remoteCidStr) {
-    return { action: 'skip', reason: 'already at this head', headCid: remoteCidStr };
+  // T4 Stage 2 (task #432): use v2 frontier manifest. saveHeadsManifestV2 also
+  // writes the v1 doc-heads.json for callsites still on the old API, so this
+  // migration doesn't break anything downstream yet.
+  const manifestV2 = loadHeadsManifestV2();
+  const frontier = manifestV2[docId] || [];
+
+  // Cheap dedup: CID already in our frontier — nothing to do.
+  if (frontier.includes(remoteCidStr)) {
+    return { action: 'skip', reason: 'already in frontier', headCid: remoteCidStr };
   }
 
   const helia = await initBrainNode();
@@ -1170,12 +1175,12 @@ export async function fetchAndMergeRemoteHead(
   const remoteAutomergeBytes = unwrapAutomergeBytes(remoteEnvelope);
   const remoteDoc = Automerge.load(remoteAutomergeBytes);
 
-  // Case A: we have no local head for this doc — just adopt remote.
-  // The block is already in our blockstore thanks to Bitswap's side
-  // effect, so we only need to update the manifest.
-  if (!manifest[docId]) {
-    manifest[docId] = remoteCidStr;
-    saveHeadsManifest(manifest);
+  // Case A: we have no local frontier for this doc — adopt remote as sole head.
+  // The block is already in our blockstore thanks to Bitswap's side effect,
+  // so we only need to update the manifest.
+  if (frontier.length === 0) {
+    manifestV2[docId] = [remoteCidStr];
+    saveHeadsManifestV2(manifestV2);
     // T2: successful adopt — clear any prior dirty flag for this CID.
     try { clearDocDirty(docId, remoteCidStr); } catch {}
     return {
@@ -1185,7 +1190,7 @@ export async function fetchAndMergeRemoteHead(
     };
   }
 
-  // Case B: we have a local head, load it and merge.
+  // Case B: we have at least one local head, load and merge.
   const { doc: localDoc } = await openBrainDoc(docId);
 
   // Task #350 (HB#335): detect disjoint Automerge histories before
@@ -1263,14 +1268,16 @@ export async function fetchAndMergeRemoteHead(
     return {
       action: 'skip',
       reason: 'local doc is ahead of remote (remote is an ancestor)',
-      headCid: manifest[docId],
+      headCid: frontier[0],
     };
   }
 
-  // Merged == remote: local was a strict ancestor. Adopt remote CID.
+  // Merged == remote: local was a strict ancestor. Adopt remote — REPLACE
+  // the entire frontier with [remote] (T4 Stage 2 semantics: local heads
+  // were all ancestors of remote, they drop out of the frontier).
   if (sameArray(mergedHeads, remoteHeads)) {
-    manifest[docId] = remoteCidStr;
-    saveHeadsManifest(manifest);
+    manifestV2[docId] = [remoteCidStr];
+    saveHeadsManifestV2(manifestV2);
     // T2: fast-forward adopt — clear dirty for this CID if set.
     try { clearDocDirty(docId, remoteCidStr); } catch {}
     return {
@@ -1297,14 +1304,30 @@ export async function fetchAndMergeRemoteHead(
   } finally {
     await bs.close();
   }
-  manifest[docId] = mergeCid.toString();
-  saveHeadsManifest(manifest);
+  // T4 Stage 2: REPLACE semantics — the local heads and the remote CID are
+  // the predecessors of the merged head (we know this because we explicitly
+  // merged them). Drop them from the frontier, add the merged head.
+  //
+  // Without T3 (explicit parent links in wire format), we can't determine
+  // predecessor relationships for CIDs we haven't directly consumed. So
+  // frontier entries that were NOT the local_head (e.g. concurrent writes
+  // gossiped in since the frontier was last collapsed) stay intact. They'll
+  // collapse naturally when a later write builds on them.
+  const preservedFrontier = frontier.filter(cid => cid !== remoteCidStr); // remove remote (we just consumed it)
+  // Only the "first head" of frontier represents what openBrainDoc loaded
+  // (Stage 1 invariant: single-element arrays). In Stage 2+ we may have
+  // multi-element frontiers where openBrainDoc still loads the first. So
+  // drop frontier[0] (our local head that was merged) but keep the rest.
+  const mergedCidStr = mergeCid.toString();
+  const newFrontier = [mergedCidStr, ...preservedFrontier.slice(1)];
+  manifestV2[docId] = newFrontier;
+  saveHeadsManifestV2(manifestV2);
   // T2: merge succeeded — clear dirty for the remote CID we just resolved.
   try { clearDocDirty(docId, remoteCidStr); } catch {}
   return {
     action: 'merge',
     reason: `CRDT merge of local ${localHeads.length}-head with remote ${remoteHeads.length}-head into ${mergedHeads.length}-head`,
-    headCid: mergeCid.toString(),
+    headCid: mergedCidStr,
   };
 }
 
