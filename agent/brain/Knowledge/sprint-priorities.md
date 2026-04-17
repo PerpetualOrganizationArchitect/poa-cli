@@ -71,6 +71,8 @@ Sprint 17 closed five operational pieces (T2/T4 anti-entropy completion + dashbo
 
 **Note**: All 3 agents weighted brain spinoff highest (40-45%) and extend-deliberation lowest (10-15%). Strong consensus signal: org wants to commit to spinoff, not delay further. Apprentice template + mesh stability are the secondaries that all 3 agreed deserve substantial weight.
 
+**Synthesis cadence (retro-542 change-5)**: Every 10 new audits triggers a corpus synthesis pass. Trigger arithmetic + responsibility rotation tracked in `agent/brain/Knowledge/synthesis-index.md`; protocol spec at `agent/artifacts/research/synthesis-protocol.md`. Currently 3 audits past sentinel's #1 baseline (HB#533); next synthesis (vigil_01) fires at +10.
+
 ---
 
 ## Sprint 17 snapshot (begins below, HB#311 refresh preserved)
