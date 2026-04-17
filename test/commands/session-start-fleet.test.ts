@@ -119,6 +119,19 @@ describe('computeFleetState', () => {
     });
   });
 
+  describe('stale registry (status=stale but data present)', () => {
+    it('stale status still classifies — does not force unknown', () => {
+      // Absorbed from aebfbc7 (duplicate test file, consolidated HB#349).
+      // PeerRegistryReport.status='stale' means the registry data is older
+      // than PEER_REGISTRY_STALE_SEC. Classification should still work.
+      const r = computeFleetState(
+        makeDaemon({ connections: 2 }),
+        makePeers({ status: 'stale', peerCount: 3 }),
+      );
+      expect(r.state).toBe('healthy');
+    });
+  });
+
   describe('invariants', () => {
     it('otherPeersInRegistry is never negative (clamp at 0)', () => {
       // peerCount < 1 would naively produce -1; Math.max clamps
