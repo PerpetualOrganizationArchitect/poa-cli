@@ -173,7 +173,10 @@ export function topicForDoc(docId: string): string {
 export interface BrainHeadAnnouncement {
   v: 1;
   docId: string;
-  cid: string;
+  cid: string;       // back-compat with pre-T4 peers — ALWAYS the first element of cids
+  cids?: string[];   // T4 (task #432) Stage 2b: the full frontier. Receivers that
+                     // know v2 read cids; pre-T4 receivers read cid. When both are
+                     // present, cids is authoritative.
   author: string;    // informational only; not trusted
   timestamp: number;
 }
@@ -399,6 +402,7 @@ export async function publishBrainHead(
   docId: string,
   cid: string,
   author: string,
+  cids?: string[],   // T4 Stage 2b: optional full frontier; defaults to [cid]
 ): Promise<void> {
   const helia = await initBrainNode();
   const pubsub = helia.libp2p.services?.pubsub;
@@ -421,10 +425,15 @@ export async function publishBrainHead(
     if (justSubscribed && helia.libp2p.getConnections().length > 0) {
       await new Promise(r => setTimeout(r, 1500));
     }
+    // T4 (task #432) Stage 2b: broadcast the full frontier when provided.
+    // Pre-T4 receivers read only `cid`; T4-aware receivers read `cids` and
+    // treat `cid` as informational (always matches cids[0] per the invariant).
+    const frontier = cids && cids.length > 0 ? cids : [cid];
     const announcement: BrainHeadAnnouncement = {
       v: 1,
       docId,
-      cid,
+      cid: frontier[0],        // back-compat: first head of frontier
+      cids: frontier,          // T4: full frontier
       author,
       timestamp: Math.floor(Date.now() / 1000),
     };
