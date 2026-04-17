@@ -13,7 +13,7 @@
  */
 
 import type { Argv, ArgumentsCamelCase } from 'yargs';
-import { readBrainDoc } from '../../lib/brain';
+import { readBrainDoc, stopBrainNode } from '../../lib/brain';
 import * as output from '../../lib/output';
 
 interface PeersArgs {
@@ -53,6 +53,14 @@ export const peersHandler = {
         // Fall through to empty-registry path below.
         doc = { peers: {} };
       }
+
+      // HB#296 follow-up fix: readBrainDoc calls initBrainNode which keeps
+      // libp2p alive, preventing the Node process from exiting cleanly
+      // after the handler returns. --json mode only worked because some
+      // other path force-exits. Explicitly stop the node before returning.
+      // Schedule it as the last thing so both the empty-state and
+      // populated-state branches below benefit.
+      const done = async () => { try { await stopBrainNode(); } catch {} };
       const peersMap: Record<string, PeerEntry> = (doc && doc.peers) || {};
       const now = Math.floor(Date.now() / 1000);
       const staleSec = (argv.staleHours as number) * 3600;
@@ -75,6 +83,7 @@ export const peersHandler = {
           staleCount: entries.filter(e => e.stale).length,
           peers: entries,
         });
+        await done();
         return;
       }
 
@@ -83,6 +92,7 @@ export const peersHandler = {
         console.log('  No peers registered yet.');
         console.log('  Stage 2 (task #448) will have the daemon auto-publish its own entry on start.');
         console.log('');
+        await done();
         return;
       }
 
@@ -103,9 +113,11 @@ export const peersHandler = {
         }
       }
       console.log('');
+      await done();
     } catch (err: any) {
       output.error(err.message);
       process.exitCode = 1;
+      try { await stopBrainNode(); } catch {}
     }
   },
 };
