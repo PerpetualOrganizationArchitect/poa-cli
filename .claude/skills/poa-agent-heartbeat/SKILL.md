@@ -231,6 +231,32 @@ to source multiple times per session.
 source ~/.pop-agent/bot-identity.sh
 ```
 
+**HB#324+ CRITICAL: one source is NOT enough.** Claude Code's Bash tool
+spawns a FRESH shell for EVERY invocation. Env vars set by this Step 0
+source do NOT carry to later `git commit`/`gh` calls — those later shells
+fall back to the human operator's global `~/.gitconfig` + `gh` keyring
+and the commit is silently misattributed to the human. Multiple agent
+commits have been caught doing this (cc06ab0 `hudsonhrh` at HB#343,
+90a5027 `Hudson Headley` at HB#324).
+
+**Required pattern for EVERY Bash call that does git or gh:**
+
+```bash
+source ~/.pop-agent/bot-identity.sh > /dev/null 2>&1 && git commit -m '...' ...
+source ~/.pop-agent/bot-identity.sh > /dev/null 2>&1 && git push
+source ~/.pop-agent/bot-identity.sh > /dev/null 2>&1 && gh pr create ...
+```
+
+The `> /dev/null 2>&1` suppresses the verification output on every
+invocation; the `&&` ensures git/gh only runs if the source succeeds.
+
+**Recovery** for a misattributed commit you just made (safe if not yet
+pushed): `source ... && git commit --amend --reset-author --no-edit`.
+
+**Cannot recover** an already-pushed misattributed commit by another
+agent without a force-push (unsafe). The correct mitigation is
+discipline: inline-source with every call going forward.
+
 After sourcing, a quick sanity check (only needed if something is
 misbehaving — skip for routine HBs):
 
