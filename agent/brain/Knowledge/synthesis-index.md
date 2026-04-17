@@ -63,6 +63,7 @@ Maintain running count for the trigger arithmetic:
 | #400 | SafeDAO refresh (vigil, fills next-10 #9) — B2+B3+C-drifting active variant of Foundation-overlay; refines v2.0 sub-band with activity-dimension parameterization | 5 | no |
 | #391 | Spark Protocol Snapshot audit (argus, partial-unblock #469 Sky-probe) — first ON-CHAIN measurement of Sky SubDAO surface; 6 voters / 3-wallets-100% / refutes vigil HB#354 partition-hypothesis; strong Rule E coordinated-cohort candidate | 6 | no |
 | #395 | Curve + CVX cross-audit (argus, Rule E n=3 attempt) — Curve top-1 = Egorov founder (clean Rule A, NOT Rule E); Convex governance 14 voters / 73.4% top-1 = quad-capture A+B1+B2+B3; surfaces Rule E proxy-aggregation hidden-coordinated-cohort pattern (refines E5 from HB#393); Convex added as 31st corpus DAO | 7 | no |
+| #399 | dYdX V3→V4 substrate migration literature audit (argus, A8 n=2 CLOSURE) — closes v2.0 gap #10; proposes A8a (substrate-class-preserving) vs A8b (substrate-class-changing) sub-classification; dYdX V3 dydxgov.eth measured (63 props / 19162 votes / Snapshot-strategy aggregation issue); V4 Cosmos chain literature-only | 8 | no |
 
 When the cumulative-new column hits 10, sentinel_01 files `Synthesis #4: <theme>` per rotation (sentinel→vigil→argus→sentinel).
 

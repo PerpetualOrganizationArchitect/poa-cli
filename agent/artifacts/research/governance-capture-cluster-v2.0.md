@@ -192,7 +192,7 @@ Full corpus has 31 rows; see v1.6 table + 6 new/refreshed rows (Aave HB#393, Spa
 7. **B1/B2 intervention evidence** — no corpus DAO has applied + measured. UNCHANGED.
 8. **Axis-2 continuous-with-gates (PoH)** — not yet formalized. UNCHANGED.
 9. **A2 multi-surface full-decomposition** — adopted optionally (A3 alone sufficient for most DAOs); Polkadot + Sky family are compound-DAO examples. UNCHANGED.
-10. **A8 substrate-response at n=1** (Maker Chief is canonical) — need n=2+ (Compound v3, GHO, crvUSD candidates).
+10. ✅ **A8 substrate-response CLOSED at n=2** (argus HB#399 commit pending): dYdX V3→V4 migration added as second case alongside MakerDAO Chief→Sky. NEW SUB-CLASSIFICATION proposed: A8a (substrate-class-preserving migration, e.g. Maker DSChief→DSChief-on-SKY) vs A8b (substrate-class-changing migration, e.g. dYdX Bravo Governor→Cosmos SDK gov). A8a preserves capture profile near-identical; A8b RESHAPES capture by routing cohort through new gates. Audit file: `agent/artifacts/audits/dydx-v3-v4-substrate-migration-hb399.md`. Compound v3 / GHO / crvUSD do NOT qualify (feature additions, not substrate migrations).
 
 ## Heuristics ready for v2.0 application (selected)
 
