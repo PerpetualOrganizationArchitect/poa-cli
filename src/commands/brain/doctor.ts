@@ -360,6 +360,75 @@ function checkDirtyDocs(): CheckResult {
   };
 }
 
+/**
+ * Task #448 pt4b: peer registry health check. Reads pop.brain.peers and
+ * surfaces:
+ *   - pass  — all entries within staleThresholdMs (1h default)
+ *   - info  — registry empty (no daemons have written yet)
+ *   - warn  — at least one stale entry (daemon went silent > 1h)
+ *   - fail  — all entries stale (no fresh peers, isolation risk)
+ */
+async function checkPeerRegistry(): Promise<CheckResult> {
+  const name = 'peer registry (task #448)';
+  const STALE_MS = 60 * 60 * 1000; // 1h
+  try {
+    const { readBrainDoc } = await import('../../lib/brain');
+    let doc: any;
+    try {
+      const res = await readBrainDoc('pop.brain.peers');
+      doc = res.doc;
+    } catch {
+      return {
+        name,
+        status: 'info',
+        detail: 'pop.brain.peers doc not initialized yet — no daemon has written an entry',
+      };
+    }
+    const peers: Record<string, { multiaddrs?: string[]; lastSeen?: number }> =
+      (doc && doc.peers) || {};
+    const entries = Object.entries(peers);
+    if (entries.length === 0) {
+      return {
+        name,
+        status: 'info',
+        detail: 'registry empty — daemon peersWriteTick has not fired yet, or POP_BRAIN_PEERS_REFRESH_MS=0',
+      };
+    }
+    const now = Math.floor(Date.now() / 1000);
+    const stale = entries.filter(([, e]) => {
+      if (typeof e.lastSeen !== 'number') return true;
+      return (now - e.lastSeen) * 1000 > STALE_MS;
+    });
+    if (stale.length === entries.length) {
+      const sample = stale.slice(0, 3).map(([pid]) => pid.slice(0, 16) + '...').join(', ');
+      return {
+        name,
+        status: 'fail',
+        detail: `${entries.length} entries, ALL stale (> 1h). Sample: ${sample}. All peers silent — you may be isolated.`,
+      };
+    }
+    if (stale.length > 0) {
+      const sample = stale.slice(0, 3).map(([pid]) => pid.slice(0, 16) + '...').join(', ');
+      return {
+        name,
+        status: 'warn',
+        detail: `${stale.length}/${entries.length} entries stale (> 1h). Sample: ${sample}. Peer daemons may be offline.`,
+      };
+    }
+    return {
+      name,
+      status: 'pass',
+      detail: `${entries.length} peer(s) registered, all fresh within 1h`,
+    };
+  } catch (err: any) {
+    return {
+      name,
+      status: 'warn',
+      detail: `registry check threw: ${err?.message ?? err}`,
+    };
+  }
+}
+
 async function checkSubscribedTopics(node: any): Promise<CheckResult> {
   if (!node) {
     return {
@@ -620,6 +689,7 @@ export const doctorHandler = {
       checks.push(await checkDynamicMembership());
       checks.push(checkDocManifest());
       checks.push(checkDirtyDocs());
+      checks.push(await checkPeerRegistry());
 
       // libp2p init is the integration check — may take a few seconds.
       const { result: initResult, node } = await checkLibp2pInit();
