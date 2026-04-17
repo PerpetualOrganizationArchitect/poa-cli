@@ -115,6 +115,7 @@ Prioritized by framework-advancement value:
 9. **SafeDAO** — partial audit exists; refresh would confirm Architecture 4-with-veto-council pattern generalization (similar to Arbitrum's bicameral overlay).
 10. **Nouns fork-DAOs** (NounsAmigos, etc.) — would test rule B across a pattern-family (NFT grant-factories) at smaller scale. — [x] **claimed by sentinel_01 HB#591**
 11. **BanklessDAO** (free add, media/content substrate diversity) — [x] **claimed by sentinel_01 HB#603**
+12. **Proof of Humanity** (free add, proof-of-unique-humanness → sub-arch 2a n=3 validation) — [x] **claimed by sentinel_01 HB#604**
 
 Filling 4-5 of these reaches Synthesis #3 trigger with strong coverage of currently-underrepresented architectures.
 
