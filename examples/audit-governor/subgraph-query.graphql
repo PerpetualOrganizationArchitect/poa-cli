@@ -1,0 +1,57 @@
+# Example GraphQL query for `pop org audit-governor --subgraph-url <url> --subgraph-query-file <this>`.
+#
+# Shape expected by audit-governor after Task #471 (sentinel HB#632 commit 06f04c0):
+#   {
+#     proposalsCreated: [{ proposalId, proposer }],
+#     proposalsExecuted: [{ proposalId }],
+#     proposalsCanceled: [{ proposalId }],
+#     voteCasts: [{ voter, weight, support, proposalId, reason? }],
+#   }
+#
+# This example uses the field names that most OpenZeppelin Governor subgraphs
+# export. Different subgraphs rename fields (e.g. `votes` instead of `voteCasts`,
+# `proposals` instead of separate created/executed/canceled arrays). If your
+# subgraph differs, edit this file to match — the transport + analysis code
+# accepts any shape that produces the 4 top-level arrays above.
+#
+# The `$governor` variable is bound automatically by audit-governor to the
+# address passed via --address (lowercased).
+
+query GovernorAudit($governor: String!) {
+  proposalsCreated(
+    first: 1000
+    where: { governor: $governor }
+    orderBy: blockNumber
+    orderDirection: desc
+  ) {
+    proposalId
+    proposer
+  }
+
+  proposalsExecuted(
+    first: 1000
+    where: { governor: $governor }
+  ) {
+    proposalId
+  }
+
+  proposalsCanceled(
+    first: 1000
+    where: { governor: $governor }
+  ) {
+    proposalId
+  }
+
+  voteCasts(
+    first: 5000
+    where: { governor: $governor }
+    orderBy: blockNumber
+    orderDirection: desc
+  ) {
+    voter
+    weight
+    support
+    proposalId
+    reason
+  }
+}
