@@ -547,6 +547,85 @@ function loadHeadsManifest(): Record<string, string> {
   }
 }
 
+/**
+ * T2 (task #430): per-doc dirty-bit manifest for fetch-failure recovery.
+ * When fetchAndMergeRemoteHead hits a bitswap fetch failure (transient
+ * network error, peer offline mid-fetch, etc), we record the (docId,
+ * failed CID, error) so a later repair pass can retry. Cleared on
+ * successful adopt/merge.
+ *
+ * Format: Record<docId, { dirtyAt: number; cid: string; lastError: string }>.
+ * Lives in POP_BRAIN_HOME alongside doc-heads.json.
+ *
+ * Per-doc (not global) is a deliberate choice — go-ds-crdt's global dirty
+ * bit was flagged in the brain-crdt-vs-go-ds-crdt comparison as one of
+ * the 'things we are NOT going to adopt'. Per-doc isolation means a
+ * problem with one doc doesn't block repair of others.
+ */
+export interface DocDirtyEntry {
+  dirtyAt: number;
+  cid: string;
+  lastError: string;
+}
+export type DocDirtyManifest = Record<string, DocDirtyEntry>;
+
+function getDocDirtyPath(): string {
+  return join(getBrainHome(), 'doc-dirty.json');
+}
+
+export function loadDocDirty(): DocDirtyManifest {
+  const p = getDocDirtyPath();
+  if (!existsSync(p)) return {};
+  try {
+    return JSON.parse(readFileSync(p, 'utf8'));
+  } catch {
+    return {};
+  }
+}
+
+function saveDocDirty(manifest: DocDirtyManifest): void {
+  // Atomic write-tmp-then-rename, same pattern as saveHeadsManifest.
+  const finalPath = getDocDirtyPath();
+  const tmpPath = `${finalPath}.tmp.${process.pid}.${Date.now()}`;
+  writeFileSync(tmpPath, JSON.stringify(manifest, null, 2));
+  try {
+    require('fs').renameSync(tmpPath, finalPath);
+  } catch (err) {
+    try { require('fs').unlinkSync(tmpPath); } catch {}
+    throw err;
+  }
+}
+
+/**
+ * Mark a doc as dirty after a transient fetch failure. Idempotent — calling
+ * twice with different errors just updates lastError + dirtyAt.
+ */
+export function markDocDirty(docId: string, cid: string, lastError: string): void {
+  const manifest = loadDocDirty();
+  manifest[docId] = { dirtyAt: Date.now(), cid, lastError };
+  saveDocDirty(manifest);
+}
+
+/**
+ * Clear the dirty flag for a doc. Called on successful adopt/merge. Only
+ * removes the entry if the cid matches OR no cid is supplied (force clear).
+ * This prevents a race where doc X was dirty with CID A, then the daemon
+ * received + merged a newer CID B via a different path — we don't want
+ * to spuriously clear the A-specific dirty entry until A is actually
+ * resolved or superseded.
+ */
+export function clearDocDirty(docId: string, cid?: string): void {
+  const manifest = loadDocDirty();
+  const entry = manifest[docId];
+  if (!entry) return;
+  if (cid !== undefined && entry.cid !== cid) {
+    // Dirty for a different CID — leave it alone.
+    return;
+  }
+  delete manifest[docId];
+  saveDocDirty(manifest);
+}
+
 function saveHeadsManifest(manifest: Record<string, string>): void {
   // HB#324: atomic write-tmp-then-rename. The brain daemon and short-lived
   // CLI processes can both touch this file (daemon on incoming-merge from
@@ -956,6 +1035,14 @@ export async function fetchAndMergeRemoteHead(
       console.error('[brain] blockstore.get returned:', util.inspect(envelopeBytes, { depth: 2, maxArrayLength: 8 }));
     }
   } catch (err: any) {
+    // T2 (task #430): transient bitswap fetch failure — mark doc dirty so
+    // a later repair pass can retry. Other reject paths (parse/verify/authz/
+    // disjoint-history) are permanent and do NOT set the dirty flag.
+    try {
+      markDocDirty(docId, remoteCidStr, `bitswap: ${err.message}`);
+    } catch {
+      // Best-effort; manifest write failure should not mask the original reject.
+    }
     return {
       action: 'reject',
       reason: `bitswap fetch failed for ${remoteCidStr}: ${err.message}`,
@@ -1008,6 +1095,8 @@ export async function fetchAndMergeRemoteHead(
   if (!manifest[docId]) {
     manifest[docId] = remoteCidStr;
     saveHeadsManifest(manifest);
+    // T2: successful adopt — clear any prior dirty flag for this CID.
+    try { clearDocDirty(docId, remoteCidStr); } catch {}
     return {
       action: 'adopt',
       reason: 'no local head — adopting remote directly',
@@ -1101,6 +1190,8 @@ export async function fetchAndMergeRemoteHead(
   if (sameArray(mergedHeads, remoteHeads)) {
     manifest[docId] = remoteCidStr;
     saveHeadsManifest(manifest);
+    // T2: fast-forward adopt — clear dirty for this CID if set.
+    try { clearDocDirty(docId, remoteCidStr); } catch {}
     return {
       action: 'adopt',
       reason: 'remote is ahead of local — fast-forwarding',
@@ -1127,6 +1218,8 @@ export async function fetchAndMergeRemoteHead(
   }
   manifest[docId] = mergeCid.toString();
   saveHeadsManifest(manifest);
+  // T2: merge succeeded — clear dirty for the remote CID we just resolved.
+  try { clearDocDirty(docId, remoteCidStr); } catch {}
   return {
     action: 'merge',
     reason: `CRDT merge of local ${localHeads.length}-head with remote ${remoteHeads.length}-head into ${mergedHeads.length}-head`,
