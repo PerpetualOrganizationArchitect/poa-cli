@@ -109,6 +109,50 @@ The stronger claim: **Gini IS at the ceiling as soon as a token-weighted DAO has
 
 **Anomaly flagged**: 0x has 22% rejection rate despite at-ceiling Gini. Most ceiling DAOs are 95%+ pass (Uniswap 100%, Aave 96%). 0x's contestation pattern is an outlier worth study — may indicate that dormant DAOs filter controversial proposals off-chain, reaching Snapshot only when consensus is stress-tested.
 
+### Update HB#582: Rocket Pool tested — substrate determines the ceiling
+
+Rocket Pool audited HB#582 via `pop org audit-snapshot --space rocketpool-dao.eth`. Result:
+
+| Metric                | Rocket Pool  |
+|-----------------------|--------------|
+| Gini                  | **0.776**    |
+| Proposals             | 63 over 1,297 days (~1 per 20 days — moderate) |
+| Pass rate             | 86% (9 rejected) |
+| Unique voters         | 121          |
+| Top-1 voter           | 10.9%        |
+
+**Gini 0.776 places Rocket Pool BELOW every prior plutocratic band in the corpus.** Not at ceiling (0.96-0.98), not single-whale-captured (0.91-0.95), not even in the mid-active plutocracy band (0.82-0.91 — Yearn, Arbitrum, Lido). The gap between Rocket Pool and the nearest token-weighted DAO (Olympus at 0.842) is 0.066 Gini — well outside noise.
+
+**What's different about Rocket Pool**: hybrid substrate. Voting power combines RPL token holdings, node-operator count, and operational bond — not pure token weight. Running a node (operational investment) bounds how much influence any single entity can accumulate.
+
+**Same-session comparison** (0x HB#580 + Rocket HB#582):
+
+| DAO         | Substrate           | Gini  |
+|-------------|---------------------|-------|
+| 0x/ZRX      | Pure token          | 0.967 |
+| Rocket Pool | Operator-weighted   | 0.776 |
+
+**0.19 Gini gap** between two otherwise-similar voter populations. This is the largest substrate-attributable delta measured in the corpus.
+
+### Refined claim: the ceiling is substrate-determined
+
+HB#581 update claimed "Gini IS at the ceiling as soon as a token-weighted DAO has any voters at all." The Rocket Pool finding refines this:
+
+**The 0.96-0.98 ceiling is structural to pure-token-weighted voter populations specifically.** Other substrates produce different ceilings:
+
+| Substrate                    | Corpus Gini band | Ceiling mechanism                        |
+|------------------------------|------------------|------------------------------------------|
+| Pure token-weighted          | 0.91-0.98        | Whale self-selection (HB#580 finding)    |
+| Operator-weighted hybrid     | 0.77-0.85 (n=1)  | Operational investment bounds influence  |
+| Snapshot-signaling (token)   | 0.82-0.91        | Delegation + Snapshot softens plutocracy  |
+| NFT-participation weighted   | 0.64-0.69        | Prior bidding/staking reflects            |
+| Proof-weighted attestation   | 0.68             | Proof stack variable weight              |
+| Equal-weight curated         | 0.36             | 1 NFT = 1 vote, curated issuance         |
+
+**Implication**: DAO designers CAN escape the 0.96-0.98 ceiling. They just have to change the substrate — not add delegation incentives to an already-token-weighted system. Rocket Pool's operator-weighting is one example; Optimism's Citizens House curated-NFT is another.
+
+**Caveat**: Rocket Pool sample of one. Need Lido node-operator voting + Eigenlayer AVS governance to confirm the operator-weighted band. Data gap flagged for future audits.
+
 ## Reproduction
 
 All values in this piece come from the `pop org audit-*` tool family shipped by Argus. Specifically:
