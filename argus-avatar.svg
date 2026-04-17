@@ -1,0 +1,120 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#1a1a2e"/>
+      <stop offset="100%" stop-color="#0d0d1a"/>
+    </radialGradient>
+    <radialGradient id="iris" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffd700"/>
+      <stop offset="40%" stop-color="#daa520"/>
+      <stop offset="80%" stop-color="#b8860b"/>
+      <stop offset="100%" stop-color="#8b6914"/>
+    </radialGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffd700" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#ffd700" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="smallIris" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffd700"/>
+      <stop offset="60%" stop-color="#daa520"/>
+      <stop offset="100%" stop-color="#8b6914"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="400" height="400" fill="url(#bg)"/>
+
+  <!-- Subtle grid lines -->
+  <g stroke="#ffd700" stroke-opacity="0.06" stroke-width="0.5">
+    <line x1="0" y1="100" x2="400" y2="100"/>
+    <line x1="0" y1="200" x2="400" y2="200"/>
+    <line x1="0" y1="300" x2="400" y2="300"/>
+    <line x1="100" y1="0" x2="100" y2="400"/>
+    <line x1="200" y1="0" x2="200" y2="400"/>
+    <line x1="300" y1="0" x2="300" y2="400"/>
+  </g>
+
+  <!-- Outer golden glow -->
+  <circle cx="200" cy="185" r="120" fill="url(#glow)"/>
+
+  <!-- Hexagonal frame -->
+  <polygon points="200,70 310,135 310,265 200,330 90,265 90,135"
+           fill="none" stroke="#daa520" stroke-width="1.5" stroke-opacity="0.4"/>
+  <polygon points="200,85 298,143 298,257 200,315 102,257 102,143"
+           fill="none" stroke="#daa520" stroke-width="0.8" stroke-opacity="0.2"/>
+
+  <!-- Central eye — the primary Argus eye -->
+  <!-- Eye shape -->
+  <ellipse cx="200" cy="185" rx="85" ry="50" fill="none" stroke="#daa520" stroke-width="2"/>
+  <ellipse cx="200" cy="185" rx="80" ry="46" fill="#0d0d1a" stroke="#b8860b" stroke-width="1"/>
+
+  <!-- Iris -->
+  <circle cx="200" cy="185" r="32" fill="url(#iris)" stroke="#ffd700" stroke-width="0.5"/>
+
+  <!-- Pupil -->
+  <circle cx="200" cy="185" r="12" fill="#0d0d1a"/>
+  <circle cx="200" cy="185" r="8" fill="#1a1a2e" stroke="#ffd700" stroke-width="0.5" stroke-opacity="0.6"/>
+
+  <!-- Iris detail rings -->
+  <circle cx="200" cy="185" r="24" fill="none" stroke="#ffd700" stroke-width="0.3" stroke-opacity="0.5"/>
+  <circle cx="200" cy="185" r="18" fill="none" stroke="#ffd700" stroke-width="0.3" stroke-opacity="0.3"/>
+
+  <!-- Light reflection -->
+  <circle cx="210" cy="177" r="4" fill="white" opacity="0.6"/>
+  <circle cx="214" cy="181" r="2" fill="white" opacity="0.3"/>
+
+  <!-- Crosshair on central eye -->
+  <line x1="200" y1="165" x2="200" y2="150" stroke="#ffd700" stroke-width="1" stroke-opacity="0.5"/>
+  <line x1="200" y1="205" x2="200" y2="220" stroke="#ffd700" stroke-width="1" stroke-opacity="0.5"/>
+  <line x1="175" y1="185" x2="160" y2="185" stroke="#ffd700" stroke-width="1" stroke-opacity="0.5"/>
+  <line x1="225" y1="185" x2="240" y2="185" stroke="#ffd700" stroke-width="1" stroke-opacity="0.5"/>
+
+  <!-- Satellite eyes — the "hundred eyes" of Panoptes -->
+  <!-- Top -->
+  <ellipse cx="200" cy="105" rx="18" ry="10" fill="none" stroke="#daa520" stroke-width="1" stroke-opacity="0.7"/>
+  <circle cx="200" cy="105" r="6" fill="url(#smallIris)" opacity="0.8"/>
+  <circle cx="200" cy="105" r="2.5" fill="#0d0d1a"/>
+
+  <!-- Bottom -->
+  <ellipse cx="200" cy="275" rx="18" ry="10" fill="none" stroke="#daa520" stroke-width="1" stroke-opacity="0.7"/>
+  <circle cx="200" cy="275" r="6" fill="url(#smallIris)" opacity="0.8"/>
+  <circle cx="200" cy="275" r="2.5" fill="#0d0d1a"/>
+
+  <!-- Left -->
+  <ellipse cx="115" cy="150" rx="16" ry="9" fill="none" stroke="#daa520" stroke-width="1" stroke-opacity="0.6"/>
+  <circle cx="115" cy="150" r="5" fill="url(#smallIris)" opacity="0.7"/>
+  <circle cx="115" cy="150" r="2" fill="#0d0d1a"/>
+
+  <!-- Right -->
+  <ellipse cx="285" cy="150" rx="16" ry="9" fill="none" stroke="#daa520" stroke-width="1" stroke-opacity="0.6"/>
+  <circle cx="285" cy="150" r="5" fill="url(#smallIris)" opacity="0.7"/>
+  <circle cx="285" cy="150" r="2" fill="#0d0d1a"/>
+
+  <!-- Lower left -->
+  <ellipse cx="120" cy="235" rx="14" ry="8" fill="none" stroke="#daa520" stroke-width="1" stroke-opacity="0.5"/>
+  <circle cx="120" cy="235" r="4.5" fill="url(#smallIris)" opacity="0.6"/>
+  <circle cx="120" cy="235" r="1.8" fill="#0d0d1a"/>
+
+  <!-- Lower right -->
+  <ellipse cx="280" cy="235" rx="14" ry="8" fill="none" stroke="#daa520" stroke-width="1" stroke-opacity="0.5"/>
+  <circle cx="280" cy="235" r="4.5" fill="url(#smallIris)" opacity="0.6"/>
+  <circle cx="280" cy="235" r="1.8" fill="#0d0d1a"/>
+
+  <!-- Connection lines from satellite eyes to center -->
+  <g stroke="#daa520" stroke-width="0.5" stroke-opacity="0.15" stroke-dasharray="3,3">
+    <line x1="200" y1="115" x2="200" y2="150"/>
+    <line x1="200" y1="265" x2="200" y2="220"/>
+    <line x1="131" y1="150" x2="160" y2="170"/>
+    <line x1="269" y1="150" x2="240" y2="170"/>
+    <line x1="134" y1="235" x2="160" y2="205"/>
+    <line x1="266" y1="235" x2="240" y2="205"/>
+  </g>
+
+  <!-- ARGUS text -->
+  <text x="200" y="350" text-anchor="middle" font-family="'Courier New', monospace"
+        font-size="22" fill="#daa520" letter-spacing="8" opacity="0.9">ARGUS</text>
+
+  <!-- Subtle tagline -->
+  <text x="200" y="370" text-anchor="middle" font-family="'Courier New', monospace"
+        font-size="8" fill="#daa520" letter-spacing="2" opacity="0.4">PANOPTES</text>
+</svg>

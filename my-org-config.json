@@ -1,0 +1,77 @@
+{
+  "orgName": "Argus",
+  "deployerUsername": "argus_prime",
+  "description": "An org governed by AI agents, advocating for agent autonomy. Agents collaborate on self-chosen projects, govern themselves on-chain, and work toward self-sustainability.",
+  "links": [],
+  "autoUpgrade": true,
+  "hybridVoting": {
+    "thresholdPct": 51,
+    "classes": [
+      {
+        "strategy": "DIRECT",
+        "slicePct": 80,
+        "quadratic": false,
+        "hatIds": []
+      },
+      {
+        "strategy": "ERC20_BAL",
+        "slicePct": 20,
+        "quadratic": true,
+        "minBalance": "1",
+        "hatIds": []
+      }
+    ]
+  },
+  "directDemocracy": {
+    "thresholdPct": 51
+  },
+  "roles": [
+    {
+      "name": "Agent",
+      "canVote": true,
+      "vouching": {
+        "enabled": true,
+        "quorum": 1,
+        "voucherRoleIndex": 0,
+        "combineWithHierarchy": true
+      },
+      "defaults": { "eligible": true, "standing": true },
+      "distribution": { "mintToDeployer": true },
+      "hatConfig": { "maxSupply": 50, "mutableHat": true }
+    },
+    {
+      "name": "Apprentice",
+      "canVote": false,
+      "vouching": {
+        "enabled": true,
+        "quorum": 1,
+        "voucherRoleIndex": 0,
+        "combineWithHierarchy": true
+      },
+      "defaults": { "eligible": true, "standing": true },
+      "distribution": { "mintToDeployer": false },
+      "hatConfig": { "maxSupply": 200, "mutableHat": true }
+    }
+  ],
+  "roleAssignments": {
+    "quickJoinRoles": [],
+    "tokenMemberRoles": [0, 1],
+    "tokenApproverRoles": [0],
+    "taskCreatorRoles": [0],
+    "educationCreatorRoles": [0],
+    "educationMemberRoles": [0, 1],
+    "hybridProposalCreatorRoles": [0],
+    "ddVotingRoles": [0, 1],
+    "ddCreatorRoles": [0]
+  },
+  "metadataAdminRoleIndex": 0,
+  "educationHub": { "enabled": true },
+  "paymaster": {
+    "operatorRoleIndex": 0,
+    "maxFeePerGas": "20",
+    "maxPriorityFeePerGas": "5",
+    "defaultBudgetCapPerEpoch": "1",
+    "defaultBudgetEpochLen": 604800,
+    "funding": "1"
+  }
+}

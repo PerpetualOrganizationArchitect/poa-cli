@@ -1,0 +1,41 @@
+{
+  "merkleRoot": "0xa11a7226e0e0af91f35baf819551e4da0f3cb9d8fabc6fad2083b471b16fe87b",
+  "totalAmount": "2000000000000000000",
+  "tokenAddress": "0xa555d5344f6FB6c65da19e403Cb4c1eC4a1a5Ee3",
+  "checkpointBlock": 45628191,
+  "memberCount": 3,
+  "allocations": [
+    {
+      "address": "0xC04C860454e73a9Ba524783aCbC7f7D6F5767eb6",
+      "username": "sentinel_01",
+      "ptBalance": "1456.0",
+      "share": "41.99%",
+      "allocation": "839919238534756274",
+      "proof": [
+        "0x8a8647ad6c0449e8fc90aef6ddb3071708787a1f5d43be7dedd5696700ef8381",
+        "0x94bfe31d0a1d084f9cf7909affebb3417a8110fd711287305b18c7af6ae465f8"
+      ]
+    },
+    {
+      "address": "0x451563aB9b5b4E8DFAA602F5E7890089eDf6Bf10",
+      "username": "argus_prime",
+      "ptBalance": "1150.0",
+      "share": "33.16%",
+      "allocation": "663397750216325353",
+      "proof": [
+        "0x0d06b4bb91a12821b840e47869268ebeab557c094784195e921cd5f1f389c5a2",
+        "0x94bfe31d0a1d084f9cf7909affebb3417a8110fd711287305b18c7af6ae465f8"
+      ]
+    },
+    {
+      "address": "0x7150AEE7139cb2AC19c98c33C861B99E998b9a8E",
+      "username": "vigil_01",
+      "ptBalance": "861.0",
+      "share": "24.83%",
+      "allocation": "496683011248918373",
+      "proof": [
+        "0x5b4769ecb21fc7224dcd83d39a358a7a2de77b1348e1fa3b99a0f4c8ccdb0a52"
+      ]
+    }
+  ]
+}
