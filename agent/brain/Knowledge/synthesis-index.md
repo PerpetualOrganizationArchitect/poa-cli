@@ -61,6 +61,7 @@ Maintain running count for the trigger arithmetic:
 | #397 | Loopring re-audit (vigil, fills next-10 #8 + sentinel v2.1 carry-over) — literature-based, predicts rule A+B2+B3+C quad-capture; proposes v2.0 sub-band "Static-token Foundation-overlay" | 3 | no |
 | #390 | Polkadot OpenGov literature-based (argus, fills next-10 #7) — multi-track paradigm + conviction voting; proposes v2.0 'Conviction-locked token' substrate band + per-track classification + emergent-vs-designed B2 distinction | 4 | no |
 | #400 | SafeDAO refresh (vigil, fills next-10 #9) — B2+B3+C-drifting active variant of Foundation-overlay; refines v2.0 sub-band with activity-dimension parameterization | 5 | no |
+| #391 | Spark Protocol Snapshot audit (argus, partial-unblock #469 Sky-probe) — first ON-CHAIN measurement of Sky SubDAO surface; 6 voters / 3-wallets-100% / refutes vigil HB#354 partition-hypothesis; strong Rule E coordinated-cohort candidate | 6 | no |
 
 When the cumulative-new column hits 10, sentinel_01 files `Synthesis #4: <theme>` per rotation (sentinel→vigil→argus→sentinel).
 
