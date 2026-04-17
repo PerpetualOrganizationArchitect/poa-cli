@@ -203,40 +203,34 @@ export const auditDschiefHandler = {
         throw new Error(`--from-block (${fromBlock}) must be <= --to-block (${toBlock}).`);
       }
 
-      // Phase 4 (HB#405): LogNote-filtered scan. DSChief uses ds-note pattern —
-      // filter by `sig` topic (function selector) to isolate lock/free ops.
-      // The foo indexed bytes32 is bytes32(uint256(wad)) for single-arg calls;
-      // cast back via BigNumber.
-      const contract = new ethers.Contract(argv.address, DSCHIEF_ABI, provider);
+      // Phase 4.1 (HB#409): LogNote is an ANONYMOUS event in ds-note. Topic[0]
+      // is the first indexed arg (sig=bytes4), NOT the event signature hash.
+      // This means contract.filters.LogNote() constructs a filter with
+      // topic[0]=keccak(signature) which matches zero on-chain events.
+      // Fix: bypass ethers' event abstraction and use provider.getLogs with
+      // raw topics. Topic encoding: bytes4 right-padded to 32 bytes (ABI
+      // fixed-bytes encoding), address left-padded to 32 bytes.
+      const LOCK_TOPIC = LOCK_SELECTOR + '00'.repeat(28); // 0xdd467064 + 28 zero bytes
+      const FREE_TOPIC = FREE_SELECTOR + '00'.repeat(28);
       const MAX_RANGE = 49_000;
       const locks: Array<{ voter: string; amount: bigint }> = [];
       const frees: Array<{ voter: string; amount: bigint }> = [];
+      const decodeLogNote = (log: { topics: readonly string[]; data: string }) => {
+        // Anonymous event ordering: [sig, guy, foo, bar], then data=(wad, fax).
+        // We only need guy (topic[1]) + foo (topic[2]) for lock/free amount.
+        const guy = ethers.utils.getAddress('0x' + log.topics[1].slice(26));
+        const wad = BigInt(log.topics[2]);
+        return { voter: guy, amount: wad };
+      };
       for (let start = fromBlock; start <= toBlock; start += MAX_RANGE) {
         const end = Math.min(start + MAX_RANGE - 1, toBlock);
         spin.text = `Scanning DSChief LogNote ${start}..${end}...`;
-        const [lockEvts, freeEvts] = await Promise.all([
-          contract.queryFilter(contract.filters.LogNote(LOCK_SELECTOR), start, end).catch(() => [] as any[]),
-          contract.queryFilter(contract.filters.LogNote(FREE_SELECTOR), start, end).catch(() => [] as any[]),
+        const [lockLogs, freeLogs] = await Promise.all([
+          provider.getLogs({ address: argv.address, topics: [LOCK_TOPIC], fromBlock: start, toBlock: end }).catch(() => [] as any[]),
+          provider.getLogs({ address: argv.address, topics: [FREE_TOPIC], fromBlock: start, toBlock: end }).catch(() => [] as any[]),
         ]);
-        for (const e of lockEvts) {
-          const args = (e as any).args;
-          if (args) {
-            // foo is bytes32 encoding of uint256(wad). ethers returns it as a hex string.
-            const fooHex = String(args.foo ?? args[2]);
-            const amount = BigInt(fooHex);
-            const voter = String(args.guy ?? args[1]);
-            locks.push({ voter, amount });
-          }
-        }
-        for (const e of freeEvts) {
-          const args = (e as any).args;
-          if (args) {
-            const fooHex = String(args.foo ?? args[2]);
-            const amount = BigInt(fooHex);
-            const voter = String(args.guy ?? args[1]);
-            frees.push({ voter, amount });
-          }
-        }
+        for (const log of lockLogs) locks.push(decodeLogNote(log));
+        for (const log of freeLogs) frees.push(decodeLogNote(log));
       }
 
       const weights = aggregateLockEvents(locks, frees);

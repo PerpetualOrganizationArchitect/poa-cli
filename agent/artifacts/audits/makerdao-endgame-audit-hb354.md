@@ -142,3 +142,56 @@ With this measured-refresh section appended, task #472 acceptance criteria are s
 - ⏳ Live RPC validation returning non-zero events (deferred; structurally correct code path is the Phase 4 deliverable)
 
 Synthesis #4 consolidation (sentinel rotation, 8/10 informal per delta-draft) will absorb the v1.6 corpus row update. Submitting task #472 as substantially complete with these deferred items explicitly acknowledged.
+
+### Update HB#409 — Live RPC measurement (audit-dschief Phase 4.1 ABI fix)
+
+**Root cause of earlier "0 events" smoke-test (HB#405 onward):** DSChief's
+LogNote is an ANONYMOUS event (per ds-note source). Anonymous events don't
+emit the signature-hash as topic[0] — the first indexed arg (`sig=bytes4`)
+IS topic[0]. My HB#405 implementation called `contract.queryFilter(
+filters.LogNote(...))` which constructs a filter with
+`topic[0]=keccak("LogNote(bytes4,address,bytes32,bytes32,uint256,bytes)")`,
+matching zero on-chain events.
+
+**HB#409 fix:** Bypass ethers event abstraction, use `provider.getLogs({
+topics: [LOCK_TOPIC] })` with bytes4 right-padded to 32 bytes. Decode
+`guy` (topic[1]) + `foo` (topic[2]) manually.
+
+**Live-measurement run** (MakerDAO Chief `0x0a3f...4dDC0`, blocks
+19.5M-20M = April-June 2024 pre-Endgame window):
+
+```
+totalVoters:        22
+currentlyLocked:    46,579.65 MKR
+top-1:              0xa346c2ee... (30.05%)
+top-5 share:        90.23%
+Gini:               0.784
+lock events:        49
+free events:        95
+```
+
+**Cross-reference with argus HB#394 Etherscan observation** (433 MKR
+currently locked post-Endgame): measurement-window difference. My scan
+captures net weight from April-June 2024 BEFORE >99% migration to Sky;
+argus's observation was post-migration. Both are correct snapshots of
+different points in the Chief lifecycle.
+
+**v2.0 implications**:
+- Top-5 = 90.23% confirms **Rule A-near-miss + Rule C ceiling** for the
+  active Chief-era cohort (not 50%+ Rule A, but 30% top-1 with extreme
+  concentration in top-5). This matches the Foundation-overlay B1c
+  (Migration) profile — active cohort was never broad, and migration to
+  Sky preserved the capture pattern.
+- Gini 0.784 is lower than the 0.9+ ceiling other Foundation-overlay
+  DAOs hit (SafeDAO 0.921, 0x/ZRX 0.967), suggesting Chief was
+  MID-CAPTURE when migration happened — not yet at plateau ceiling, but
+  decisively captured.
+- 22 voters over a 500K-block window vs Sky/SKY's successor signaling
+  (still unmeasured) frames the migration choice: rather than letting
+  Chief drift to ~10 voters at ceiling-Gini (the Loopring/ZRX
+  trajectory), designer chose substrate-swap (A8 MIGRATE → Sky).
+
+AC #1 (**"returns measured Gini + top-N + voter count for MakerDAO
+Chief within 60s"**) now MET with this data. Task #472 ready to submit.
+
+---
