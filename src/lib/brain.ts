@@ -259,11 +259,36 @@ export async function initBrainNode(): Promise<any> {
   // HB#364: optional fixed listen port via POP_BRAIN_LISTEN_PORT.
   // When set, the daemon binds TCP to a predictable port so committed
   // static peer lists (brain-peers.json) remain valid across restarts.
-  // When unset, fall back to random port (libp2p tcp/0) for ephemeral
-  // CLI invocations that don't need to be addressable. Cross-device
-  // onboarding is gated on this being set on at least one side.
+  //
+  // Task #447 (HB#286): when UNSET, derive a deterministic port from
+  // the peer's private key bytes. Produces a stable per-agent port
+  // across restarts without requiring operator .env config, which
+  // closes the HB#283 "daemon restart breaks POP_BRAIN_PEERS" failure
+  // mode. Operators can still override with POP_BRAIN_LISTEN_PORT=N
+  // for custom port planning, or =0 to opt in to random-port
+  // ephemeral behavior.
+  //
+  // Range: 34000–34999. 1-in-1000 collision risk between agents on
+  // the same host; POP_BRAIN_LISTEN_PORT override is the escape hatch.
   const rawListenPort = process.env.POP_BRAIN_LISTEN_PORT?.trim();
-  const listenPort = rawListenPort && /^\d+$/.test(rawListenPort) ? Number(rawListenPort) : 0;
+  let listenPort: number;
+  if (rawListenPort !== undefined && rawListenPort !== '' && /^\d+$/.test(rawListenPort)) {
+    listenPort = Number(rawListenPort);
+  } else {
+    try {
+      const { privateKeyToProtobuf } = await esmImport<any>('@libp2p/crypto/keys');
+      const pkBytes: Uint8Array = privateKeyToProtobuf(privateKey);
+      const nodeCrypto = await esmImport<any>('node:crypto');
+      const hash = nodeCrypto.createHash('sha256').update(Buffer.from(pkBytes)).digest();
+      const offset = ((hash[0] << 8) | hash[1]) % 1000;
+      listenPort = 34000 + offset;
+    } catch (err: any) {
+      if (process.env.POP_BRAIN_DEBUG) {
+        console.error(`[brain] listen-port derivation failed (${err.message}) — using random port`);
+      }
+      listenPort = 0;
+    }
+  }
   const listenAddrs = [`/ip4/0.0.0.0/tcp/${listenPort}`];
 
   const libp2p = await createLibp2p({
@@ -908,22 +933,27 @@ export async function applyBrainChange<T = any>(
     await bs.close();
   }
 
-  const manifest = loadHeadsManifest();
-  manifest[docId] = cid.toString();
-  saveHeadsManifest(manifest);
+  // T4 Stage 2c: local write supersedes the PRIMARY local head (frontier[0]).
+  // Concurrent heads (frontier[1..]) are preserved — they'll be merged in when
+  // fetchAndMergeRemoteHead consumes them or a future write includes them.
+  const manifestV2 = loadHeadsManifestV2();
+  const priorFrontier = manifestV2[docId] || [];
+  const newCidStr = cid.toString();
+  manifestV2[docId] = [newCidStr, ...priorFrontier.slice(1).filter(c => c !== newCidStr)];
+  saveHeadsManifestV2(manifestV2);
 
-  // Step 5: broadcast the new head CID on the doc's gossipsub topic.
+  // Step 5: broadcast the new frontier on the doc's gossipsub topic.
   // Best-effort — if there are no peers or publish fails, the local
   // write has already persisted and missed announcements recover at
   // next peer reconnect via delta fetch. We do NOT await errors here
   // because the caller's contract is "change was persisted locally."
   try {
-    await publishBrainHead(docId, cid.toString(), envelope.author);
+    await publishBrainHead(docId, newCidStr, envelope.author, manifestV2[docId]);
   } catch {
     // publishBrainHead already swallows errors; belt-and-suspenders.
   }
 
-  return { headCid: cid.toString(), doc: newDoc, author: envelope.author };
+  return { headCid: newCidStr, doc: newDoc, author: envelope.author };
 }
 
 /**
@@ -1010,20 +1040,26 @@ export async function importBrainDoc(
   } finally {
     await bs.close();
   }
-  const manifest = loadHeadsManifest();
-  manifest[docId] = cid.toString();
-  saveHeadsManifest(manifest);
+  // T4 Stage 2c: importBrainDoc is the manual snapshot-import path. Unlike
+  // applyBrainChange, it REPLACES the entire frontier with [importedCid] —
+  // the imported snapshot is authoritative for this doc, and concurrent heads
+  // that existed locally are semantically superseded (--force is required for
+  // a reason; the caller acknowledged the clobber).
+  const manifestV2 = loadHeadsManifestV2();
+  const newCidStr = cid.toString();
+  manifestV2[docId] = [newCidStr];
+  saveHeadsManifestV2(manifestV2);
 
   // Publish the new head via gossipsub. Best-effort — local write has
   // already persisted, and missed announcements recover at next peer
   // reconnect via the usual rebroadcast loop.
   try {
-    await publishBrainHead(docId, cid.toString(), envelope.author);
+    await publishBrainHead(docId, newCidStr, envelope.author, [newCidStr]);
   } catch {
     // publishBrainHead already swallows errors; belt-and-suspenders.
   }
 
-  return { headCid: cid.toString(), doc, author: envelope.author };
+  return { headCid: newCidStr, doc, author: envelope.author };
 }
 
 /**

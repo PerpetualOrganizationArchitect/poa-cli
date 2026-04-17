@@ -358,33 +358,41 @@ export async function runDaemon(): Promise<void> {
     subscribedDocs.add(docId);
     const unsub = await subscribeBrainTopic(docId, (ann, from) => {
       stats.incomingAnnouncements += 1;
-      // T1: record the (docId, cid) we just heard so the rebroadcast loop
-      // can skip re-publishing it during the grace window.
-      seenHeads.set(seenKey(docId, ann.cid), Date.now());
-      // T6 pt1: track latest head per (peerId, docId) for divergence detection.
+      // T4 (task #432) Stage 2c: if the announcement carries a full frontier
+      // (cids[] from a T4-aware peer), iterate every CID and fetch each one
+      // the local frontier doesn't already know. Pre-T4 peers still set
+      // ann.cid only; treat that as a 1-element frontier.
+      const frontier: string[] = (ann.cids && ann.cids.length > 0) ? ann.cids : [ann.cid];
+      // T6 pt1: track the PRIMARY head (cids[0] or cid) per (peerId, docId)
+      // for divergence detection. The other frontier members are concurrent
+      // heads that haven't been collapsed yet; T6 compares the canonical one.
       let perPeer = peerHeads.get(from);
       if (!perPeer) {
         perPeer = new Map();
         peerHeads.set(from, perPeer);
       }
-      perPeer.set(docId, { cid: ann.cid, ts: Date.now() });
-      log(`recv doc=${docId} cid=${ann.cid} from=${from} author=${ann.author}`);
-      // Fire-and-forget the block fetch + merge. Errors are logged.
-      fetchAndMergeRemoteHead(ann.docId, ann.cid)
-        .then(result => {
-          // Task #373: only count actions where content actually landed.
-          // 'adopt' = fast-forward or first head, 'merge' = CRDT merge.
-          // 'skip' = already at head, 'reject' = auth/fetch/disjoint fail.
-          if (result.action === 'adopt' || result.action === 'merge') {
-            stats.incomingMerges += 1;
-          } else if (result.action === 'reject') {
-            stats.incomingRejects += 1;
-          }
-          log(`merge doc=${docId} cid=${ann.cid} action=${result.action} reason=${result.reason}`);
-        })
-        .catch(err => {
-          log(`merge err doc=${docId} cid=${ann.cid}: ${err.message}`);
-        });
+      perPeer.set(docId, { cid: frontier[0], ts: Date.now() });
+      log(`recv doc=${docId} cids=[${frontier.join(',')}] from=${from} author=${ann.author}`);
+
+      for (const cid of frontier) {
+        // T1: record every (docId, cid) we just heard so the rebroadcast loop
+        // can skip re-publishing anything in the frontier during the grace window.
+        seenHeads.set(seenKey(docId, cid), Date.now());
+        // Fire-and-forget the block fetch + merge for this specific CID.
+        // Errors are logged; each fetch is independent.
+        fetchAndMergeRemoteHead(ann.docId, cid)
+          .then(result => {
+            if (result.action === 'adopt' || result.action === 'merge') {
+              stats.incomingMerges += 1;
+            } else if (result.action === 'reject') {
+              stats.incomingRejects += 1;
+            }
+            log(`merge doc=${docId} cid=${cid} action=${result.action} reason=${result.reason}`);
+          })
+          .catch(err => {
+            log(`merge err doc=${docId} cid=${cid}: ${err.message}`);
+          });
+      }
     });
     unsubscribes.push(unsub);
     log(`subscribed doc ${docId}`);
