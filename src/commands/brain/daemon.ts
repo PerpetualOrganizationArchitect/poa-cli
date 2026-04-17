@@ -248,6 +248,7 @@ async function handleStatus(): Promise<void> {
   console.log(`  last keepalive:       ${lastKeepalive}`);
   console.log(`  incoming announces:   ${ipcResult.incomingAnnouncements}`);
   console.log(`  incoming merges:      ${ipcResult.incomingMerges}`);
+  console.log(`  incoming rejects:     ${ipcResult.incomingRejects || 0}`);
   console.log(`  brain home:           ${ipcResult.brainHome}`);
   console.log(`  log:                  ${ipcResult.logPath}`);
 }

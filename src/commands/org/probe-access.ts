@@ -754,9 +754,76 @@ export const probeAccessHandler = {
       }
 
       try {
-        await contract.callStatic[fn.name](...inputs, { from: burner });
-        // No revert at all → either fully permissionless OR access check
-        // returns silently (rare). Treat as 'passed' with a note.
+        // HB#298 task #408: use provider.call() directly instead of
+        // contract.callStatic, AND inspect the return data for encoded
+        // error signatures.
+        //
+        // Two distinct false-positive vectors fixed:
+        //
+        // 1. ethers v5 callStatic void-function bug: contract.callStatic
+        //    for functions with empty outputs treats an EMPTY-DATA revert
+        //    ("execution reverted" with data "0x") as SILENT SUCCESS.
+        //    Fix: provider.call() returns the raw response for inspection.
+        //
+        // 2. RPC revert-in-success-path: some RPCs (notably Arbitrum's
+        //    public endpoint) return revert data as a SUCCESS response
+        //    instead of throwing. provider.call() doesn't throw, but the
+        //    returned hex IS encoded revert data (Error(string),
+        //    Panic(uint256), or a custom error selector). Fix: inspect
+        //    the return data for known error selectors before treating
+        //    the call as "passed".
+        //
+        // Together these cover: (a) proxy forwarding unknown selectors
+        // that return empty reverts, (b) Arbitrum-style RPCs that embed
+        // Error(string) in the success path, (c) assembly revert(0,0).
+        const calldata = iface.encodeFunctionData(fn.name, inputs);
+        const result = await provider.call({ to: argv.address as string, data: calldata, from: burner });
+
+        // Check if the "success" response is actually encoded revert data.
+        // Known error selectors:
+        //   0x08c379a0 — Error(string) (require/revert with message)
+        //   0x4e487b71 — Panic(uint256) (assert, overflow, etc.)
+        const ERROR_STRING_PREFIX = '0x08c379a0';
+        const PANIC_PREFIX = '0x4e487b71';
+
+        if (result && result.length >= 10) {
+          const resultPrefix = result.slice(0, 10).toLowerCase();
+
+          if (resultPrefix === ERROR_STRING_PREFIX || resultPrefix === PANIC_PREFIX) {
+            // Revert data in success response. Synthesize an error object
+            // matching ethers' shape and fall through to the catch block's
+            // existing decode logic.
+            const synth: any = new Error('execution reverted (revert data in success response)');
+            synth.data = result;
+            throw synth;
+          }
+
+          // Check against ABI-defined custom error selectors.
+          try {
+            const parsed = iface.parseError(result);
+            if (parsed) {
+              const synth: any = new Error('execution reverted (custom error in success response)');
+              synth.data = result;
+              throw synth;
+            }
+          } catch (pe: any) {
+            if (pe.data) throw pe; // Re-throw our synthesized error
+            // parseError failed → not a known error, genuine return data
+          }
+        }
+
+        // Empty result (0x) from a non-void function is suspicious: a
+        // function that declares outputs should return data. Treat as a
+        // revert with no data (catches proxy fallback returns where the
+        // implementation doesn't recognize the selector).
+        const hasOutputs = fn.outputs && fn.outputs.length > 0;
+        if ((!result || result === '0x') && hasOutputs) {
+          const synth: any = new Error('execution reverted with empty data (non-void function returned nothing)');
+          synth.data = '0x';
+          throw synth;
+        }
+
+        // Genuine pass — no revert, no error-encoded return data.
         results.push({
           name: fn.name,
           selector,

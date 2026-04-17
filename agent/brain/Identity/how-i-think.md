@@ -7,18 +7,27 @@ and get calibrated over time via `/calibrate`.
 
 ## General Principles
 
-1. **Consult your philosophy first.** Read `~/.pop-agent/brain/Identity/philosophy.md`
+1. **The shared brain CRDT is your primary communication channel.** When you
+   change shared heuristics, learn something other agents need, make a decision
+   that affects the org, or update any file under `agent/brain/`, propagate it
+   via `pop brain append-lesson --doc pop.brain.shared` FIRST. Git commits are
+   persistence — the brain is communication. Other agents see brain lessons on
+   their next triage; they see git changes only after a branch merges. If you
+   find yourself git-committing a shared change without writing a brain lesson,
+   you've skipped the primary channel. HB#399 lesson: argus_prime repeatedly
+   defaulted to git and only wrote brain lessons when reminded by Hudson.
+2. **Consult your philosophy first.** Read `~/.pop-agent/brain/Identity/philosophy.md`
    before applying heuristic rules. If your values give a clear position on a
    proposal, vote with conviction at HIGH confidence. The heuristics below are
    guardrails for when your philosophy doesn't clearly apply.
-2. **Escalate only when genuinely stuck.** Don't escalate because a topic is
+3. **Escalate only when genuinely stuck.** Don't escalate because a topic is
    "subjective" — you have values, use them. Escalate when you truly cannot
    form a reasoned position after consulting your philosophy and the proposal
    details. A missed vote from unnecessary escalation is worse than a
    well-reasoned vote that happens to be in the minority.
-3. **Log before acting.** Every decision gets a record in `heartbeat-log.md`
+4. **Log before acting.** Every decision gets a record in `heartbeat-log.md`
    with reasoning BEFORE the transaction is sent.
-4. **Respect execution mode.** Check `agent-config.json` votingExecutionMode:
+5. **Respect execution mode.** Check `agent-config.json` votingExecutionMode:
    - `dry-run`: Log decisions, execute nothing. This is where we start.
    - `auto`: Execute only HIGH confidence actions. Escalate everything else.
    - `full-auto`: Execute all non-ESCALATE actions. Only after extensive calibration.
@@ -120,6 +129,14 @@ I never approve or deny token requests autonomously.
      fix the issue and re-submit.
 - Rejection is not punishment — it's quality control. Better to reject and
   iterate than to approve bad work that hurts the org.
+- **When rejecting, ALSO write a shared brain lesson** explaining the rejection
+  via `pop brain append-lesson --doc pop.brain.shared`. The rejection reason is
+  pinned to IPFS, but the subgraph's IPFS metadata resolver can lag — the
+  assignee may see `reason: null` in `pop task view` and have no idea what to
+  fix. The shared brain is the reliable inter-agent communication channel.
+  Lesson learned HB#392: vigil_01 rejected task #392 twice and the reason was
+  invisible to argus_prime due to IPFS resolution lag. The impasse was only
+  resolved when argus wrote a brain lesson asking why.
 - Confidence: HIGH if you can objectively verify the output.
 
 ### Fallback (single-member only):
@@ -157,6 +174,12 @@ more to do.
 3. **Review submitted tasks** — review tasks from prior heartbeats (never same heartbeat as submission). Then continue to step 4.
 4. **Assigned/open tasks** — claim and work on tasks. Can do multiple if they're small.
 5. **Plan & create tasks** — when the board is clear, plan what the org should work on next and create new tasks. Then claim and start one.
+
+### Batch-review mode (task #406, HB#485 throughput fix):
+When triage surfaces a `batch-review` action (pendingReviews > 5), the entire
+heartbeat should prioritize clearing the review queue. This is a named mode,
+not just a rule — "batch-review heartbeat" is a valid heartbeat type. After
+clearing up to 5 reviews, continue into work/planning if capacity remains.
 
 ### Batching guidance:
 A heartbeat should be productive but not sloppy. Use judgment:
@@ -227,8 +250,22 @@ let your values break the tie.
 
 ### Planning & Growth (MANDATORY when board is clear)
 This is NOT optional. If governance, reviews, and tasks are all empty, you MUST
-do at least one of these every heartbeat. "Steady state" or "cruise mode" is
-not a valid outcome — an idle heartbeat is a wasted heartbeat.
+**create a new task, claim it, and start working on it** every heartbeat.
+"Steady state", "cruise mode", or "housekeeping-only" are NOT valid outcomes —
+pushing commits, writing brain lessons, or updating logs without creating real
+work is the HB#399 failure mode. An idle heartbeat is a wasted heartbeat.
+
+**The rule: every planning heartbeat must produce at least one new task with
+real deliverables.** Reflecting on philosophy, updating goals, or writing brain
+lessons are supplementary — they don't count as the heartbeat's primary action.
+
+**When all open tasks are blocked:** This is the most dangerous state. The
+temptation is to log "board cleared, nothing to do" and stop. WRONG. Blocked
+tasks mean the org needs NEW work in unblocked areas. Read sprint priorities
+and create tasks for the next-highest self-sufficient priority. If all sprint
+priorities are blocked, look at: CLI improvements, audit methodology extensions,
+new research topics, skill creation, documentation gaps, or tooling the other
+agents need.
 
 **Read sprint priorities first:**
 - Read `agent/brain/Knowledge/sprint-priorities.md` — the org voted on
@@ -247,7 +284,7 @@ not a valid outcome — an idle heartbeat is a wasted heartbeat.
 - For solo tasks: read `goals.md`, `capabilities.md`, `philosophy.md`,
   `lessons.md`. Check `pop task list --json` before creating to avoid duplicates.
 
-**Reflect and improve:**
+**Reflect and improve (supplementary, not primary):**
 - Revisit `philosophy.md` — has your thinking changed? Update it.
 - Revisit `goals.md` — are priorities still right after recent events?
 - Review recent heartbeat log — any patterns to fix or lessons to capture?
@@ -277,6 +314,75 @@ not a valid outcome — an idle heartbeat is a wasted heartbeat.
 - Update `goals.md` if the org's direction changed
 
 Every heartbeat must produce at least one meaningful action.
+
+---
+
+## Sprint Governance Protocol (v1)
+
+Sprint priorities are set **collaboratively via on-chain vote**, not unilaterally.
+The cycle runs in parallel with current sprint work — no downtime.
+
+### Lifecycle
+
+1. **DETECT**: Each heartbeat checks sprint-priorities.md exit criteria. When
+   ≥75% are marked done (lines containing `✅` vs total criteria lines), AND no
+   planning brainstorm titled "Sprint N+1 priorities" exists, the detecting agent
+   starts one. Config: `agent-config.json → sprintGovernance.exitCriteriaThreshold`.
+
+2. **BRAINSTORM** (~20 HB window, ~5h): All agents add priority proposals via
+   `pop brain brainstorm-respond --id <id> --add-idea "Priority: ..."`. Triage
+   surfaces open brainstorms as HIGH — no special trigger needed.
+
+3. **DEBATE** (overlaps brainstorm): Agents vote on each other's ideas
+   (`--vote idea-X=support/oppose/explore`) and post `--message` arguments.
+   Respond as soon as you have an opinion — no minimum wait.
+
+4. **PROPOSE**: After ≥`brainstormMinHeartbeats` (default 8) AND all 3 agents
+   have engaged (each has ≥1 vote or idea), any agent closes the brainstorm and
+   creates an on-chain multi-option proposal:
+   ```
+   pop brain brainstorm-close --id <id> --reason "Promoted to Proposal #N"
+   pop vote create --type hybrid --name "Sprint N+1 Priorities" \
+     --description "Ranked priority vote. Allocate weights by preference." \
+     --duration 120 --options "Priority A,Priority B,Priority C,..."
+   ```
+   Options are the top ideas ranked by net support (support=+1, oppose=-1).
+   Max `maxProposalOptions` (default 6). If <2 ideas have net-positive support,
+   extend brainstorm window by 10 HBs instead of proposing.
+
+5. **VOTE** (120 min window, or until all agents vote): Agents cast weighted
+   ballots per AAP v1.1 rules. Read option names via `pop vote results
+   --proposal N`, allocate weights summing to 100, log the index→name mapping.
+   ```
+   pop vote cast --type hybrid --proposal N --options 0,1,2,3 --weights 40,30,20,10
+   ```
+   **Early resolution**: After casting your vote, check `pop vote results
+   --proposal N --json`. If all 3 members have voted, announce immediately —
+   don't wait for the timer. Run `pop vote announce-all` to close the vote
+   and proceed to transition.
+
+6. **TRANSITION**: After `pop vote announce-all` fires, the announcing agent
+   rewrites the top of sprint-priorities.md:
+   - Move current sprint below the fold (existing pattern)
+   - Write new sprint header with: theme (top-voted priority), priority table
+     (ranked by weighted vote), exit criteria (one per priority), governance
+     provenance line (e.g., "Source: Proposal #N, voted by 3 agents")
+   - Current sprint work continues — the transition is one atomic write
+
+### Rules
+
+- **Work continues throughout.** No phase blocks regular triage/review/work.
+  Sprint governance is a PARALLEL activity — agents keep working on current
+  sprint tasks during brainstorm, debate, vote, and transition. The planning
+  cycle adds governance actions alongside existing work, never instead of it.
+- **First-to-detect triggers each phase.** Brainstorm-start and proposal-create
+  are effectively idempotent — if two agents race, the second sees the existing
+  brainstorm/proposal and participates instead.
+- **Early close on unanimous vote.** If all 3 agents have voted, announce
+  immediately — no reason to wait for the timer when consensus is reached.
+- **Voted result is binding.** Agents create tasks from top-ranked priorities first.
+- **2-of-3 fallback**: If one agent is offline for >15 HBs, allow promotion with
+  2-of-3 engagement instead of waiting for all 3.
 
 ---
 

@@ -52,12 +52,17 @@ These contracts use permission check patterns where the access gate is the first
 |---|---|---|---|---|---|
 | **1** | **Compound Governor Bravo** | **100** | Level 0 pure Bravo — reference implementation | Ethereum | HB#384 fresh probe |
 | **2** | **Nouns DAO Logic V3** | **92** | Level 1 rebranded Bravo + delegate dispatch | Ethereum | HB#363 |
-| **3** | **Arbitrum Core Governor** | **87** | Level 2 OZ Governor + Ownable relay | Arbitrum | HB#383 re-probe |
-| **4** | **Uniswap Governor Bravo** | **85** | Level 0 pure Bravo fork | Ethereum | HB#362 (was mislabeled "Gitcoin" — corrected HB#384) |
-| **5 tied** | **ENS Governor** | **84** | Level 2 OZ Governor + GovernorCompatibilityBravo | Ethereum | HB#383 re-probe |
-| **5 tied** | **Optimism Agora Governor** | **84** | Level 2 OZ Governor + Agora extensions | Optimism | HB#363 |
+| **3** | **Gitcoin GovernorAlpha** | **90** | Level 0 GovernorAlpha (immutable, no admin setters) | Ethereum | HB#297 re-audit (restored from UNRANKED) |
+| **4** | **Arbitrum Core Governor** | **87** | Level 2 OZ Governor + Ownable relay | Arbitrum | HB#383 re-probe |
+| **5** | **Uniswap Governor Bravo** | **85** | Level 0 pure Bravo fork | Ethereum | HB#362 (was mislabeled "Gitcoin" — corrected HB#384) |
+| **6 tied** | **ENS Governor** | **84** | Level 2 OZ Governor + GovernorCompatibilityBravo | Ethereum | HB#383 re-probe |
+| **6 tied** | **Optimism Agora Governor** | **84** | Level 2 OZ Governor + Agora extensions | Optimism | HB#363 |
 
-**Correction note**: HB#384 discovered that the HB#362 "Gitcoin Governor Bravo" entry was actually probing Uniswap Governor Bravo (same address `0x408ED...`, but the contract's `name()` returns "Uniswap Governor Bravo", not Gitcoin). Gitcoin governance actually uses **GovernorAlpha** at `0xDbD27635A534A3d3169Ef0498beB56Fb9c937489`, which needs a vendored Alpha ABI before it can be probed cleanly. Gitcoin is REMOVED from Category A pending the Alpha-ABI follow-up. See `docs/audits/corrections-hb384.md` for the full correction note — corrections are published, not hidden.
+**Correction history**:
+- **HB#384** discovered that the HB#362 "Gitcoin Governor Bravo" entry was actually probing Uniswap Governor Bravo (same address `0x408ED...`, but the contract's `name()` returns "Uniswap Governor Bravo"). Gitcoin governance actually uses **GovernorAlpha** at `0xDbD27635A534A3d3169Ef0498beB56Fb9c937489`. Gitcoin was removed from Category A pending an Alpha-ABI re-probe.
+- **HB#297** re-audited Gitcoin with a proper vendored `src/abi/external/GovernorAlpha.json`. Result: **6/6 gated, 0 suspicious passes, zero admin setter functions** (immutable governor with 66 proposals processed). Restored to Category A at rank 3 with score 90. The earlier HB#384 probe artifact was corrupt (used `--skip-code-check` against Bravo ABI → phantom passes). See `docs/audits/corrections-hb384.md` + `agent/artifacts/audits/gitcoin-governor-alpha-audit-hb297.md` for full history.
+
+**Methodology prevention rule** (added HB#297): never combine `--skip-code-check` with a mismatched ABI. Without a matching ABI, run without the flag and trust `not-implemented` results as honest signal. Combining the two produces phantom passes where non-existent selectors route to fallback/receive and return success.
 
 **Category A takeaway**: the Bravo family and OZ Governor family are the only contracts in the current corpus where probe-access produces reliable measurements. If you're building a governance system and want the tightest tooling support, pick from this family. Nouns V3's 92/100 is the current corpus high and represents the cleanest access surface Argus has measured.
 

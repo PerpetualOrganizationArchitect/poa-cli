@@ -29,8 +29,10 @@ import {
   initBrainNode,
   stopBrainNode,
   getBrainHome,
+  listBrainDocs,
 } from '../../lib/brain';
 import { isAllowedAuthor, loadAllowlist } from '../../lib/brain-signing';
+import { sendIpcRequest, getDaemonPidPath } from '../../lib/brain-daemon';
 import * as output from '../../lib/output';
 
 type Status = 'pass' | 'warn' | 'fail' | 'info';
@@ -348,6 +350,74 @@ async function checkSubscribedTopics(node: any): Promise<CheckResult> {
   }
 }
 
+/**
+ * Task #371: check whether local brain docs have synced with at least one peer.
+ *
+ * Uses the daemon's IPC status as a proxy: if incomingMerges > 0, content has
+ * flowed from a peer, confirming history overlap. This avoids the expense of
+ * opening Automerge docs and comparing change hashes in a diagnostic command.
+ */
+async function checkPeerSyncOverlap(): Promise<CheckResult> {
+  const docs = listBrainDocs();
+  if (docs.length === 0) {
+    return {
+      name: 'peer sync overlap',
+      status: 'info',
+      detail: 'no local docs — nothing to compare',
+    };
+  }
+
+  let daemonRunning = false;
+  try {
+    const pidStr = readFileSync(getDaemonPidPath(), 'utf8').trim();
+    const pid = parseInt(pidStr, 10);
+    if (pid > 0) { process.kill(pid, 0); daemonRunning = true; }
+  } catch { /* no PID file or process gone */ }
+
+  if (!daemonRunning) {
+    return {
+      name: 'peer sync overlap',
+      status: 'warn',
+      detail: `${docs.length} local doc(s) but daemon not running — cannot verify peer overlap. Start with: pop brain daemon start`,
+    };
+  }
+
+  try {
+    const status = await sendIpcRequest('status', {}, 3000);
+    const merges = status.incomingMerges || 0;
+    const rejects = status.incomingRejects || 0;
+    const announces = status.incomingAnnouncements || 0;
+
+    if (merges > 0) {
+      return {
+        name: 'peer sync overlap',
+        status: 'pass',
+        detail: `${merges} merge(s) received from peers — history overlap confirmed`,
+      };
+    }
+
+    if (announces > 0 && merges === 0) {
+      return {
+        name: 'peer sync overlap',
+        status: 'warn',
+        detail: `${announces} announcement(s) received but 0 merges — peers exist but content may be disjoint${rejects > 0 ? ` (${rejects} rejects)` : ''}`,
+      };
+    }
+
+    return {
+      name: 'peer sync overlap',
+      status: 'warn',
+      detail: `daemon running but 0 announcements — no peer activity since daemon start`,
+    };
+  } catch (err: any) {
+    return {
+      name: 'peer sync overlap',
+      status: 'warn',
+      detail: `daemon IPC failed — ${err.message}`,
+    };
+  }
+}
+
 export const doctorHandler = {
   builder: (yargs: Argv) => yargs,
   handler: async (_argv: ArgumentsCamelCase<{}>) => {
@@ -371,6 +441,13 @@ export const doctorHandler = {
       // Bootstrap + topic checks only if libp2p init succeeded.
       checks.push(await checkBootstrap(node));
       checks.push(await checkSubscribedTopics(node));
+
+      // Task #371: peer sync overlap check. If the daemon is running and
+      // local docs exist, check whether the daemon has received any merges
+      // (incomingMerges > 0 means content has flowed from at least one peer,
+      // confirming history overlap). If daemon isn't running, warn that
+      // overlap can't be verified.
+      checks.push(await checkPeerSyncOverlap());
 
       spin?.stop();
 

@@ -182,6 +182,18 @@ export const triageHandler = {
         actions.push({ priority: 'HIGH', type: 'review', detail: `Task #${t.taskId} "${t.title}" by ${t.assigneeUsername || 'unknown'} — needs review.`, data: { taskId: t.taskId } });
       }
 
+      // Batch-review prompt (task #406, HB#485 throughput fix).
+      // When review backlog exceeds 5, surface a dedicated batch-review
+      // action so the heartbeat skill prioritizes clearing the queue.
+      if (pendingReviews.length > 5) {
+        actions.unshift({
+          priority: 'HIGH',
+          type: 'batch-review',
+          detail: `Review backlog: ${pendingReviews.length} tasks pending. Dedicate this heartbeat to batch review (up to 5 per HB).`,
+          data: { count: pendingReviews.length },
+        });
+      }
+
       // Open retros needing response (task #344). Surface a HIGH action
       // when an open retro exists whose author is NOT me AND I have
       // not yet posted a response. The retro must be "fresh" — created

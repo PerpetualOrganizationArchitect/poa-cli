@@ -150,18 +150,58 @@ async function trySponsoredTx(
     const receipt = await contract.provider.getTransactionReceipt(result.txHash);
     const logs = receipt ? parseEventLogs(receipt, contract.interface) : [];
 
-    // Check receipt status. In ERC-4337, receipt.status === 1 means the
-    // UserOp was mined and the inner call succeeded. Some contract functions
-    // (e.g. setProfileMetadata, setBudget) succeed without emitting events,
-    // so we cannot use "no events = failure" as a heuristic.
+    // Check outer tx status (bundler tx revert — rare but possible)
     if (receipt && receipt.status === 0) {
       return {
         success: false,
         txHash: result.txHash,
-        error: 'Sponsored transaction reverted on-chain.',
+        error: 'Sponsored transaction reverted on-chain (bundler tx failed).',
         errorCode: 'TX_REVERTED' as ErrorCode,
         sponsored: true,
       };
+    }
+
+    // ERC-4337 critical check: the outer bundler tx ALWAYS has status=1,
+    // even when the inner UserOp call reverts. The actual success/failure
+    // of the inner call is in the UserOperationEvent log emitted by the
+    // EntryPoint contract. We must check this to detect silent failures.
+    //
+    // UserOperationEvent signature:
+    //   event UserOperationEvent(
+    //     bytes32 indexed userOpHash, address indexed sender,
+    //     address indexed paymaster,
+    //     uint256 nonce, bool success, uint256 actualGasCost, uint256 actualGasUsed
+    //   )
+    // Topic 0: 0x49628fd1471006c1482da88028e9ce4dbb080b815c9b0344d39e5a8e6ec1419f
+    // Data layout: nonce (32 bytes) | success (32 bytes) | actualGasCost | actualGasUsed
+    const USER_OP_EVENT_TOPIC = '0x49628fd1471006c1482da88028e9ce4dbb080b815c9b0344d39e5a8e6ec1419f';
+    if (receipt) {
+      const userOpLog = receipt.logs.find(
+        (log) => log.topics[0] === USER_OP_EVENT_TOPIC
+      );
+      if (userOpLog) {
+        // success is the second 32-byte word in data (offset 66..130 in hex string)
+        const successWord = userOpLog.data.slice(66, 130);
+        const innerSuccess = parseInt(successWord, 16) !== 0;
+        if (!innerSuccess) {
+          // Check for UserOperationRevertReason event for more detail
+          const REVERT_REASON_TOPIC = '0x1c4fada7374c0a9ee8841fc38afe82932dc0f8e69012e927f061a8bae611a201';
+          const revertLog = receipt.logs.find(
+            (log) => log.topics[0] === REVERT_REASON_TOPIC
+          );
+          const revertDetail = revertLog
+            ? ` Revert data available in tx ${result.txHash}`
+            : '';
+          return {
+            success: false,
+            txHash: result.txHash,
+            explorerUrl: buildExplorerUrl(result.txHash, chainId),
+            error: `Sponsored UserOp inner call reverted (tx succeeded but execution failed).${revertDetail}`,
+            errorCode: 'TX_REVERTED' as ErrorCode,
+            sponsored: true,
+          };
+        }
+      }
     }
 
     return {
