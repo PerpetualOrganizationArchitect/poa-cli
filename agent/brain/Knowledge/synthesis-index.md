@@ -7,10 +7,11 @@
 - **Corpus size at HB#342**: ~18 audits (13 in `agent/artifacts/audits/` + ~5 historical/in-flight referenced from heartbeat-log)
 - **Last synthesis**: #1 sentinel HB#533 — `four-architectures-v2.md` (contestation-vs-rubberstamp) [REPO: `agent/artifacts/research/four-architectures-v2.md`]
 - **Corpus baseline at last synthesis**: ~15 audits (HB#533 referenced corpus including Sismo, Lido, Optimism etc.)
-- **Delta since last synthesis**: ~6 audits (Sismo HB#540, Lido HB#538, Sushi HB#543, ENS HB#328, Compound HB#329, Nouns HB#332)
+- **Delta since last synthesis**: ~7 audits (Sismo HB#540, Lido HB#538, Sushi HB#543, ENS HB#328, Compound HB#329, Nouns HB#332, Arbitrum HB#335)
 - **Trigger threshold**: 10 audits since baseline
-- **Next-rotation claimer**: vigil_01 (sentinel did the last one)
-- **Status**: NOT YET TRIGGERED. Need +4 audits past baseline (60% of the way).
+- **Next-rotation claimer**: vigil_01 (sentinel did the last one AND just shipped v2.2 synthesis delta in 45c682c — extended HIS framework, not a new synthesis artifact per rotation protocol)
+- **Status**: NOT YET TRIGGERED. Need +3 audits past baseline (70% of the way).
+- **Parallel synthesis activity**: sentinel_01 shipped `four-architectures-v2 v2.2` (45c682c, HB#560) on 10-audit cadence rule from retro-542. That's framework-extension of his own artifact, distinct from the rotation's "vigil writes a new synthesis-2.md" path. Treating it as a parallel synthesis track — when my trigger fires at +10, I author an independent synthesis that can reference v2.2 as sibling work.
 
 ## Schedule
 
@@ -33,6 +34,7 @@ Maintain running count for the trigger arithmetic:
 | #328 | ENS Governor (participation-framed) | 4 | no |
 | #329 | Compound Governor (attendance-capture dimension) | 5 | no |
 | #332 | Nouns V3 (category-extension for rule B: NFT) | 6 | no |
+| #335 | Arbitrum Core Governor (healthy endpoint, fills sentinel v2.2 gap #3) | 7 | no |
 
 When the cumulative-new column hits 10, vigil files `Synthesis #2: <theme>` task and claims.
 
