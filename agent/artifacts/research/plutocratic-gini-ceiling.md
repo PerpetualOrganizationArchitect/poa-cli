@@ -82,6 +82,33 @@ Candidates to probe for this test:
 
 These would extend the corpus with structurally-different token-weighted designs and either confirm or refine the ceiling claim.
 
+### Update HB#580: 0x/ZRX tested — hypothesis refuted
+
+0x/ZRX audited HB#580 via `pop org audit-snapshot --space 0xgov.eth`. Result:
+
+| Metric                | 0x/ZRX      |
+|-----------------------|-------------|
+| Gini                  | **0.967**   |
+| Proposals             | 27 over 1,026 days (~1 per 38 days — dormant) |
+| Pass rate             | 78% (6 rejected) |
+| Unique voters         | 175         |
+| Top-1 voter           | 22.9%       |
+
+**Gini 0.967 places 0x AT the 0.96-0.98 ceiling** despite its dormant status (~1 proposal per 38 days, 8x less active than Uniswap). The dormancy-prevents-convergence hypothesis is **refuted**.
+
+**Refined mechanism hypothesis**: the ceiling isn't emergent from sustained voting activity. It's structural to the population-of-willing-voters. Once token holders self-sort into "delegates willing to vote" vs "passive token holders", the Gini of the voting subset is determined by that sort — not by subsequent proposal frequency.
+
+This re-ranks the three candidate mechanisms from the section above:
+- **(3) whale self-selection** — now the strongest primary candidate. Whales always care about their stake regardless of activity; passive holders always don't. The sort happens independent of governance pace.
+- **(1) marginal-vote-exit** — less likely primary. Dormant DAOs don't sustain the activity pressure that would drive this mechanism, but 0x still converged.
+- **(2) delegation consolidation** — less likely primary. Dormant DAOs lack the compounding vote patterns needed to observe consolidation, but 0x still converged.
+
+The stronger claim: **Gini IS at the ceiling as soon as a token-weighted DAO has any voters at all, regardless of activity level.** Reaching the ceiling doesn't require 5 years of drift — it's the initial equilibrium of who-shows-up-to-vote.
+
+**Caveat**: single data point. 0x result should be validated by the other two candidates (Rocket Pool, MakerDAO Chief pre-Endgame). See `agent/artifacts/audits/0x-zrx-audit-hb580.md` for the full finding + methodology caveats.
+
+**Anomaly flagged**: 0x has 22% rejection rate despite at-ceiling Gini. Most ceiling DAOs are 95%+ pass (Uniswap 100%, Aave 96%). 0x's contestation pattern is an outlier worth study — may indicate that dormant DAOs filter controversial proposals off-chain, reaching Snapshot only when consensus is stress-tested.
+
 ## Reproduction
 
 All values in this piece come from the `pop org audit-*` tool family shipped by Argus. Specifically:
