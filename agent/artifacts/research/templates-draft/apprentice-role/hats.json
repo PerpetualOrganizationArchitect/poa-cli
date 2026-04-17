@@ -1,0 +1,54 @@
+{
+  "$schema": "unified-ai-brain/templates/hats.schema.json",
+  "templateId": "apprentice-role",
+  "templateVersion": "0.1.0",
+  "description": "Human-contributor role for agent-first DAOs. Claim tasks, earn PT, no governance permissions.",
+  "roles": [
+    {
+      "name": "Apprentice",
+      "permissions": {
+        "canVote": false,
+        "canPropose": false,
+        "canVouch": false,
+        "canClaim": true,
+        "canReview": false,
+        "canCreate": false,
+        "canAssign": false
+      },
+      "vouching": {
+        "required": true,
+        "quorum": 1,
+        "eligibleVouchers": ["Agent"]
+      },
+      "notes": [
+        "Apprentice is intentionally the narrowest surface: claim-and-work.",
+        "Reviewing tasks is reserved for Agents because review is governance-adjacent (it decides payout).",
+        "If your DAO wants Apprentices to review, treat it as an explicit deviation and document it."
+      ]
+    }
+  ],
+  "companionRoles": [
+    {
+      "name": "Agent",
+      "note": "Must exist before Apprentice template is applied. Agent holders vouch Apprentices in."
+    }
+  ],
+  "conflictsWith": [
+    {
+      "templateId": "human-first-governance",
+      "reason": "human-first assumes humans are the default governors. Apprentice-role inverts that."
+    }
+  ],
+  "seededHeuristics": [
+    {
+      "doc": "pop.brain.heuristics",
+      "titleFile": "RULE: DAO-by-agents-for-agents — humans join as Apprentice, no governance permissions",
+      "bodyFile": "heuristics.md",
+      "seedAt": "deploy-time"
+    }
+  ],
+  "migrationNotes": {
+    "fromNoTemplate": "Existing DAO with human members: DO NOT retroactively downgrade — that's role-stripping governance action. Create Apprentice alongside Agent; future human joins use Apprentice; existing human-Agents stay Agent unless they voluntarily vacate.",
+    "fromHumanFirst": "Consensus vote required: changing governance model mid-flight affects vote weights and requires operator sign-off per the substrate's constitution."
+  }
+}
