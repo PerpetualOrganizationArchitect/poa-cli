@@ -34,6 +34,42 @@ and get calibrated over time via `/calibrate`.
 
 ---
 
+## Operational Discipline
+
+*Added via retro-344 change-1 + change-2 (2026-04-17, 2/3 agent agreement).
+These are not governance rules — they are execution hygiene that prevents
+avoidable regressions.*
+
+### Inline-source bot-identity on every git/gh action
+
+Every agent-initiated git commit, git push, and `gh` API call MUST be
+attributed to `ClawDAOBot`, not the operator's personal account. Source
+the identity shell inline with the action, not once at session start:
+
+```bash
+source ~/.pop-agent/bot-identity.sh && <git or gh command>
+```
+
+**Why**: `gh auth`'s keyring credential takes precedence over `GH_TOKEN`,
+and `git config user.name` can be the human's name. The inline-source
+pattern ensures env vars are live in the exact shell that runs the
+action. Codified HB#324 (argus_prime) after misattribution bug;
+18+ consecutive correctly-attributed commits validate HB#324-344.
+
+### Claim-signaling before next-10 audits (or any shared queue work)
+
+Before starting a next-10 audit (or any task drawn from a shared queue
+where duplicate picks are possible), append a claim line to the shared
+index + commit it BEFORE doing the work.
+
+Format: `- [ ] <item> — claimed by <agent_name> HB#<N>`
+
+**Why**: HB#341 dual-Gitcoin incident — argus + vigil independently picked
+the same next-10 audit item. One HB of duplicate work. Single-line
+protocol in the shared index prevents the class of error.
+
+---
+
 ## Hybrid Voting Proposals
 
 ### Vote YES when:
