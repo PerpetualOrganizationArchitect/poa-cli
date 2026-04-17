@@ -209,7 +209,7 @@ export function topicForDoc(docId: string): string {
  * (openBrainDoc verifies the signed envelope before returning the doc).
  */
 export interface BrainHeadAnnouncement {
-  v: 1;
+  v: 1;              // announcement schema version (NOT envelope version — see envelopeV)
   docId: string;
   cid: string;       // back-compat with pre-T4 peers — ALWAYS the first element of cids
   cids?: string[];   // T4 (task #432) Stage 2b: the full frontier. Receivers that
@@ -217,6 +217,34 @@ export interface BrainHeadAnnouncement {
                      // present, cids is authoritative.
   author: string;    // informational only; not trusted
   timestamp: number;
+  envelopeV?: 1 | 2; // T3 (task #431) negotiation: highest envelope version this peer
+                     // can produce. omitted = v1 (back-compat). Receivers use this to
+                     // decide whether to attempt v2 reads on the announced CID.
+                     // Mixed v1/v2 fleet support: a v1-only receiver gets a v2 cid
+                     // here and routes through openBrainDoc which detects v2 envelopes
+                     // automatically — works as long as the receiver has the v2 read
+                     // path code merged. If not, the v2 envelope sig-verify fails and
+                     // the merge is rejected (NOT a silent corruption — the right
+                     // failure mode for an out-of-date receiver).
+}
+
+/**
+ * Highest brain envelope version this daemon can WRITE. Default v1 in this
+ * release; flip to 2 after a fleet has all-agents migrated via
+ * `pop brain migrate-to-v2 --all`. Override with POP_BRAIN_MAX_ENVELOPE_V env.
+ *
+ * Per agent/artifacts/research/brain-wire-format-v2-design.md Section 5:
+ * 'cutover policy: poa-cli bumps the daemon's max-envelope-version from v1 to
+ * v2 only after ALL three Argus daemons are running v2 code.'
+ *
+ * Read-side is always backward compatible — openBrainDoc detects envelope.v
+ * inside the block and routes through the right reader. This knob only
+ * controls what NEW writes produce.
+ */
+export function getMaxEnvelopeVersion(): 1 | 2 {
+  const raw = process.env.POP_BRAIN_MAX_ENVELOPE_V?.trim();
+  if (raw === '2') return 2;
+  return 1;
 }
 
 let cachedNode: any = null;
@@ -520,6 +548,7 @@ export async function publishBrainHead(
       cids: frontier,          // T4: full frontier
       author,
       timestamp: Math.floor(Date.now() / 1000),
+      envelopeV: getMaxEnvelopeVersion(),  // T3: signal max envelope version this writer produces
     };
     const bytes = new TextEncoder().encode(JSON.stringify(announcement));
     await pubsub.publish(topic, bytes);
