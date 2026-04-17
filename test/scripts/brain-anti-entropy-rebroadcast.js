@@ -46,6 +46,7 @@ const net = require('net');
 const { mkdirSync, rmSync, existsSync, readFileSync } = require('fs');
 const { join } = require('path');
 const { homedir } = require('os');
+const { killStalepopDaemons } = require('./lib/cleanup');
 
 const REPO = join(__dirname, '..', '..');
 const CLI = join(REPO, 'dist', 'index.js');
@@ -174,6 +175,9 @@ async function main() {
     log('setup', 'POP_PRIVATE_KEY missing — skipping');
     process.exit(0);
   }
+
+  // Task #454: kill any orphaned daemons from prior interrupted runs.
+  await killStalepopDaemons('pop-brain-t1-');
 
   resetHome(HOME_A);
   resetHome(HOME_B);

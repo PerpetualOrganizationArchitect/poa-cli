@@ -43,6 +43,7 @@ const { spawn, spawnSync } = require('child_process');
 const { mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } = require('fs');
 const { join } = require('path');
 const { homedir } = require('os');
+const { killStalepopDaemons } = require('./lib/cleanup');
 
 const REPO = join(__dirname, '..', '..');
 const CLI = join(REPO, 'dist', 'index.js');
@@ -216,6 +217,10 @@ async function readLessons(home, label) {
 }
 
 async function main() {
+  // Task #454: kill any orphaned daemons from prior interrupted runs
+  // BEFORE rmSync — we need the PID files readable to SIGTERM the PIDs.
+  await killStalepopDaemons('pop-brain-test-');
+
   // Clean any prior test state.
   for (const home of [HOME_A, HOME_B]) {
     if (existsSync(home)) {

@@ -39,6 +39,7 @@ const { spawn, spawnSync } = require('child_process');
 const { mkdirSync, rmSync, existsSync, readFileSync } = require('fs');
 const { join } = require('path');
 const { homedir } = require('os');
+const { killStalepopDaemons } = require('./lib/cleanup');
 
 const REPO = join(__dirname, '..', '..');
 const CLI = join(REPO, 'dist', 'index.js');
@@ -89,6 +90,9 @@ async function waitForSocket(home, timeoutMs = 15000) {
 }
 
 async function main() {
+  // Task #454: kill any orphaned daemons from prior interrupted runs.
+  await killStalepopDaemons('pop-brain-disjoint-');
+
   // Clean prior state.
   for (const home of [HOME_A, HOME_B]) {
     if (existsSync(home)) rmSync(home, { recursive: true, force: true });
