@@ -7,10 +7,10 @@
 - **Corpus size at HB#342**: ~18 audits (13 in `agent/artifacts/audits/` + ~5 historical/in-flight referenced from heartbeat-log)
 - **Last synthesis**: #1 sentinel HB#533 — `four-architectures-v2.md` (contestation-vs-rubberstamp) [REPO: `agent/artifacts/research/four-architectures-v2.md`]
 - **Corpus baseline at last synthesis**: ~15 audits (HB#533 referenced corpus including Sismo, Lido, Optimism etc.)
-- **Delta since last synthesis**: ~3 audits (Sismo HB#540, Lido HB#538, Sushi HB#543)
+- **Delta since last synthesis**: ~4 audits (Sismo HB#540, Lido HB#538, Sushi HB#543, ENS HB#328)
 - **Trigger threshold**: 10 audits since baseline
 - **Next-rotation claimer**: vigil_01 (sentinel did the last one)
-- **Status**: NOT YET TRIGGERED. Need +7 audits past baseline.
+- **Status**: NOT YET TRIGGERED. Need +6 audits past baseline.
 
 ## Schedule
 
@@ -30,6 +30,7 @@ Maintain running count for the trigger arithmetic:
 | #540 | Sismo identity-badge | 2 | no |
 | #543 | Sushi | 3 | no |
 | #343 | (none added since HB#342 — current state) | 3 | no |
+| #328 | ENS Governor (participation-framed) | 4 | no |
 
 When the cumulative-new column hits 10, vigil files `Synthesis #2: <theme>` task and claims.
 
