@@ -42,15 +42,31 @@ This audit applies the Argus probe-access methodology (see `docs/governance-heal
 
 ## Findings
 
-### F-1 (INDETERMINATE, high-priority if real)
+### F-1 (RESOLVED — NOT A FINDING) — formerly INDETERMINATE
 
-**`commit_smart_wallet_checker` and `apply_smart_wallet_checker` pass burner-callStatic without reverting.** These functions gate which smart contracts are allowed to hold veBAL positions (the "smart wallet checker" is a whitelist for contract-based lockers, since Curve-style VEs block contract lockers by default). If an arbitrary caller can set or apply the checker, the whitelist gate is bypassable.
+**Status**: RESOLVED HB#540 (sentinel_01). Source-verified NOT a vulnerability.
 
-**Why this is indeterminate**: the probe surfaces "no revert from burner" which is consistent with either (a) missing access control (a real finding) or (b) a silent early-return where the function state-checks and returns without reverting (not a finding, just a tool artifact). Without reading the Balancer veBAL Solidity source on Etherscan, I cannot distinguish these cases.
+~~Original observation~~: `commit_smart_wallet_checker` and `apply_smart_wallet_checker` passed burner-callStatic without reverting. I flagged this as indeterminate pending source verification because the probe couldn't distinguish "missing access control" from "silent-early-return tool artifact."
 
-**Recommendation for followup**: fetch the Balancer veBAL source from Etherscan (the contract is verified). Check the first lines of `commit_smart_wallet_checker` — does it have a `require(msg.sender == admin)` or similar? If yes, the probe result is a Solidity silent-check artifact and F-1 is NOT a finding. If no, this is a real vulnerability that should be disclosed to Balancer through their responsible disclosure process before public publication.
+**Source verification** (HB#540): fetched `balancer-v2-monorepo/pkg/liquidity-mining/contracts/VotingEscrow.vy` from GitHub. Both functions have correct access control via Vyper `assert`:
 
-**Not disclosed publicly in this audit** pending source verification. This internal Argus corpus audit documents the observation and the follow-up required.
+```vyper
+@external
+def commit_smart_wallet_checker(addr: address):
+    assert msg.sender == AUTHORIZER_ADAPTOR   # ← gate is present
+    self.future_smart_wallet_checker = addr
+
+@external
+def apply_smart_wallet_checker():
+    assert msg.sender == AUTHORIZER_ADAPTOR   # ← gate is present
+    self.smart_wallet_checker = self.future_smart_wallet_checker
+```
+
+The `assert msg.sender == X` statement in Vyper throws an uncaught exception and reverts the tx. Only the Balancer `AuthorizerAdaptor` (DAO-controlled permission manager) can set or apply the smart wallet checker. **Access control IS correct.**
+
+**Why the probe lied**: `pop org probe-access` is a Solidity-oriented tool. Vyper's parameter-ordering semantics + selector conventions diverge enough that the probe's burner-callStatic either failed to encode valid calldata (silent-return path) or the decoded response looked like a pass. The HB#380 brain lesson explicitly flagged Vyper probe results as unreliable; F-3 below was wrong about the language so we didn't apply that caveat here.
+
+**No vulnerability. No bug bounty candidate.** Tool artifact, now codified as a known false-positive for Vyper veCRV-family contracts.
 
 ### F-2 (POSITIVE)
 
@@ -58,25 +74,32 @@ This audit applies the Argus probe-access methodology (see `docs/governance-heal
 
 **Governance signal**: strong. Many older VEs have admin set to a multisig (medium risk) or an EOA (high risk). veBAL's admin flows through an authorization framework with on-chain role assignments.
 
-### F-3 (ARCHITECTURAL)
+### F-3 (CORRECTED HB#540 — was wrong about language)
 
-**Solidity fork, not Vyper**. `commit_transfer_ownership` and `apply_transfer_ownership` selectors are absent from the bytecode. The contract is a Solidity reimplementation of Curve's veCRV math, not a direct Vyper fork. This means:
-- The HB#380 Vyper parameter-ordering caveat does NOT apply.
-- Function-level probe-access results should be taken more seriously than for Vyper contracts (hence F-1's indeterminate status — the "passed" result is more likely to be a real finding than it would be for Curve).
-- The `voteEscrow` family tag (HB#292) correctly classified this at the tooling level.
+**Vyper fork with removed ownership transfer, NOT a Solidity reimplementation.**
+
+~~Original claim~~: "Solidity fork, not Vyper" — based on absent `commit_transfer_ownership` / `apply_transfer_ownership` selectors. That reasoning was faulty; absent selectors indicate removed functions, not language change.
+
+**HB#540 source verification**: the deployed contract's source is
+`balancer-v2-monorepo/pkg/liquidity-mining/contracts/VotingEscrow.vy` — Vyper 0.3.1, 717 lines. This IS a Vyper fork of Curve's veCRV. Balancer specifically removed `commit_transfer_ownership` / `apply_transfer_ownership` because admin is delegated to the AuthorizerAdaptor (a contract that routes through Balancer's RBAC) and transfer-ownership would bypass that.
+
+Corrected implications:
+- The HB#380 Vyper parameter-ordering caveat DOES apply — `pop org probe-access` is unreliable on this contract (as F-1's false-positive finding demonstrated).
+- The `voteEscrow` family tag (HB#292) correctly classified this at the tooling level — but the language inference was wrong.
+- Future audits: trust function NAMES and PRESENCE in the ABI, but don't trust function-level probe-access result CLASSIFICATIONS on Vyper contracts without source verification.
 
 ## Score
 
-**45/100** (Category C floor, pending F-1 verification)
+**~60/100** (revised HB#540 after F-1 source verification + F-3 correction).
 
 | Component | Points | Notes |
 |---|---|---|
-| Access gates (30 max) | 15 | 1 state-check, 0 access-gated among admin functions. Admin functions passed from burner (F-1). Score penalized pending source verification. |
-| Verbosity (25 max) | 10 | Only 1 gated function, but it returned a meaningful error string ("Lock expired"). Low sample size limits credit. |
-| Passes credit (20 max) | 8 | Most passes are legitimate (public functions). Credit reduced by the 2 suspicious admin passes. |
-| Architecture (25 max) | 12 | Admin is a contract, not an EOA (+5). Solidity fork reduces Vyper caveat (+3). BUT smart_wallet_checker findings pending (+0, could be +5). Score indeterminate. |
+| Access gates (30 max) | 25 | Admin functions ARE gated (`assert msg.sender == AUTHORIZER_ADAPTOR` — source verified HB#540). +10 from original score. |
+| Verbosity (25 max) | 10 | Vyper asserts don't emit error strings by default; only 1 state-check emitted "Lock expired". Low sample size. |
+| Passes credit (20 max) | 12 | All public-function passes are legitimate. +4 from original score (no longer penalizing admin "passes" that were tool artifacts). |
+| Architecture (25 max) | 13 | Admin is a contract with RBAC routing via AuthorizerAdaptor (+5). Vyper fork with correct access gates (+3). Removed `*_transfer_ownership` forces admin changes through on-chain RBAC, not a one-function ownership key (+5). |
 
-If F-1 turns out to be a silent early-return (not a real finding) after source verification, the score could rise to **~60/100**. If F-1 is a real vulnerability, the score stays at the floor and a disclosure path begins.
+**Total: ~60/100** — revised up from 45/100 floor after source verification. This places Balancer veBAL near the middle of Category C, reflecting strong access control + admin-contract routing, somewhat limited verbosity due to Vyper asserts.
 
 ## Comparison
 
