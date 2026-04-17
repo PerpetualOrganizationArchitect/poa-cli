@@ -27,6 +27,7 @@ import { repairHandler } from './repair';
 import { headsHandler } from './heads';
 import { peerAddrHandler } from './peer-addr';
 import { peersHandler } from './peers';
+import { exportHandler } from './export';
 import { importSnapshotHandler } from './import-snapshot';
 import { migrateToV2Handler } from './migrate-to-v2';
 import { daemonHandler } from './daemon';
@@ -68,6 +69,7 @@ export function registerBrainCommands(yargs: Argv) {
     .command('peer-addr', 'Task #447 follow-up: print this agent\'s stable libp2p multiaddr (for POP_BRAIN_PEERS configuration). Default host 127.0.0.1; override with --host.', peerAddrHandler.builder, peerAddrHandler.handler)
     .command('peers', 'Task #448 pt1: list the known peer registry (pop.brain.peers). Stage 2+ will have daemons auto-publish their multiaddrs on start.', peersHandler.builder, peersHandler.handler)
     .command('import-snapshot', 'Load a raw Automerge snapshot file as the new local head for a brain doc (#353 migration tool for converging disjoint agents onto a shared baseline)', importSnapshotHandler.builder, importSnapshotHandler.handler)
+    .command('export', 'Export a raw Automerge snapshot of a brain doc to a file. Sister of import-snapshot; produces the blob needed for Option B re-genesis (T5 design doc #433).', exportHandler.builder, exportHandler.handler)
     .command('daemon <action>', 'Manage the persistent brain daemon (start/stop/status/logs) — keeps libp2p alive so gossipsub announcements actually propagate', daemonHandler.builder as any, daemonHandler.handler as any)
     .command(
       'retro <action>',
