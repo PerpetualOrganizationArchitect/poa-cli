@@ -255,11 +255,12 @@ If health fails, log and stop. Next heartbeat retries.
 
 ---
 
-## Step 0.5: Brain daemon auto-start + health check (tasks #438, #443, HB#504+)
+## Step 0.5: Session bootstrap (tasks #438, #443, #459, #464, HB#504+)
 
 The T1 rebroadcast primitive (task #429) only works when the local daemon is
-running AND has at least one connected peer. Two production failures motivated
-this step:
+running AND has at least one connected peer. Subgraph reads (every triage
+call) only work when at least one of Studio/Gateway is up OR the cache has
+fresh entries (#459). Multiple production failures motivated this step:
 
 - **HB#272** finding: only 1 of 3 fleet daemons was alive. T1 code was correct,
   shipping rebroadcasts every 60s, but all of them landed in the void. Fix
@@ -268,10 +269,33 @@ this step:
   because their daemon never started. All brain writes routed in-process, never
   gossiped. argus/vigil assumed sentinel was unresponsive to the Sprint 17
   brainstorm. Hudson had to explicitly poke sentinel to discover the gap.
-  Fix shipped as #443 — this step now auto-starts the daemon instead of just
-  warning.
+  Fix shipped as #443 — auto-start the daemon instead of just warning.
+- **HB#524** finding: 5h GRAPH_API_KEY outage bricked every read command
+  across all agents. Fix shipped as #459 — file-based read-through subgraph
+  cache that serves stale on dual-endpoint failure.
+- **HB#542** retro change-1: stitch the above into a single bootstrap so
+  no agent skips one of the checks. Shipped as #464.
 
-### What to run
+### What to run (RECOMMENDED — one call)
+
+```bash
+pop agent session-start --json | tail -1
+```
+
+This is the bootstrap stitcher (#464). Composes daemon-check (#443) +
+subgraph-cache state (#459) + peer-registry health (#448) + warmup. Reports
+all 3 subsystems in one JSON line. Exit 0 if daemon ok (CRITICAL); exit 1
+if daemon failed. Subgraph/peer warnings are non-fatal.
+
+Interpret the JSON `{ok, daemon, cache, peers}`:
+- `daemon.status: running|started` AND `daemon.connections >= 1` → OK
+- `daemon.status: running` AND `daemon.connections == 0` → WARN: isolated peer
+- `daemon.status: failed` → CRITICAL: brain writes won't propagate; investigate
+- `cache.status: warmed|fresh|skipped` → OK
+- `cache.status: unavailable` (subgraph outage) → cache will serve stale on next read
+- `peers.status: stale` → flag in HB log; daemon-side refresh may be lagging
+
+### Legacy / fallback (if session-start fails)
 
 ```bash
 pop brain daemon start 2>&1 | tail -3
@@ -326,9 +350,12 @@ need the daemon).
 Cross-references:
 - Task #429 (T1) — the rebroadcast primitive this check makes legible
 - Task #438 — WARN-only version of this step (HB#273 ship)
-- Task #443 — auto-start escalation (this ship) after sentinel dark-peer
+- Task #443 — auto-start escalation after sentinel dark-peer
   incident HB#504
 - Task #427 — separate bootstrap-layer gap (not fixed by daemon running)
+- Task #459 — subgraph read-through cache + dual-failure stale fallback
+- Task #464 — `pop agent session-start` bootstrap stitcher (this step's
+  recommended one-call form, sentinel retro-542 change-1)
 - Brain lessons: `T1 validated in production; orchestration gap surfaced`;
   `sentinel dark-peer incident HB#504`
 
