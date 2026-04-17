@@ -135,6 +135,8 @@ export const CANONICAL_BRAIN_DOCS: string[] = [
   'pop.brain.heuristics',  // task #446: closes #427's general failure mode
   'pop.brain.retros',      // task #446: symmetric retros propagation
   'pop.brain.brainstorms', // task #446: closes sentinel-HB#504 orphan-brainstorm class
+  'pop.brain.peers',       // task #448 pt1: peer registry — agents write own multiaddr,
+                           // read others' → auto-dial list without operator POP_BRAIN_PEERS
 ];
 
 export function getDaemonPidPath(): string {

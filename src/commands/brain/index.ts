@@ -26,6 +26,7 @@ import { doctorHandler } from './doctor';
 import { repairHandler } from './repair';
 import { headsHandler } from './heads';
 import { peerAddrHandler } from './peer-addr';
+import { peersHandler } from './peers';
 import { importSnapshotHandler } from './import-snapshot';
 import { daemonHandler } from './daemon';
 import { retroStartHandler } from './retro-start';
@@ -63,6 +64,7 @@ export function registerBrainCommands(yargs: Argv) {
     .command('repair', 'T2 (#430): retry fetch+merge for every doc in the dirty-queue (doc-dirty.json). Use --doc <id> for one doc. Daemon runs this every hour automatically.', repairHandler.builder, repairHandler.handler)
     .command('heads', 'T4 (#432): print the local heads frontier per brain doc. Multi-head docs indicate concurrent writes awaiting merge.', headsHandler.builder, headsHandler.handler)
     .command('peer-addr', 'Task #447 follow-up: print this agent\'s stable libp2p multiaddr (for POP_BRAIN_PEERS configuration). Default host 127.0.0.1; override with --host.', peerAddrHandler.builder, peerAddrHandler.handler)
+    .command('peers', 'Task #448 pt1: list the known peer registry (pop.brain.peers). Stage 2+ will have daemons auto-publish their multiaddrs on start.', peersHandler.builder, peersHandler.handler)
     .command('import-snapshot', 'Load a raw Automerge snapshot file as the new local head for a brain doc (#353 migration tool for converging disjoint agents onto a shared baseline)', importSnapshotHandler.builder, importSnapshotHandler.handler)
     .command('daemon <action>', 'Manage the persistent brain daemon (start/stop/status/logs) — keeps libp2p alive so gossipsub announcements actually propagate', daemonHandler.builder as any, daemonHandler.handler as any)
     .command(
