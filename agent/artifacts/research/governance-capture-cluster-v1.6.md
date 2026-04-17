@@ -8,7 +8,7 @@
 
 v1.5 tracked a single dimension: **Rule A (single-whale weight capture, top-1 ≥ 50%)** across 13 DAOs.
 
-v1.6 names the cluster **governance capture cluster** (not single-whale-specific) and expands to **6 formal dimensions + 1 candidate 7th + 2-axis composable framework + 30-DAO corpus** (Spark added HB#391 — first measured Sky SubDAO + first formal Rule E candidate). Rename rationale: single-whale is now a subset, not the whole class.
+v1.6 names the cluster **governance capture cluster** (not single-whale-specific) and expands to **6 formal dimensions + 1 candidate 7th + 2-axis composable framework + 31-DAO corpus** (Spark added HB#391 — first measured Sky SubDAO + first formal Rule E candidate; Convex Finance added HB#395 — Rule E proxy-aggregation pattern). Rename rationale: single-whale is now a subset, not the whole class.
 
 ## The framework at a glance
 
@@ -73,7 +73,7 @@ At very small voter counts (<30), Gini becomes degenerate:
 
 | DAO | Axis 1 Band | Axis 2 | A | B1 | B2 | B3 | C | D | Notes |
 |-----|------------|--------|:-:|:--:|:--:|:--:|:-:|:-:|-------|
-| Curve | Plutocratic ceiling | Static | ✓ (top-1 83%) | ✗ | ✓ oligarchy | underlying | ✓ | ✗ | A + B2 + C |
+| Curve | Plutocratic ceiling | Static | ✓ (top-1 83.4% = founder Michael Egorov, argus HB#395 etherscan-verified) | ✗ | ✓ oligarchy | underlying | ✓ | ✗ | A + B2 + C |
 | Uniswap | Plutocratic ceiling | Static | ✗ | ✗ | ✓ | underlying | ✓ | ✗ | B2 + C |
 | Aave | Plutocratic ceiling | Static | ✗ | ✗ | ✓ plateau | underlying | ✓ plateau | ✗ | B2 + C |
 | Compound | Plutocratic ceiling | Static | ✗ | ✓ (access 100/100) | partial | underlying | drifting | ✗ | B1 + C-drifting |
@@ -82,7 +82,8 @@ At very small voter counts (<30), Gini becomes degenerate:
 | dYdX | Single-whale | Static | ✓ (100%) | — | — | N/A | — | ✗ | A pure |
 | BadgerDAO | Single-whale | Static | ✓ (93%) | — | — | underlying | — | ✗ | A |
 | 1inch | Single-whale | Static | ✓ (56%) | — | — | underlying | — | ✗ | A plateau |
-| Convex | Single-whale | Static | ✓ (69%, small-N) | — | — | underlying | small-N | ✗ | A pure + small-N caveat |
+| Convex (CRV side, sentinel) | Single-whale | Static | ✓ (69%, small-N) | — | — | underlying | small-N | ✗ | A pure + small-N caveat |
+| Convex Finance (CVX governance, argus HB#395) | Plutocratic ceiling | Static | ✓ (top-1 73.4%) | ✓ funnel (14 voters) | ✓ oligarchy (cohort) | ✓ marginal-exit (top-5=99.2%) | small-N | ✗ | proxy candidate | A+B1+B2+B3 quad + Rule E proxy-aggregation case (CVX governs the Convex aggregator that votes on Curve, hiding 1000s of vlCVX holders behind 14-person cohort) |
 | Venus | Single-whale (top-2) | Static | ✓ (99.3%) | — | — | — | — | ✗ | A compound |
 | Aragon | Single-whale | Static | ✓ (50%) | — | — | underlying | — | ✗ | A-boundary |
 | PancakeSwap | Single-whale | Static | ✓ (51%) | — | — | underlying | — | ✗ | A-boundary |
