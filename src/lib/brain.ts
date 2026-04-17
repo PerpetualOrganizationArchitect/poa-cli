@@ -28,6 +28,13 @@ import {
   unwrapAutomergeBytes,
   type BrainChangeEnvelope,
 } from './brain-signing';
+import {
+  signBrainChangeV2,
+  extractDeltaChanges,
+  snapshotChangeHashes,
+  packChanges,
+  type BrainChangeEnvelopeV2,
+} from './brain-envelope-v2';
 
 /**
  * Where the brain layer persists its blocks and state.
@@ -1004,6 +1011,101 @@ export async function applyBrainChange<T = any>(
   }
 
   return { headCid: newCidStr, doc: newDoc, author: envelope.author };
+}
+
+/**
+ * v2 sibling of applyBrainChange — produces a delta-per-write IPLD envelope
+ * with explicit parent CID links, instead of v1's full Automerge snapshot.
+ *
+ * Per agent/artifacts/research/brain-wire-format-v2-design.md (task #455 + #431).
+ * Sprint 17 lands this in poa-cli; Sprint 18 extracts to @unified-ai-brain/core.
+ *
+ * SCOPE pt2 (this slice): full encode + persist + frontier update path.
+ * publishBrainHead announce wiring is NOT included — callers must invoke it
+ * separately. Decoder side (DAG walk + applyChanges) lives in pt3.
+ *
+ * Returns the new head CID + the merged doc (post-mutator) + the v2 envelope.
+ */
+export async function applyBrainChangeV2<T = any>(
+  docId: string,
+  changeFn: (doc: T) => void,
+  options?: { allowInvalidShape?: boolean },
+): Promise<{ headCid: string; doc: any; envelope: BrainChangeEnvelopeV2 }> {
+  const { doc: oldDoc } = await openBrainDoc<T>(docId);
+  const Automerge = await getAutomerge();
+  // Snapshot pre-change hashes BEFORE Automerge.change — Automerge 3.x
+  // mutates the source doc's internal change log when deriving a new doc,
+  // so reading getAllChanges(oldDoc) AFTER the mutation includes the new
+  // change too. Discovered HB#321.
+  const beforeHashes = snapshotChangeHashes(oldDoc, Automerge);
+  const newDoc = Automerge.change(oldDoc, changeFn);
+
+  // Schema validation — mirrors applyBrainChange (#346 pattern).
+  if (!options?.allowInvalidShape) {
+    const { validateBrainDocShape } = await import('./brain-schemas');
+    const preResult = validateBrainDocShape(docId, oldDoc);
+    const postResult = validateBrainDocShape(docId, newDoc);
+    if (preResult.ok && !postResult.ok) {
+      throw new Error(
+        `Brain v2 write rejected: schema validation failed for ${docId}\n` +
+          postResult.errors.map((e) => `  - ${e}`).join('\n') +
+          `\n\nPre-change doc was valid; this change introduces invalid shape(s).`,
+      );
+    }
+  }
+
+  // Extract just the new local changes (set difference by pre-snapshot hash).
+  const deltaChanges = extractDeltaChanges(beforeHashes, newDoc, Automerge);
+  if (deltaChanges.length === 0) {
+    throw new Error(
+      `applyBrainChangeV2: no changes produced for ${docId} — caller mutator may have been a no-op`,
+    );
+  }
+  const packed = packChanges(deltaChanges);
+
+  // Parent CIDs come from the current frontier; priority is a placeholder
+  // until pt3 loads parent envelopes for true max(parent.priority)+1. For
+  // now: genesis=1, otherwise frontier.length+1 (monotonic increasing per
+  // local writer; cross-writer comparisons handled by Automerge change-DAG
+  // in the merge path).
+  const manifestV2 = loadHeadsManifestV2();
+  const parentCids = manifestV2[docId] || [];
+  const priority = parentCids.length === 0 ? 1 : parentCids.length + 1;
+
+  // Sign + persist as IPLD block. CID is over the envelope JSON, so the
+  // sig + payload are content-addressed together.
+  const envelope = await signBrainChangeV2({
+    changeBytes: packed,
+    parentCids,
+    priority,
+  });
+  const envelopeBytes = new TextEncoder().encode(JSON.stringify(envelope));
+
+  const { CID } = await esmImport<any>('multiformats/cid');
+  const { sha256 } = await esmImport<any>('multiformats/hashes/sha2');
+  const { FsBlockstore } = await esmImport<any>('blockstore-fs');
+  const hash = await sha256.digest(envelopeBytes);
+  const cid = CID.createV1(0x55, hash);
+  const bs = new FsBlockstore(join(getBrainHome(), 'helia-blocks'));
+  await bs.open();
+  try {
+    await bs.put(cid, envelopeBytes);
+  } finally {
+    await bs.close();
+  }
+
+  // v2 local-write semantic: collapse frontier to [newCid]. Frontier-merge
+  // tracking for concurrent v2 writers happens in fetchAndMergeRemoteHeadV2
+  // (pt3) where we walk parent CIDs and rebuild via Automerge.applyChanges.
+  const newCidStr = cid.toString();
+  manifestV2[docId] = [newCidStr];
+  saveHeadsManifestV2(manifestV2);
+
+  // NOTE: publishBrainHead announce is NOT wired here. Caller must invoke
+  // separately. Mixed v1/v2 fleets need the BrainHeadAnnouncement.envelopeV
+  // negotiation (next pt2 slice).
+
+  return { headCid: newCidStr, doc: newDoc, envelope };
 }
 
 /**

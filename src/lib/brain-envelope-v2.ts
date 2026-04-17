@@ -207,24 +207,41 @@ export function unwrapChangeBytesV2(envelope: BrainChangeEnvelopeV2): Uint8Array
 type AutomergeDoc = any; // Automerge typing changes across versions; treat opaque.
 
 /**
- * Compute the Automerge changes added by `after` that are not in `before`.
+ * Compute the Automerge changes in `after` that are not in `beforeHashes`.
  *
- * If `before` is undefined (first write after genesis), returns all changes
- * in `after`. Order matches Automerge's getAllChanges output (causally
+ * IMPORTANT: callers MUST snapshot `beforeHashes` BEFORE calling
+ * `Automerge.change()` on the doc. Automerge 3.x mutates the source doc's
+ * internal change log when producing a derived doc — passing the doc itself
+ * after the change would yield an empty diff because the source doc now also
+ * contains the new change. Discovered HB#321.
+ *
+ * Pass an empty Set for the genesis case (no parent state).
+ *
+ * Order matches Automerge's getAllChanges output (causally
  * dependency-respecting).
  */
 export function extractDeltaChanges(
-  before: AutomergeDoc | undefined,
+  beforeHashes: ReadonlySet<string>,
   after: AutomergeDoc,
   Automerge: { getAllChanges: (doc: AutomergeDoc) => Uint8Array[];
                decodeChange: (c: Uint8Array) => { hash: string } },
 ): Uint8Array[] {
   const allAfter = Automerge.getAllChanges(after);
-  if (!before) return allAfter;
-  const beforeHashes = new Set(
-    Automerge.getAllChanges(before).map(c => Automerge.decodeChange(c).hash),
-  );
   return allAfter.filter(c => !beforeHashes.has(Automerge.decodeChange(c).hash));
+}
+
+/**
+ * Snapshot the change hashes of a doc — call BEFORE mutating with
+ * `Automerge.change()`. Pass the result into `extractDeltaChanges` after
+ * the change to get just the new changes.
+ */
+export function snapshotChangeHashes(
+  doc: AutomergeDoc | undefined,
+  Automerge: { getAllChanges: (doc: AutomergeDoc) => Uint8Array[];
+               decodeChange: (c: Uint8Array) => { hash: string } },
+): Set<string> {
+  if (!doc) return new Set();
+  return new Set(Automerge.getAllChanges(doc).map(c => Automerge.decodeChange(c).hash));
 }
 
 /**

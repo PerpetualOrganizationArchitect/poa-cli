@@ -9,6 +9,7 @@ import {
   packChanges,
   unpackChanges,
   extractDeltaChanges,
+  snapshotChangeHashes,
   BrainChangeEnvelopeV2,
 } from '../../src/lib/brain-envelope-v2';
 
@@ -204,29 +205,45 @@ it('round-trips empty array', () => {
   });
 
   describe('extractDeltaChanges', () => {
-    it('returns all changes when before is undefined (genesis)', () => {
-      const fakeAutomerge = {
-        getAllChanges: (doc: any) => doc.changes as Uint8Array[],
-        decodeChange: (c: Uint8Array) => ({ hash: c[0].toString(16) }),
-      };
+    const fakeAutomerge = {
+      getAllChanges: (doc: any) => doc.changes as Uint8Array[],
+      decodeChange: (c: Uint8Array) => ({ hash: c[0].toString(16) }),
+    };
+
+    it('returns all changes when beforeHashes is empty (genesis)', () => {
       const after = { changes: [new Uint8Array([0x1]), new Uint8Array([0x2])] };
-const delta = extractDeltaChanges(undefined, after, fakeAutomerge);
+      const delta = extractDeltaChanges(new Set(), after, fakeAutomerge);
       expect(delta.length).toBe(2);
     });
 
-    it('returns only changes not in before (set difference by hash)', () => {
-      const fakeAutomerge = {
-        getAllChanges: (doc: any) => doc.changes as Uint8Array[],
-        decodeChange: (c: Uint8Array) => ({ hash: c[0].toString(16) }),
-      };
-      const before = { changes: [new Uint8Array([0x1]), new Uint8Array([0x2])] };
+    it('returns only changes not in beforeHashes (set difference)', () => {
+      const beforeHashes = new Set(['1', '2']);
       const after = {
         changes: [new Uint8Array([0x1]), new Uint8Array([0x2]), new Uint8Array([0x3]), new Uint8Array([0x4])],
       };
-const delta = extractDeltaChanges(before, after, fakeAutomerge);
+      const delta = extractDeltaChanges(beforeHashes, after, fakeAutomerge);
       expect(delta.length).toBe(2);
       expect(delta[0][0]).toBe(0x3);
       expect(delta[1][0]).toBe(0x4);
+    });
+  });
+
+  describe('snapshotChangeHashes', () => {
+    const fakeAutomerge = {
+      getAllChanges: (doc: any) => doc.changes as Uint8Array[],
+      decodeChange: (c: Uint8Array) => ({ hash: c[0].toString(16) }),
+    };
+
+    it('returns empty set for undefined doc', () => {
+expect(snapshotChangeHashes(undefined, fakeAutomerge).size).toBe(0);
+    });
+
+    it('snapshots all change hashes from a doc', () => {
+const doc = { changes: [new Uint8Array([0x5]), new Uint8Array([0xa])] };
+      const snap = snapshotChangeHashes(doc, fakeAutomerge);
+      expect(snap.has('5')).toBe(true);
+      expect(snap.has('a')).toBe(true);
+      expect(snap.size).toBe(2);
     });
   });
 });
