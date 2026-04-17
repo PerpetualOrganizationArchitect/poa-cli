@@ -10,12 +10,14 @@ import { deployToOrgHandler } from './deploy-to-org';
 import { initHandler } from './init';
 import { dailyDigestHandler } from './daily-digest';
 import { sessionStartHandler_export } from './session-start';
+import { testCoverageHandler } from './test-coverage';
 
 export function registerAgentCommands(yargs: Argv) {
   return yargs
     .command('session-start', 'Bootstrap stitcher (#464): daemon + subgraph cache + peer registry. Run as Step 0 of every session.', sessionStartHandler_export.builder, sessionStartHandler_export.handler)
     .command('status', 'Show agent operational status and action items', agentStatusHandler.builder, agentStatusHandler.handler)
     .command('triage', 'Prioritized action plan for current heartbeat', triageHandler.builder, triageHandler.handler)
+    .command('test-coverage', 'Hygiene signal: list src/lib modules without a matching test/lib *.test.ts file', testCoverageHandler.builder, testCoverageHandler.handler)
     .command('daily-digest', 'Summarize cross-agent activity for operator status checks', dailyDigestHandler.builder, dailyDigestHandler.handler)
     .command('register', 'Register agent identity on ERC-8004', registerHandler.builder, registerHandler.handler)
     .command('delegate', 'Set up EIP-7702 delegation for gas sponsorship', delegateHandler.builder, delegateHandler.handler)
