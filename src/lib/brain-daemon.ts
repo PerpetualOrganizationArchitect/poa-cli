@@ -131,6 +131,9 @@ export const KEEPALIVE_TOPIC = 'pop/brain/net/v1';
 export const CANONICAL_BRAIN_DOCS: string[] = [
   'pop.brain.shared',
   'pop.brain.projects',
+  'pop.brain.heuristics',  // task #446: closes #427's general failure mode
+  'pop.brain.retros',      // task #446: symmetric retros propagation
+  'pop.brain.brainstorms', // task #446: closes sentinel-HB#504 orphan-brainstorm class
 ];
 
 export function getDaemonPidPath(): string {
