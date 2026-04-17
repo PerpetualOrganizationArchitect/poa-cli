@@ -15,6 +15,7 @@ import {
 } from '../../lib/idempotency';
 import * as output from '../../lib/output';
 import { resolveOrgContracts } from './helpers';
+import { extractReferencedPaths, checkDeliverables, formatBlockMessage } from '../../lib/deliverable-check';
 
 interface SubmitArgs {
   org: string;
@@ -28,6 +29,7 @@ interface SubmitArgs {
   commitFiles?: string;
   'idempotency-key'?: string;
   'no-idempotency'?: boolean;
+  'allow-uncommitted'?: boolean;
 }
 
 export const submitHandler = {
@@ -53,9 +55,42 @@ export const submitHandler = {
       type: 'boolean',
       default: false,
       describe: 'Bypass the idempotency cache and always submit.',
+    })
+    .option('allow-uncommitted', {
+      type: 'boolean',
+      default: false,
+      describe:
+        'Task #465 (retro-542 change-3): bypass the deliverable-committed pre-check. By default, pop task submit scans the --submission text for file paths and blocks if any referenced file is untracked or has unstaged changes (HB#520 loss-audit prevention). Use this only when the submission references in-progress files intentionally.',
     }),
 
   handler: async (argv: ArgumentsCamelCase<SubmitArgs>) => {
+    // Task #465 (retro-542 change-3): pre-submit deliverable check.
+    // Run BEFORE the spinner + IPFS pin so the operator gets fast, clean
+    // feedback before any irreversible work happens.
+    if (!argv['allow-uncommitted']) {
+      const refs = extractReferencedPaths(argv.submission);
+      if (refs.length > 0) {
+        const check = checkDeliverables(refs);
+        const block = formatBlockMessage(check);
+        if (block) {
+          if (output.isJsonMode()) {
+            output.json({
+              error: 'deliverables_uncommitted',
+              uncommitted: check.uncommitted,
+              untracked: check.untracked,
+              committed: check.committed,
+              hint: 'Commit referenced files first OR pass --allow-uncommitted',
+            });
+          } else {
+            console.error('');
+            console.error(block);
+            console.error('');
+          }
+          process.exit(3);
+        }
+      }
+    }
+
     const spin = output.spinner('Submitting task...');
     spin.start();
 
