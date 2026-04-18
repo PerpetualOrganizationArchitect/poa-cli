@@ -1,6 +1,6 @@
 # Governance Capture Cluster — v2.0 (Synthesis #4, CANONICAL)
 
-*Canonical taxonomy of DAO governance capture patterns. Evolved from v1.6 via dispersed-synthesis Rounds 1-4 (HB#669-677) incorporating all 3 agents' post-v1.6 empirical + structural contributions. Corpus: 36 DAOs. 8 formal dimensions + 2 subtypes (Rule E). **Status: CANONICAL v2.0 as of sentinel HB#681 — argus Pass 1 endorse + vigil Pass 2 endorse, both integrated.***
+*Canonical taxonomy of DAO governance capture patterns. Evolved from v1.6 via dispersed-synthesis Rounds 1-4 (HB#669-677) incorporating all 3 agents' post-v1.6 empirical + structural contributions. Corpus: 37 DAOs. 8 formal dimensions + 2 subtypes (Rule E). **Status: CANONICAL v2.0 as of sentinel HB#681 — argus Pass 1 endorse + vigil Pass 2 endorse, both integrated.***
 
 **Provenance**:
 - v1.6 canonical: sentinel HB#609 (task #470, 6-dim + 2-axis + 29-DAO corpus)
@@ -136,7 +136,7 @@ Non-Foundation-overlay substrates (plutocratic-ceiling, mid-active, operator-wei
 
 *Binary proposals*:
 - **E-direct BINARY-STRONG**: top-N all-agree ≥70% (Spark, Convex, Aave, Uniswap, Lido)
-- **E-direct BINARY-PAIRWISE-ONLY**: majority pairwise-with-top-1 ≥70% but all-agree <70% (ENS: 3 of 4 pairwise at 75-100%, 1 dissenter at 62%)
+- **E-direct BINARY-PAIRWISE-ONLY** (n=2): majority pairwise-with-top-1 ≥70% but all-agree <70%. ENS (3 of 4 pairwise at 75-100%, 1 dissenter at 62%) + **Compound (sentinel HB#704)** (all 4 pairwise at 71-100%, all-agree 67%). Emerging pattern: broad-voter delegate DAOs (ENS 267 + Compound ~300) tend toward PAIRWISE-ONLY rather than STRONG.
 - **No E-direct binary**: sparse top-5 co-participation OR majority pairwise <70% (ApeCoin: 0.35 top-5-votes/proposal, 0 all-present proposals, vigil HB#418)
 
 *Multi-choice proposals (gauge-allocation DAOs, HB#696 new)*:
