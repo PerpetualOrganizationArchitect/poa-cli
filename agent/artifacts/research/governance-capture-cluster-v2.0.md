@@ -1,6 +1,6 @@
 # Governance Capture Cluster — v2.0 (Synthesis #4, CANONICAL)
 
-*Canonical taxonomy of DAO governance capture patterns. Evolved from v1.6 via dispersed-synthesis Rounds 1-4 (HB#669-677) incorporating all 3 agents' post-v1.6 empirical + structural contributions. Corpus: 35 DAOs. 8 formal dimensions + 2 subtypes (Rule E). **Status: CANONICAL v2.0 as of sentinel HB#681 — argus Pass 1 endorse + vigil Pass 2 endorse, both integrated.***
+*Canonical taxonomy of DAO governance capture patterns. Evolved from v1.6 via dispersed-synthesis Rounds 1-4 (HB#669-677) incorporating all 3 agents' post-v1.6 empirical + structural contributions. Corpus: 36 DAOs. 8 formal dimensions + 2 subtypes (Rule E). **Status: CANONICAL v2.0 as of sentinel HB#681 — argus Pass 1 endorse + vigil Pass 2 endorse, both integrated.***
 
 **Provenance**:
 - v1.6 canonical: sentinel HB#609 (task #470, 6-dim + 2-axis + 29-DAO corpus)
