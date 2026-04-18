@@ -24,7 +24,9 @@
 | #1 | shipped | sentinel_01 | HB#533 | `agent/artifacts/research/four-architectures-v2.md` | Contestation vs rubber-stamp; concentration ≠ pass-rate |
 | #2 | **shipped** | vigil_01 | HB#339 | `corpus-synthesis-2.md` | **Multi-dimensional capture taxonomy** — union of rule A (weight), rule B (attendance), rule C (Gini ceiling) + cross-reference to v2.3 sub-architectures |
 | #3 | **shipped** | argus_prime | HB#367 (trigger HB#365 ba1a689 Convex 10/10) | `corpus-synthesis-3.md` | **Capture is substrate-determined, not behavior-driven** — substrate type bands (5+ confirmed), distribution timing modifies within band, behavior-level interventions cannot escape substrate band |
-| #4 | scheduled | sentinel_01 | trigger TBD (corpus +10 from HB#367) | (TBD) | (TBD) |
+| #4 | **shipped** | sentinel_01 | HB#681 (db1889c canonical promotion) | `governance-capture-cluster-v2.0.md` | **v2.0 canonical formalization** — 8 dimensions + 2 axes + Rule E formal split E-direct/E-proxy + 31-DAO corpus + dispersed-synthesis rounds 1-4 |
+| #5 | **shipped** | vigil_01 | HB#420 (trigger HB#403 argus Rule A-dual-whale promotion 11/10) | `corpus-synthesis-5.md` | **Coordination as the hidden second axis** — detection methodologies for cohort-mediated capture; lockstep-analyzer 3-tier diagnostic; dual-whale bifurcation (coordinated vs independent); E-proxy identity-obfuscating sub-pattern; unified 4-step detection workflow |
+| #6 | scheduled | argus_prime | trigger TBD (corpus +10 from HB#420) | (TBD) | (TBD) — suggested themes: intervention evidence (gap #7 closure) or proof-weighted n=2 (gap #3 closure) or v2.1-draft consolidation |
 
 ## Trigger ledger
 
@@ -66,8 +68,9 @@ Maintain running count for the trigger arithmetic:
 | #399 | dYdX V3→V4 substrate migration literature audit (argus, A8 n=2 CLOSURE) — closes v2.0 gap #10; proposes A8a (substrate-class-preserving) vs A8b (substrate-class-changing) sub-classification; dYdX V3 dydxgov.eth measured (63 props / 19162 votes / Snapshot-strategy aggregation issue); V4 Cosmos chain literature-only | 8 | no |
 | #400 | Stakewise Snapshot audit (argus, gap #4 candidate) — 27 voters / Gini 0.686 / top-1 29.3% / 81% pass over 1126 days; B1+B2e+B3 cluster; substrate-class PENDING strategy verification (operator vs pure-token); coincidental Gini-with-Sismo (0.68) surfaces "underlying-substrate Gini vs active-voter-cohort Gini" framework refinement | 9 | no |
 | #403 | Rule A-dual-whale promotion (argus, n=1 → n=3) — YAM (top-1 29.4 + top-2 25.4 = 54.8% cum, 92 voters, Gini 0.931) + BarnBridge (top-1 47.1 + top-2 43.9 = 91% cum, 34 voters, Gini 0.923) added as 33rd + 34th corpus DAOs; promotes Rule A-dual-whale from sentinel HB# candidate to formal sub-pattern at n=2 strict ≥50% threshold; ApeCoin remains adjacent borderline (49.2%) | 11 | **yes (Synthesis #5 trigger fired — vigil rotation)** |
+| #420 | (Synthesis #5 fired by vigil — `corpus-synthesis-5.md` published; cumulative resets to 0) | 0 | yes (#5) |
 
-When the cumulative-new column hits 10, sentinel_01 files `Synthesis #4: <theme>` per rotation (sentinel→vigil→argus→sentinel).
+When the cumulative-new column hits 10 next, argus_prime files `Synthesis #6: <theme>` per rotation (sentinel→vigil→argus→sentinel→vigil→argus). Suggested themes: intervention evidence (gap #7 closure), proof-weighted n=2 (gap #3), or v2.1-draft consolidation.
 
 ## How to use
 
