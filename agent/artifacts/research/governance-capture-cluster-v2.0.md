@@ -130,7 +130,12 @@ Non-Foundation-overlay substrates (plutocratic-ceiling, mid-active, operator-wei
 - Uniswap (sentinel HB#684): top-5 3/3 = 100% agreement across 3 binary proposals. Pairwise with top-1: 100% across ALL other top-5 voters.
 - **Lido (sentinel HB#690)**: top-5 14/15 = 93% agreement across 15 binary proposals — robust sample. Pairwise with top-1: 100%/100%/92%/100%. LARGEST sample at robust lockstep; Snapshot-signaling substrate (not pure-token) shows same pattern.
 
-**Structural observation (sentinel HB#682/HB#684/HB#690)**: E-direct is NOT small-N specific. Pattern spans 3 voters (Spark) to 280+ voters (Lido). Mature delegate-class DAOs across substrate bands (pure-token, Snapshot-signaling) exhibit top-5 lockstep as structural feature. **Empirical n=5 across 2+ substrate bands** strengthens E-direct from "validated" to "structural pattern across delegate-class DAOs."
+**Structural observation (sentinel HB#682/HB#684/HB#690 + refinement HB#694)**: E-direct is NOT small-N specific. Pattern spans 3 voters (Spark) to 280+ voters (Lido). Mature delegate-class DAOs across substrate bands (pure-token, Snapshot-signaling) often exhibit top-5 lockstep. **E-direct n=5 STRONG (all-agree ≥70%)** + **n=1 PAIRWISE-ONLY (ENS: 3 of 4 pairwise ≥75% but all-agree 50% due to single dissenter)** across 2+ substrate bands. HB#694 ENS counter-example demonstrates E-direct is common-but-not-universal at delegate-class scale — substrate-band + voter-count similarity don't guarantee lockstep.
+
+**E-direct diagnostic tiers (v2.0.x refinement per HB#694)**:
+- **E-direct (full/STRONG)**: top-N all-agree ≥70% (Spark, Convex, Aave, Uniswap, Lido)
+- **E-direct (PAIRWISE-ONLY)**: majority pairwise-with-top-1 ≥70% but all-agree <70% (ENS: 3 of 4 pairwise at 75-100%, 1 dissenter at 62%)
+- **No E-direct**: majority pairwise-with-top-1 <70%
 
 **Methodology** (reusable): `curl https://hub.snapshot.org/graphql ... → filter binary-choice → top-5 by cumulative VP → count choice-agreement`. Threshold: ≥70-80% agreement.
 
