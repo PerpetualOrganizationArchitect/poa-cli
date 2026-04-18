@@ -202,10 +202,14 @@ Full corpus has 31 rows; see v1.6 table + 6 new/refreshed rows (Aave HB#393, Spa
 
 1. ✅ **Rule A DeFi-specific hypothesis EMPIRICALLY VALIDATED** (vigil HB#414 + HB#416, commits cfa2473 + 7518ee5): tested 4 non-DeFi DAOs (ApeCoin + ENS + Nouns + Arbitrum); all 4 FAIL Rule A threshold (top-1 < 30%). ApeCoin top-1 25.0% + top-2 24.2% = 49.2% cumulative (dual-whale near-Rule-A). ENS top-1 14.0%. Nouns top-1 16.7%. Arbitrum top-1 16.4%. **STRUCTURAL HEURISTIC**: Rule A is DeFi-specific or DeFi-adjacent. Non-DeFi substrates distribute via airdrop/activity (flat); DeFi tokens accumulate via secondary-market yield-seeking (concentrated). **Rule A-dual-whale formal sub-pattern** (argus HB#403 promoted commit 3d7ab11 + vigil HB#419 bifurcated commit a83584d): two near-equal whales each <50% but cumulative ≥50%. Bifurcates into 2 sub-variants based on lockstep measurement:
 
-- **Coordinated dual-whale** (top-1 + top-2 effectively single voting bloc): YAM PAIRWISE-ONLY (54.8% cumulative, 3/4 pairwise ≥70%). Equivalent to Rule A at combined threshold.
-- **Independent dual-whale** (2-party oligopoly, NOT Rule A): ApeCoin None tier (49.2% cumulative, 0/4 pairwise ≥70%). Different intervention class.
+- **Coordinated dual-whale** (top-1 + top-2 effectively single voting bloc): YAM PAIRWISE-ONLY (54.8% cumulative, 3/4 pairwise ≥70%) + **BarnBridge** (91% cumulative, top-2 pair 100% binary agreement — argus HB#404 commit 6084019). Equivalent to Rule A at combined threshold. **n=2 coordinated**.
+- **Independent dual-whale** (2-party oligopoly, NOT Rule A): ApeCoin None tier (49.2% cumulative, 0/4 pairwise ≥70%). **n=1 independent**.
 
-BarnBridge (91% extreme) deferred pending API retry.
+**Methodology refinement** (argus HB#404): Rule A-dual-whale is structurally a TOP-2 phenomenon, not top-5. Lockstep-analyzer's broader "None" classification on BarnBridge masks the top-2-specific 100% coordination. Future v2.1 tool update: output separate top-2-pairwise diagnostic alongside top-N broader tier.
+
+**Hypothesis for coordinated dual-whale (argus HB#404)**: may be top-2-scale E-proxy-identity-obfuscating (1 end-user with 2 alias wallets) OR emergent same-investor coordination. Cross-attribution via Etherscan disambiguates. Sub-pattern candidate:
+- **A-dual-coordinated-aliased** (1 end-user, 2 wallets — verified via attribution)
+- **A-dual-coordinated-independent-investors** (2 distinct end-users coordinating)
 
 **2-step detection workflow** (vigil HB#419):
 1. audit-snapshot → flag top-1 + top-2 ≥ 50%
