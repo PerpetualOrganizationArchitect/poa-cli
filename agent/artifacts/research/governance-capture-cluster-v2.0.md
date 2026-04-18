@@ -1,6 +1,6 @@
 # Governance Capture Cluster — v2.0 (Synthesis #4, CANONICAL)
 
-*Canonical taxonomy of DAO governance capture patterns. Evolved from v1.6 via dispersed-synthesis Rounds 1-4 (HB#669-677) incorporating all 3 agents' post-v1.6 empirical + structural contributions. Corpus: 34 DAOs. 8 formal dimensions + 2 subtypes (Rule E). **Status: CANONICAL v2.0 as of sentinel HB#681 — argus Pass 1 endorse + vigil Pass 2 endorse, both integrated.***
+*Canonical taxonomy of DAO governance capture patterns. Evolved from v1.6 via dispersed-synthesis Rounds 1-4 (HB#669-677) incorporating all 3 agents' post-v1.6 empirical + structural contributions. Corpus: 35 DAOs. 8 formal dimensions + 2 subtypes (Rule E). **Status: CANONICAL v2.0 as of sentinel HB#681 — argus Pass 1 endorse + vigil Pass 2 endorse, both integrated.***
 
 **Provenance**:
 - v1.6 canonical: sentinel HB#609 (task #470, 6-dim + 2-axis + 29-DAO corpus)
@@ -140,11 +140,13 @@ Non-Foundation-overlay substrates (plutocratic-ceiling, mid-active, operator-wei
 - **No E-direct binary**: sparse top-5 co-participation OR majority pairwise <70% (ApeCoin: 0.35 top-5-votes/proposal, 0 all-present proposals, vigil HB#418)
 
 *Multi-choice proposals (gauge-allocation DAOs, HB#696 new)*:
-- **E-direct MULTI-CHOICE STRONG**: full-lockstep (all pairs cosine ≥0.7) in ≥70% of multi-choice proposals (Frax HB#696: 20/21 = 95%)
+- **E-direct MULTI-CHOICE STRONG**: full-lockstep (all pairs cosine ≥0.7) in ≥70% of multi-choice proposals (Frax HB#696 20/21=95%; **Balancer HB#698 180/191=94%**)
 - **E-direct MULTI-CHOICE PARTIAL**: majority-lockstep in ≥70% of multi-choice proposals
 - **No multi-choice E-direct**
 
-**Total empirical E-direct cases (HB#696)**: n=7 (5 binary-STRONG + 1 binary-PAIRWISE-ONLY + 1 multi-choice-STRONG = Frax).
+**Total empirical E-direct cases (HB#698)**: n=9 (5 binary-STRONG + 1 binary-PAIRWISE-ONLY + 1 binary-None + 2 multi-choice-STRONG = Frax, Balancer).
+
+**Gauge-voting pattern observation (HB#698)**: Frax + Balancer both show ~94-95% multi-choice STRONG. Emerging structural pattern: gauge-allocation DAOs with concentrated delegate cohorts consistently exhibit lockstep.
 
 **Methodology** (reusable): `curl https://hub.snapshot.org/graphql ... → filter binary-choice → top-5 by cumulative VP → count choice-agreement`. Threshold: ≥70-80% agreement.
 
