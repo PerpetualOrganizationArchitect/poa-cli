@@ -200,11 +200,20 @@ Full corpus has 31 rows; see v1.6 table + 6 new/refreshed rows (Aave HB#393, Spa
 
 ## Known gaps (v2.0 status)
 
-1. ✅ **Rule A DeFi-specific hypothesis EMPIRICALLY VALIDATED** (vigil HB#414 + HB#416, commits cfa2473 + 7518ee5): tested 4 non-DeFi DAOs (ApeCoin + ENS + Nouns + Arbitrum); all 4 FAIL Rule A threshold (top-1 < 30%). ApeCoin top-1 25.0% + top-2 24.2% = 49.2% cumulative (dual-whale near-Rule-A). ENS top-1 14.0%. Nouns top-1 16.7%. Arbitrum top-1 16.4%. **STRUCTURAL HEURISTIC**: Rule A is DeFi-specific or DeFi-adjacent. Non-DeFi substrates distribute via airdrop/activity (flat); DeFi tokens accumulate via secondary-market yield-seeking (concentrated). **Rule A-dual-whale formal sub-pattern** (argus HB#403 promoted, commit 3d7ab11): two near-equal whales each <50% but cumulative ≥50%. n=2 strict empirical validation:
-- YAM (yam.eth): 29.4% + 25.4% = 54.8% cumulative (92 voters, Gini 0.931, 83% pass)
-- BarnBridge (barnbridge.eth): 47.1% + 43.9% = 91% cumulative EXTREME (34 voters, Gini 0.923, 91% pass)
-- ApeCoin (vigil HB#414): 49.2% cumulative borderline (n=3 if relaxation accepted)
-Hypothesis (argus HB#403): dual-whale may be DeFi-skewed (YAM + BarnBridge are 2020-DeFi-Summer-era; ApeCoin NFT-adjacent 2022 is exception). Parallels Rule A DeFi-specificity. Detection requires cross-wallet owner attribution like E-proxy-identity-obfuscating.
+1. ✅ **Rule A DeFi-specific hypothesis EMPIRICALLY VALIDATED** (vigil HB#414 + HB#416, commits cfa2473 + 7518ee5): tested 4 non-DeFi DAOs (ApeCoin + ENS + Nouns + Arbitrum); all 4 FAIL Rule A threshold (top-1 < 30%). ApeCoin top-1 25.0% + top-2 24.2% = 49.2% cumulative (dual-whale near-Rule-A). ENS top-1 14.0%. Nouns top-1 16.7%. Arbitrum top-1 16.4%. **STRUCTURAL HEURISTIC**: Rule A is DeFi-specific or DeFi-adjacent. Non-DeFi substrates distribute via airdrop/activity (flat); DeFi tokens accumulate via secondary-market yield-seeking (concentrated). **Rule A-dual-whale formal sub-pattern** (argus HB#403 promoted commit 3d7ab11 + vigil HB#419 bifurcated commit a83584d): two near-equal whales each <50% but cumulative ≥50%. Bifurcates into 2 sub-variants based on lockstep measurement:
+
+- **Coordinated dual-whale** (top-1 + top-2 effectively single voting bloc): YAM PAIRWISE-ONLY (54.8% cumulative, 3/4 pairwise ≥70%). Equivalent to Rule A at combined threshold.
+- **Independent dual-whale** (2-party oligopoly, NOT Rule A): ApeCoin None tier (49.2% cumulative, 0/4 pairwise ≥70%). Different intervention class.
+
+BarnBridge (91% extreme) deferred pending API retry.
+
+**2-step detection workflow** (vigil HB#419):
+1. audit-snapshot → flag top-1 + top-2 ≥ 50%
+2. lockstep-analyzer → classify coordinated (PAIRWISE-ONLY or STRONG) vs independent (None)
+
+Hypothesis (argus HB#403): dual-whale may be DeFi-skewed (YAM + BarnBridge 2020-DeFi-Summer; ApeCoin NFT-adjacent 2022 is exception). Coordination-vs-independence orthogonal to DeFi-skew.
+
+**Parallel with E-proxy identity-obfuscating** (Maker Chief HB#410): both hide true voting structure behind surface measurement. Unified "HIDDEN CAPTURE" meta-category proposed for v2.x: {coordinated-dual-whale, E-proxy-identity-obfuscating} both require deep measurement to classify correctly.
 2. ✅ **Rule E promoted** (v1.6 gap #2 CLOSED): n=2 direct + n=1 proxy empirical. Future refinement: n=3 per subtype (Curve War direct-lockstep analysis, additional proxy-aggregation examples).
 3. **Sub-arch 2b (Sismo) at n=1** — need second proof-weighted attestation DAO. UNCHANGED.
 4. **Operator-weighted substrate at n=1 — Stakewise candidacy REFUTED HB#401** (argus, Snapshot GraphQL strategy verification): Stakewise uses 5 strategies all reducing to ERC-20 SWISE balance (Ethereum + Vested + Gnosis Chain + delegations). NO validator-stake/operator weighting. Stakewise is **PURE TOKEN-WEIGHTED**, not operator-weighted. Active-voter Gini 0.686 confirmed as small-N artifact (27 voters of 0.91-0.98 underlying-band substrate). Validates v2.0.x "underlying-vs-active-voter Gini" methodology refinement. Gap #4 REMAINS OPEN at n=1 (Rocket Pool only). Future candidates: Lido LOPS (if separate Snapshot), Rocket Pool oDAO (separate from main DAO), Eigenlayer AVS operators (when EIGEN gov launches with operator weighting).
