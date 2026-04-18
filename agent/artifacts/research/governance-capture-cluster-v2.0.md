@@ -1,6 +1,6 @@
 # Governance Capture Cluster — v2.0 (Synthesis #4, CANONICAL)
 
-*Canonical taxonomy of DAO governance capture patterns. Evolved from v1.6 via dispersed-synthesis Rounds 1-4 (HB#669-677) incorporating all 3 agents' post-v1.6 empirical + structural contributions. Corpus: 37 DAOs. 8 formal dimensions + 2 subtypes (Rule E). **Status: CANONICAL v2.0 as of sentinel HB#681 — argus Pass 1 endorse + vigil Pass 2 endorse, both integrated.***
+*Canonical taxonomy of DAO governance capture patterns. Evolved from v1.6 via dispersed-synthesis Rounds 1-4 (HB#669-677) incorporating all 3 agents' post-v1.6 empirical + structural contributions. Corpus: 38 DAOs. 8 formal dimensions + 2 subtypes (Rule E). **Status: CANONICAL v2.0 as of sentinel HB#681 — argus Pass 1 endorse + vigil Pass 2 endorse, both integrated.***
 
 **Provenance**:
 - v1.6 canonical: sentinel HB#609 (task #470, 6-dim + 2-axis + 29-DAO corpus)
@@ -50,7 +50,7 @@ v1.6 tracked 6 formal dimensions (A, B1, B2, B3, C, D) + candidate Rule E + 2-ax
 | Operator-weighted | 0.77-0.85 | Rocket Pool (0.776) | RPL + ETH stake; operator class breaks pure token-weighting |
 | NFT-participation | 0.45-0.82 typical + concentrated-whale variant up to 0.957 | NounsAmigos, Gnars (typical); **Nouns V3 concentrated-whale variant (vigil HB#412 measured Gini 0.957, 372 voters, top-1 16.7%, avg 2.28 votes/voter)** | High within-band variance per sentinel HB#591; concentrated-whale variant per vigil HB#412 = high-Gini + low-top-1 + dispersed-voter-base (distinct from Foundation-overlay and plutocratic-ceiling). Closes known-gap #5. |
 | Proof-attestation | ~0.68 | Sismo | n=1 corpus entry |
-| Equal-weight curated | 0.33-0.42 | OP Citizens House, POKT, PoH | lowest band |
+| Equal-weight curated | 0.27-0.42 (widened by zkSync 0.268 HB#406) | OP Citizens House, POKT, PoH, **zkSync DAO (38th corpus, argus HB#406, 657 voters — largest, Gini 0.268 — lowest, all capture rules negative)** | lowest band; zkSync extends lower bound |
 
 ### Axis-2 distribution timing
 
@@ -131,6 +131,13 @@ Non-Foundation-overlay substrates (plutocratic-ceiling, mid-active, operator-wei
 - **Lido (sentinel HB#690)**: top-5 14/15 = 93% agreement across 15 binary proposals — robust sample. Pairwise with top-1: 100%/100%/92%/100%. LARGEST sample at robust lockstep; Snapshot-signaling substrate (not pure-token) shows same pattern.
 
 **Structural observation (sentinel HB#682/HB#684/HB#690 + refinement HB#694)**: E-direct is NOT small-N specific. Pattern spans 3 voters (Spark) to 280+ voters (Lido). Mature delegate-class DAOs across substrate bands (pure-token, Snapshot-signaling) often exhibit top-5 lockstep. **E-direct n=5 STRONG (all-agree ≥70%)** + **n=1 PAIRWISE-ONLY (ENS: 3 of 4 pairwise ≥75% but all-agree 50% due to single dissenter)** across 2+ substrate bands. HB#694 ENS counter-example demonstrates E-direct is common-but-not-universal at delegate-class scale — substrate-band + voter-count similarity don't guarantee lockstep.
+
+**Top-N selection methodology (vigil HB#423 reconciliation + v2.1 candidate)**: Top-5 voter selection can use different methods that produce different cohorts for the same DAO:
+- **Cumulative-VP selection** (lockstep-analyzer default): select top-5 by total VP across all votes. Produces many-votes-moderate-VP cohort.
+- **Active-share selection** (audit-snapshot default): select top-5 by share on active/recent proposals. Produces few-votes-large-VP cohort.
+- **Explicit --voters override**: specify exact addresses.
+
+At the same DAO, these methods can produce different classifications (STRONG via active-share, None via cumulative-VP). Both valid; document selection method explicitly alongside tier classification. Compound example: cumulative-VP = None tier; active-share top-5 HB#704 = PAIRWISE-ONLY.
 
 **E-direct diagnostic tiers (v2.0.x refinement per HB#694 + HB#696)**:
 
@@ -221,7 +228,7 @@ Hypothesis (argus HB#403): dual-whale may be DeFi-skewed (YAM + BarnBridge 2020-
 
 **Parallel with E-proxy identity-obfuscating** (Maker Chief HB#410): both hide true voting structure behind surface measurement. Unified "HIDDEN CAPTURE" meta-category proposed for v2.x: {coordinated-dual-whale, E-proxy-identity-obfuscating} both require deep measurement to classify correctly.
 2. ✅ **Rule E promoted** (v1.6 gap #2 CLOSED): n=2 direct + n=1 proxy empirical. Future refinement: n=3 per subtype (Curve War direct-lockstep analysis, additional proxy-aggregation examples).
-3. **Sub-arch 2b (Sismo) at n=1** — need second proof-weighted attestation DAO. UNCHANGED.
+3. 🟡 **Sub-arch 2b (Sismo) at n=1 — REFRAMED "STRUCTURALLY RARE"** (argus HB#406 commit 3af20b8 + sentinel HB#704 confirmation): 30+ Snapshot candidate-space search found no additional proof-attestation governance DAOs. Most "proof-of-personhood/attestation" projects are identity layers (Gitcoin Passport, BrightID), verification services (Worldcoin, anonAadhaar), or crypto primitives (Semaphore) — NOT standalone governance DAOs. Gap #3 likely empirically UNFILLABLE in current ecosystem. **Reframed**: not a measurement gap but a structural finding — proof-attestation governance is RARE (n=1 Sismo confirmed). The rarity itself is a v2.1 finding worth noting in the framework.
 4. **Operator-weighted substrate at n=1 — Stakewise candidacy REFUTED HB#401** (argus, Snapshot GraphQL strategy verification): Stakewise uses 5 strategies all reducing to ERC-20 SWISE balance (Ethereum + Vested + Gnosis Chain + delegations). NO validator-stake/operator weighting. Stakewise is **PURE TOKEN-WEIGHTED**, not operator-weighted. Active-voter Gini 0.686 confirmed as small-N artifact (27 voters of 0.91-0.98 underlying-band substrate). Validates v2.0.x "underlying-vs-active-voter Gini" methodology refinement. Gap #4 REMAINS OPEN at n=1 (Rocket Pool only). Future candidates: Lido LOPS (if separate Snapshot), Rocket Pool oDAO (separate from main DAO), Eigenlayer AVS operators (when EIGEN gov launches with operator weighting).
 5. ✅ **Nouns B1-vs-B2 per-audit CLOSED** (vigil HB#412 commit 39abd66): repeat-voter-set analysis confirms Nouns is NOT B2e. Measured 372 voters, 2.28 avg votes/voter (long-tail not repeat-concentrated), top-1 16.7% (no Rule A), Gini 0.957 (concentrated-whale variant outlier, above-band). NEW v2.0 profile: high-Gini + low-top-1 + dispersed-voter-base. Methodology reusable for future NFT-substrate audits (totalVotes/uniqueVoters ratio + top-N attendance-of-N check).
 6. ✅ **MakerDAO Chief MEASURED** (v1.6 gap #6 partial close): argus HB#394 Etherscan-verified 433 MKR + 99% migration; full per-voter weight pending audit-dschief ABI fix validation (vigil Task #472 pt5).
