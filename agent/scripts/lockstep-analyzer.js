@@ -70,46 +70,91 @@ async function fetchVotes(proposalIds, voterAddrs) {
   return all;
 }
 
-async function fetchTopVoters(space, topN) {
-  // Snapshot schema: votes has `space { id }` nested — not `space` directly.
-  // Page through votes ordered by vp desc.
+async function fetchTopVoters(space, topN, selection) {
+  // v2.1 methodology (vigil HB#423): two top-voter selection methods:
+  //   - 'cumulative-vp' (default): sum each voter's VP across all their votes in
+  //     recent history (4K vote pages). Selects FREQUENT-moderate voters.
+  //   - 'active-share': per-proposal VP share averaged across ALL proposals in
+  //     recent history. Selects INFREQUENT-large-VP voters who dominate the few
+  //     proposals they vote on.
+  //
+  // These can select DIFFERENT top-N at the same DAO. Sentinel's E-direct STRONG
+  // findings (HB#682/684/690/696/698) use active-share selection; my default was
+  // cumulative-vp. Both valid; caller should specify which.
   const q = `query($space: String!, $first: Int!, $skip: Int!) {
     votes(first: $first, skip: $skip, where: { space: $space }, orderBy: "vp", orderDirection: desc) {
-      voter vp
+      voter vp proposal { id }
     }
   }`;
-  const byVoter = new Map();
+  const byVoter = new Map(); // cumulative-VP accumulator
+  const perProposalVoters = new Map(); // active-share: proposal -> sum of VP
+  const perVoterPerProposal = new Map(); // active-share: `voter:proposal` -> vp
   for (let page = 0; page < 4; page++) {
     const d = await gql(q, { space, first: 1000, skip: page * 1000 });
     const votes = (d && d.votes) || [];
     if (votes.length === 0) break;
     for (const v of votes) {
       const addr = v.voter.toLowerCase();
-      byVoter.set(addr, (byVoter.get(addr) || 0) + Number(v.vp || 0));
+      const vp = Number(v.vp || 0);
+      byVoter.set(addr, (byVoter.get(addr) || 0) + vp);
+      const pid = v.proposal && v.proposal.id;
+      if (pid) {
+        perProposalVoters.set(pid, (perProposalVoters.get(pid) || 0) + vp);
+        perVoterPerProposal.set(`${addr}:${pid}`, vp);
+      }
     }
     if (votes.length < 1000) break;
   }
+
+  if (selection === 'active-share') {
+    // Compute each voter's per-proposal share, average over proposals they voted on
+    const avgShareByVoter = new Map();
+    const countByVoter = new Map();
+    for (const [key, vp] of perVoterPerProposal.entries()) {
+      const [addr, pid] = key.split(':');
+      const propTotal = perProposalVoters.get(pid) || 0;
+      if (propTotal > 0) {
+        const share = vp / propTotal;
+        avgShareByVoter.set(addr, (avgShareByVoter.get(addr) || 0) + share);
+        countByVoter.set(addr, (countByVoter.get(addr) || 0) + 1);
+      }
+    }
+    const ranked = Array.from(avgShareByVoter.entries()).map(([addr, sumShare]) => {
+      const n = countByVoter.get(addr) || 1;
+      return { addr, avgShare: sumShare / n };
+    });
+    ranked.sort((a, b) => b.avgShare - a.avgShare);
+    return ranked.slice(0, topN).map(r => ({ address: r.addr, avgShare: r.avgShare, cumulativeVP: byVoter.get(r.addr) || 0 }));
+  }
+
+  // Default: cumulative-vp
   const sorted = Array.from(byVoter.entries()).sort((a, b) => b[1] - a[1]);
   return sorted.slice(0, topN).map(([addr, vp]) => ({ address: addr, cumulativeVP: vp }));
 }
 
 async function main() {
-  // args: space [topN=5] [--voters addr1,addr2,...] (overrides auto-selection)
+  // args: space [topN=5] [--voters addr1,addr2,...] [--selection cum-vp|active-share]
   const args = process.argv.slice(2);
   const space = args[0];
   let topN = 5;
   let explicitVoters = null;
+  let selection = 'cum-vp';
   for (let i = 1; i < args.length; i++) {
     if (args[i] === '--voters' && args[i + 1]) {
       explicitVoters = args[i + 1].split(',').map(s => s.trim().toLowerCase());
+      i++;
+    } else if (args[i] === '--selection' && args[i + 1]) {
+      selection = args[i + 1];
       i++;
     } else if (/^\d+$/.test(args[i])) {
       topN = Number(args[i]);
     }
   }
-  if (!space) { console.error('Usage: node lockstep-analyzer.js <space.eth> [topN=5] [--voters addr1,addr2,...]'); process.exit(1); }
+  if (!space) { console.error('Usage: node lockstep-analyzer.js <space.eth> [topN=5] [--voters addr1,...] [--selection cum-vp|active-share]'); process.exit(1); }
+  if (!['cum-vp', 'active-share'].includes(selection)) { console.error('--selection must be cum-vp or active-share'); process.exit(1); }
 
-  console.log(`\nLockstep analysis: ${space} (top-${topN}${explicitVoters ? ', explicit voters' : ', auto-selected by cum-VP'})\n`);
+  const selectionLabel = explicitVoters ? 'explicit voters' : `auto-selected by ${selection}`;
+  console.log(`\nLockstep analysis: ${space} (top-${topN}, ${selectionLabel})\n`);
 
   let topVoters;
   if (explicitVoters) {
@@ -118,9 +163,14 @@ async function main() {
     console.log('Explicit voters (from --voters arg):');
     topVoters.forEach((v, i) => console.log(`  ${i + 1}. ${v.address}`));
   } else {
-    topVoters = await fetchTopVoters(space, topN);
-    console.log('Top voters by cumulative VP (from last 4K votes):');
-    topVoters.forEach((v, i) => console.log(`  ${i + 1}. ${v.address}  cum-VP=${v.cumulativeVP.toLocaleString()}`));
+    topVoters = await fetchTopVoters(space, topN, selection);
+    console.log(`Top voters by ${selection} (from last 4K votes):`);
+    topVoters.forEach((v, i) => {
+      const extra = v.avgShare !== undefined
+        ? `avg-share=${(v.avgShare * 100).toFixed(2)}%`
+        : `cum-VP=${(v.cumulativeVP || 0).toLocaleString()}`;
+      console.log(`  ${i + 1}. ${v.address}  ${extra}`);
+    });
   }
 
   const binaryProposals = await fetchProposals(space, 1000);
