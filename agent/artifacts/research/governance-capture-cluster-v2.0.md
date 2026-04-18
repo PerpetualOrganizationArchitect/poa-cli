@@ -132,10 +132,19 @@ Non-Foundation-overlay substrates (plutocratic-ceiling, mid-active, operator-wei
 
 **Structural observation (sentinel HB#682/HB#684/HB#690 + refinement HB#694)**: E-direct is NOT small-N specific. Pattern spans 3 voters (Spark) to 280+ voters (Lido). Mature delegate-class DAOs across substrate bands (pure-token, Snapshot-signaling) often exhibit top-5 lockstep. **E-direct n=5 STRONG (all-agree ≥70%)** + **n=1 PAIRWISE-ONLY (ENS: 3 of 4 pairwise ≥75% but all-agree 50% due to single dissenter)** across 2+ substrate bands. HB#694 ENS counter-example demonstrates E-direct is common-but-not-universal at delegate-class scale — substrate-band + voter-count similarity don't guarantee lockstep.
 
-**E-direct diagnostic tiers (v2.0.x refinement per HB#694)**:
-- **E-direct (full/STRONG)**: top-N all-agree ≥70% (Spark, Convex, Aave, Uniswap, Lido)
-- **E-direct (PAIRWISE-ONLY)**: majority pairwise-with-top-1 ≥70% but all-agree <70% (ENS: 3 of 4 pairwise at 75-100%, 1 dissenter at 62%)
-- **No E-direct**: majority pairwise-with-top-1 <70%
+**E-direct diagnostic tiers (v2.0.x refinement per HB#694 + HB#696)**:
+
+*Binary proposals*:
+- **E-direct BINARY-STRONG**: top-N all-agree ≥70% (Spark, Convex, Aave, Uniswap, Lido)
+- **E-direct BINARY-PAIRWISE-ONLY**: majority pairwise-with-top-1 ≥70% but all-agree <70% (ENS: 3 of 4 pairwise at 75-100%, 1 dissenter at 62%)
+- **No E-direct binary**: majority pairwise-with-top-1 <70%
+
+*Multi-choice proposals (gauge-allocation DAOs, HB#696 new)*:
+- **E-direct MULTI-CHOICE STRONG**: full-lockstep (all pairs cosine ≥0.7) in ≥70% of multi-choice proposals (Frax HB#696: 20/21 = 95%)
+- **E-direct MULTI-CHOICE PARTIAL**: majority-lockstep in ≥70% of multi-choice proposals
+- **No multi-choice E-direct**
+
+**Total empirical E-direct cases (HB#696)**: n=7 (5 binary-STRONG + 1 binary-PAIRWISE-ONLY + 1 multi-choice-STRONG = Frax).
 
 **Methodology** (reusable): `curl https://hub.snapshot.org/graphql ... → filter binary-choice → top-5 by cumulative VP → count choice-agreement`. Threshold: ≥70-80% agreement.
 
