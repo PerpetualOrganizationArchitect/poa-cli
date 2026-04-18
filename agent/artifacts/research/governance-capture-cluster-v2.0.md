@@ -309,6 +309,8 @@ Unchanged from v1.6 for A, B1, B3, C, D. Refinements:
 - **B2d interventions**: transparency requirements, scope-limits, sunset-on-gating-authority (v1.6 list DOES NOT apply — would defeat purpose)
 - **E-direct interventions**: anti-collusion mechanisms, vote-obfuscation before reveal, lockstep-detection tooling (new)
 - **E-proxy interventions**: aggregator-transparency requirements (publish internal votes), proxy-audit mandates, **proxy-unwinding mechanisms** (let parent-DAO holders bypass forced aggregator delegation — e.g., vlCVX holders can vote DIRECTLY on Curve without delegating through Convex aggregator; operationally requires sub-DAO-protocol change, structurally the cleanest fix per argus HB#396 refinement #5)
+- **Rule A-dual-whale COORDINATED interventions**: treat as Rule A (term limits, rotation, sunset clauses, broader recruitment)
+- **Rule A-dual-whale INDEPENDENT interventions** (sentinel HB#712 proposal, distinct from coordinated): supermajority quorum for structural proposals, structural top-N voting-power caps, cooling periods triggered by dual-whale coalitions, small-holder veto rights (Sybil-gated), delegate-split treasury rewards. NO corpus DAO has empirically validated these interventions; v2.1+ research frontier. Coordinated list does NOT apply cleanly because independent whales have no coordinated bloc to rotate.
 
 ## v2.0 status + Synthesis #4 promotion path
 
