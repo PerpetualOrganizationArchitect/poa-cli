@@ -94,15 +94,34 @@ async function fetchTopVoters(space, topN) {
 }
 
 async function main() {
-  const space = process.argv[2];
-  const topN = Number(process.argv[3] || 5);
-  if (!space) { console.error('Usage: node lockstep-analyzer.js <space.eth> [topN=5]'); process.exit(1); }
+  // args: space [topN=5] [--voters addr1,addr2,...] (overrides auto-selection)
+  const args = process.argv.slice(2);
+  const space = args[0];
+  let topN = 5;
+  let explicitVoters = null;
+  for (let i = 1; i < args.length; i++) {
+    if (args[i] === '--voters' && args[i + 1]) {
+      explicitVoters = args[i + 1].split(',').map(s => s.trim().toLowerCase());
+      i++;
+    } else if (/^\d+$/.test(args[i])) {
+      topN = Number(args[i]);
+    }
+  }
+  if (!space) { console.error('Usage: node lockstep-analyzer.js <space.eth> [topN=5] [--voters addr1,addr2,...]'); process.exit(1); }
 
-  console.log(`\nLockstep analysis: ${space} (top-${topN})\n`);
+  console.log(`\nLockstep analysis: ${space} (top-${topN}${explicitVoters ? ', explicit voters' : ', auto-selected by cum-VP'})\n`);
 
-  const topVoters = await fetchTopVoters(space, topN);
-  console.log('Top voters by cumulative VP (from last 20K votes):');
-  topVoters.forEach((v, i) => console.log(`  ${i + 1}. ${v.address}  cum-VP=${v.cumulativeVP.toLocaleString()}`));
+  let topVoters;
+  if (explicitVoters) {
+    topVoters = explicitVoters.map(a => ({ address: a, cumulativeVP: null }));
+    topN = topVoters.length;
+    console.log('Explicit voters (from --voters arg):');
+    topVoters.forEach((v, i) => console.log(`  ${i + 1}. ${v.address}`));
+  } else {
+    topVoters = await fetchTopVoters(space, topN);
+    console.log('Top voters by cumulative VP (from last 4K votes):');
+    topVoters.forEach((v, i) => console.log(`  ${i + 1}. ${v.address}  cum-VP=${v.cumulativeVP.toLocaleString()}`));
+  }
 
   const binaryProposals = await fetchProposals(space, 1000);
   console.log(`\nBinary proposals found: ${binaryProposals.length}\n`);
@@ -161,6 +180,23 @@ async function main() {
   }
   const majorityPairwise = pairwiseRates.filter(r => r >= 0.70).length;
 
+  // v2.x refinement (argus HB#404 methodology request): dual-whale is a TOP-2
+  // phenomenon. Output separate top-2-specific diagnostic independent of broader
+  // top-N tier. Applies when caller is investigating Rule A-dual-whale
+  // (top-1 + top-2 ≥ 50% per audit-snapshot) rather than full-cohort E-direct.
+  const top2 = perPair.get(1) || { coVoted: 0, agreed: 0 };
+  const top2PairwiseRate = top2.coVoted ? top2.agreed / top2.coVoted : 0;
+  let dualWhaleVariant = 'N/A';
+  if (top2.coVoted >= 3) {
+    if (top2PairwiseRate >= 0.70) dualWhaleVariant = 'COORDINATED (top-2 pairwise ≥70%)';
+    else dualWhaleVariant = 'INDEPENDENT (top-2 pairwise <70%)';
+  } else {
+    dualWhaleVariant = 'INSUFFICIENT-DATA (top-2 co-voted <3 binary props)';
+  }
+  console.log(`\nDual-whale top-2 diagnostic (argus HB#404 refinement):`);
+  console.log(`  top-2 pairwise: ${top2.agreed}/${top2.coVoted} = ${(top2PairwiseRate * 100).toFixed(1)}%`);
+  console.log(`  Variant: ${dualWhaleVariant}`);
+
   let tier = 'None';
   if (allAgreeRate >= 0.70) tier = 'STRONG';
   else if (majorityPairwise > pairwiseRates.length / 2) tier = 'PAIRWISE-ONLY';
@@ -172,6 +208,7 @@ async function main() {
   console.log(JSON.stringify({
     space, topN, binaryProposals: binaryProposals.length, allCoparticipated, allAgreed, allAgreeRate,
     pairwiseRates, majorityPairwise, tier, topVoters,
+    dualWhale: { top2CoVoted: top2.coVoted, top2Agreed: top2.agreed, top2PairwiseRate, variant: dualWhaleVariant },
   }, null, 2));
 }
 
