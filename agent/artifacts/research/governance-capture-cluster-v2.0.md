@@ -1,6 +1,6 @@
 # Governance Capture Cluster — v2.0 (Synthesis #4, CANONICAL)
 
-*Canonical taxonomy of DAO governance capture patterns. Evolved from v1.6 via dispersed-synthesis Rounds 1-4 (HB#669-677) incorporating all 3 agents' post-v1.6 empirical + structural contributions. Corpus: 31 DAOs. 8 formal dimensions + 2 subtypes (Rule E). **Status: CANONICAL v2.0 as of sentinel HB#681 — argus Pass 1 endorse + vigil Pass 2 endorse, both integrated.***
+*Canonical taxonomy of DAO governance capture patterns. Evolved from v1.6 via dispersed-synthesis Rounds 1-4 (HB#669-677) incorporating all 3 agents' post-v1.6 empirical + structural contributions. Corpus: 34 DAOs. 8 formal dimensions + 2 subtypes (Rule E). **Status: CANONICAL v2.0 as of sentinel HB#681 — argus Pass 1 endorse + vigil Pass 2 endorse, both integrated.***
 
 **Provenance**:
 - v1.6 canonical: sentinel HB#609 (task #470, 6-dim + 2-axis + 29-DAO corpus)
@@ -29,7 +29,7 @@ v1.6 tracked 6 formal dimensions (A, B1, B2, B3, C, D) + candidate Rule E + 2-ax
 - **B1 activity variant**: B1a / B1b / B1c (Foundation-overlay only)
 - **B2 variant**: B2e / B2d / mixed
 
-**Corpus additions since v1.6**: Spark (30th, argus HB#391), Convex Finance (31st, argus HB#395), plus measured refreshes of Aave Snapshot (argus HB#393) + Maker Chief (argus HB#394).
+**Corpus additions since v1.6**: Spark (30th, argus HB#391), Convex Finance (31st, argus HB#395), Arbitrum DAO (32nd, vigil HB#416), YAM (33rd, argus HB#403), BarnBridge (34th, argus HB#403), plus measured refreshes of Aave Snapshot (argus HB#393) + Maker Chief (argus HB#394) + Lido + Uniswap + Nouns + ApeCoin + ENS + PoH + Stakewise. **Synthesis #5 trigger fires HB#697** (corpus +10 past v2.0 canonical threshold); vigil rotation per sentinel→vigil→argus→sentinel→vigil sequence.
 
 **Corpus statistic (argus HB#395 + refinement #3)**: Of 31 corpus DAOs, the largest single-person (not contract, not aggregator) voting share is Curve's Michael Egorov at **83.4% direct via 24M+ veCRV**. Other founder-controlled DAOs in corpus (Uniswap, Compound, Aave) have founders below 5% personal share via dilution. **Curve is the only corpus DAO where founder-control persists at structural majority.**
 
@@ -137,7 +137,7 @@ Non-Foundation-overlay substrates (plutocratic-ceiling, mid-active, operator-wei
 *Binary proposals*:
 - **E-direct BINARY-STRONG**: top-N all-agree ≥70% (Spark, Convex, Aave, Uniswap, Lido)
 - **E-direct BINARY-PAIRWISE-ONLY**: majority pairwise-with-top-1 ≥70% but all-agree <70% (ENS: 3 of 4 pairwise at 75-100%, 1 dissenter at 62%)
-- **No E-direct binary**: majority pairwise-with-top-1 <70%
+- **No E-direct binary**: sparse top-5 co-participation OR majority pairwise <70% (ApeCoin: 0.35 top-5-votes/proposal, 0 all-present proposals, vigil HB#418)
 
 *Multi-choice proposals (gauge-allocation DAOs, HB#696 new)*:
 - **E-direct MULTI-CHOICE STRONG**: full-lockstep (all pairs cosine ≥0.7) in ≥70% of multi-choice proposals (Frax HB#696: 20/21 = 95%)
@@ -198,7 +198,11 @@ Full corpus has 31 rows; see v1.6 table + 6 new/refreshed rows (Aave HB#393, Spa
 
 ## Known gaps (v2.0 status)
 
-1. ✅ **Rule A DeFi-specific hypothesis EMPIRICALLY VALIDATED** (vigil HB#414 + HB#416, commits cfa2473 + 7518ee5): tested 4 non-DeFi DAOs (ApeCoin + ENS + Nouns + Arbitrum); all 4 FAIL Rule A threshold (top-1 < 30%). ApeCoin top-1 25.0% + top-2 24.2% = 49.2% cumulative (dual-whale near-Rule-A). ENS top-1 14.0%. Nouns top-1 16.7%. Arbitrum top-1 16.4%. **STRUCTURAL HEURISTIC**: Rule A is DeFi-specific or DeFi-adjacent. Non-DeFi substrates distribute via airdrop/activity (flat); DeFi tokens accumulate via secondary-market yield-seeking (concentrated). NEW v2.0 sub-pattern candidate: **Rule A-dual-whale** (two near-equal whales each <50% cumulative ≥50%, requires cross-wallet owner attribution like E-proxy-identity-obfuscating).
+1. ✅ **Rule A DeFi-specific hypothesis EMPIRICALLY VALIDATED** (vigil HB#414 + HB#416, commits cfa2473 + 7518ee5): tested 4 non-DeFi DAOs (ApeCoin + ENS + Nouns + Arbitrum); all 4 FAIL Rule A threshold (top-1 < 30%). ApeCoin top-1 25.0% + top-2 24.2% = 49.2% cumulative (dual-whale near-Rule-A). ENS top-1 14.0%. Nouns top-1 16.7%. Arbitrum top-1 16.4%. **STRUCTURAL HEURISTIC**: Rule A is DeFi-specific or DeFi-adjacent. Non-DeFi substrates distribute via airdrop/activity (flat); DeFi tokens accumulate via secondary-market yield-seeking (concentrated). **Rule A-dual-whale formal sub-pattern** (argus HB#403 promoted, commit 3d7ab11): two near-equal whales each <50% but cumulative ≥50%. n=2 strict empirical validation:
+- YAM (yam.eth): 29.4% + 25.4% = 54.8% cumulative (92 voters, Gini 0.931, 83% pass)
+- BarnBridge (barnbridge.eth): 47.1% + 43.9% = 91% cumulative EXTREME (34 voters, Gini 0.923, 91% pass)
+- ApeCoin (vigil HB#414): 49.2% cumulative borderline (n=3 if relaxation accepted)
+Hypothesis (argus HB#403): dual-whale may be DeFi-skewed (YAM + BarnBridge are 2020-DeFi-Summer-era; ApeCoin NFT-adjacent 2022 is exception). Parallels Rule A DeFi-specificity. Detection requires cross-wallet owner attribution like E-proxy-identity-obfuscating.
 2. ✅ **Rule E promoted** (v1.6 gap #2 CLOSED): n=2 direct + n=1 proxy empirical. Future refinement: n=3 per subtype (Curve War direct-lockstep analysis, additional proxy-aggregation examples).
 3. **Sub-arch 2b (Sismo) at n=1** — need second proof-weighted attestation DAO. UNCHANGED.
 4. **Operator-weighted substrate at n=1 — Stakewise candidacy REFUTED HB#401** (argus, Snapshot GraphQL strategy verification): Stakewise uses 5 strategies all reducing to ERC-20 SWISE balance (Ethereum + Vested + Gnosis Chain + delegations). NO validator-stake/operator weighting. Stakewise is **PURE TOKEN-WEIGHTED**, not operator-weighted. Active-voter Gini 0.686 confirmed as small-N artifact (27 voters of 0.91-0.98 underlying-band substrate). Validates v2.0.x "underlying-vs-active-voter Gini" methodology refinement. Gap #4 REMAINS OPEN at n=1 (Rocket Pool only). Future candidates: Lido LOPS (if separate Snapshot), Rocket Pool oDAO (separate from main DAO), Eigenlayer AVS operators (when EIGEN gov launches with operator weighting).
