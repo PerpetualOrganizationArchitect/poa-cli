@@ -392,6 +392,8 @@ A8 substrate-response classifications (REFORMED / ACCEPTED / DISSOLVED / MIGRATE
 
 Adding this cross-product is a one-paragraph expansion that strengthens A8's framework integration.
 
+**A8 rarity finding (sentinel HB#717-719)**: distribution across 39-DAO corpus shows ~92% ACCEPTED, ~5% MIGRATED (n=2: Maker A8a + dYdX A8b), 0% other responses. Substrate migrations are STRUCTURALLY RARE ecosystem events paralleling gap #3 proof-attestation + gap #4 operator-weighted rarity. Post-v2.0 goal #4 (A8 n=3+) reframed from "pending" to "structurally rare — n=2 confirmed." Feature additions (Compound v3, Aave GHO, Curve crvUSD, Uniswap v1→v4, Olympus v1→v2) correctly excluded per argus HB#399 boundary criteria — these preserve governance substrate. Future candidate: Synthetix governance re-architectures across v1/v2/v2x/v3 may contain genuine A8 events (deferred audit).
+
 ### Refinement #5 — E-proxy intervention list refinement
 
 Current v2.0 E-proxy interventions: "aggregator-transparency requirements (publish internal votes), proxy-audit mandates."
